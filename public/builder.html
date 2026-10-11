@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/map.css">
   <link rel="stylesheet" href="/css/app.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
 </head>
 <body>
   <div class="bld">
@@ -20,7 +21,11 @@
       <span class="bld-sep" aria-hidden="true"></span>
       <input id="title-input" class="bld-title" aria-label="Story title" placeholder="Untitled story" autocomplete="off">
       <span id="save-state" class="save-state" aria-live="polite"></span>
+      <span class="bld-sep" aria-hidden="true"></span>
+      <button type="button" id="btn-undo" class="icon-btn" data-icon="undo" title="Undo" aria-label="Undo" disabled></button>
+      <button type="button" id="btn-redo" class="icon-btn" data-icon="redo" title="Redo" aria-label="Redo" disabled></button>
       <span class="spacer"></span>
+      <button type="button" id="btn-cmd" class="cmd-btn" data-icon="search"><span>Search commands</span><kbd id="cmd-kbd">Ctrl K</kbd></button>
       <div class="seg" id="device" role="group" aria-label="Preview size">
         <button type="button" data-device="desktop" class="is-on" data-icon="monitor" title="Desktop preview" aria-label="Desktop preview"></button>
         <button type="button" data-device="phone" data-icon="phone" title="Phone preview" aria-label="Phone preview"></button>

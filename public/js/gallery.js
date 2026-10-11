@@ -21,8 +21,27 @@ function start() {
     { label: 'Sign out', icon: 'logout', onClick: signOut },
   ]));
   addEventListener('scroll', () => $('#head').classList.toggle('is-scrolled', scrollY > 4), { passive: true });
+  skeleton();
   load();
 }
+
+const SAFE_IMG = /^(\/uploads\/|https?:\/\/)[^"'()\\\s]+$/;
+let query = '';
+let sort = (() => { try { return localStorage.getItem('wm.sort') || 'edited'; } catch { return 'edited'; } })();
+
+function skeleton() {
+  $('#gallery').replaceChildren(
+    h('div', { class: 'gallery-head' }, h('div', {}, h('div', { class: 'skel', style: 'width:220px;height:34px' }), h('div', { class: 'skel', style: 'width:140px;height:14px;margin-top:10px' }))),
+    h('div', { class: 'cards' }, [0, 1, 2].map((i) => h('div', { class: 'card is-skel', style: `--i:${i}` },
+      h('div', { class: 'card-cover skel', style: 'border-radius:0' }),
+      h('div', { class: 'card-body' }, h('div', { class: 'card-meta' }, h('div', { class: 'skel', style: 'width:64px;height:20px' }), h('div', { class: 'skel', style: 'width:110px;height:12px' })))))));
+}
+
+const sorters = {
+  edited: (a, b) => b.updatedAt - a.updatedAt,
+  title: (a, b) => (a.title || '').localeCompare(b.title || ''),
+  live: (a, b) => (!!b.url - !!a.url) || b.updatedAt - a.updatedAt,
+};
 
 async function load() {
   const { stories } = await api('GET', '/api/stories');
@@ -37,22 +56,32 @@ async function load() {
       templateGrid())].filter(Boolean));
     return;
   }
+  const grid = h('div', { class: 'cards' });
+  const drawCards = () => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const list = stories.filter((s) => words.every((w) => (s.title || 'untitled').toLowerCase().includes(w) || (w === 'live' && s.url) || (w === 'draft' && !s.url))).sort(sorters[sort]);
+    grid.replaceChildren(...(list.length ? list.map((s, i) => storyCard(s, i)) : [h('p', { class: 'no-results' }, `No stories match "${query}".`)]),
+      ...(query ? [] : [h('button', { type: 'button', class: 'card card-new', style: `--i:${list.length}`, onclick: newStoryDialog }, h('span', { class: 'plus' }, icon('plus')), 'New story')]));
+  };
+  const search = h('input', { type: 'search', placeholder: 'Search your stories', 'aria-label': 'Search your stories', value: query, oninput: (e) => { query = e.target.value; drawCards(); } });
+  const sortSel = h('select', { 'aria-label': 'Sort stories', onchange: (e) => { sort = e.target.value; try { localStorage.setItem('wm.sort', sort); } catch { /* ignore */ } drawCards(); } },
+    [['edited', 'Last edited'], ['title', 'Title A–Z'], ['live', 'Published first']].map(([v, l]) => h('option', { value: v, selected: sort === v }, l)));
+  const live = stories.filter((s) => s.url).length;
   main.replaceChildren(...[
     h('div', { class: 'gallery-head' },
-      h('div', {}, h('h1', {}, 'Your stories'), h('p', {}, `${stories.length} ${stories.length === 1 ? 'story' : 'stories'} · ${stories.filter((s) => s.url).length} published`)),
+      h('div', {}, h('h1', {}, 'Your stories'), h('p', {}, `${stories.length} ${stories.length === 1 ? 'story' : 'stories'} · ${live} published`)),
       h('span', { class: 'spacer' }),
       h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: newStoryDialog }, icon('plus'), 'New story')),
     importBanner(),
-    h('div', { class: 'cards' },
-      stories.map((s, i) => storyCard(s, i)),
-      h('button', { type: 'button', class: 'card card-new', style: `--i:${stories.length}`, onclick: newStoryDialog }, h('span', { class: 'plus' }, icon('plus')), 'New story'))].filter(Boolean));
-  // Fetch covers lazily (summaries don't include the story body).
-  stories.forEach((s) => api('GET', `/api/stories/${s.id}`).then((r) => {
-    const img = r.story.cover?.image;
-    const el = document.querySelector(`[data-story="${s.id}"] .card-cover`);
-    if (el && img && /^(\/uploads\/|https?:\/\/)[^"'()\\\s]+$/.test(img)) el.style.backgroundImage = `url("${img}")`;
-  }).catch(() => {}));
+    stories.length > 3 ? h('div', { class: 'gallery-tools' }, h('label', { class: 'search' }, icon('search', { size: 16 }), search), sortSel) : null,
+    grid].filter(Boolean));
+  drawCards();
 }
+
+addEventListener('keydown', (e) => {
+  const search = document.querySelector('.search input');
+  if (search && e.key === '/' && !e.target.closest('input, textarea') && !document.querySelector('dialog[open]')) { e.preventDefault(); search.focus(); }
+});
 
 function badge(s) {
   if (!s.url) return h('span', { class: 'pill' }, 'Draft');
@@ -78,9 +107,9 @@ function storyCard(s, i) {
     obs.observe(document.body, { childList: true });
   } }, icon('more'));
   return h('a', { class: 'card', href: `/builder.html?id=${s.id}`, 'data-story': s.id, style: `--i:${i}` },
-    h('div', { class: 'card-cover', style: `background-image:${coverGradient(s.id + s.title)}` }, h('span', { class: 'card-cover-title' }, s.title || 'Untitled story')),
+    h('div', { class: 'card-cover', style: `background-image:${s.cover && SAFE_IMG.test(s.cover) ? `url("${s.cover}")` : coverGradient(s.id + s.title)}` }, h('span', { class: 'card-cover-title' }, s.title || 'Untitled story')),
     more,
-    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' }, badge(s), h('span', { class: 'muted' }, `Edited ${relTime(s.updatedAt)}`))));
+    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' }, badge(s), h('span', { class: 'muted' }, `Edited ${relTime(s.updatedAt)}${s.blocks ? ` · ${s.blocks} blocks` : ''}`))));
 }
 
 async function duplicate(s) {

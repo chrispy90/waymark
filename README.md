@@ -4,6 +4,7 @@
 
 - **Write a story** from blocks: text, images, video, embeds, maps, scrolling map "sidecars", guided tours, and swipe comparisons.
 - **Bring your data**: GeoJSON, CSV, or public ArcGIS feature layers, styled by category or value, with popups and a legend.
+- **Analyze it**: buffers, hex bins, counts per area, distance to nearest, heatmaps and clusters, plus drawing and measuring tools. Results become layers you can put in any map.
 - **Make it move**: chapters that recolor the page, statements that light up word by word, numbers that count up, galleries that slide sideways, and parallax photos.
 - **Publish it** to a public link. Draft edits stay private until you publish again.
 
@@ -75,7 +76,9 @@ Any machine or service that runs Node 22.13+ or Docker and has a persistent disk
 |---|---|
 | Story blocks | Cover and byline, text, quote, divider, image, video (YouTube, Vimeo, files), embed, interactive map |
 | Scroll effects | **Chapter**: full-screen title that recolors the page from there on. **Statement**: huge text that lights up word by word. **Big numbers**: figures that count up. **Scroll gallery**: photos that slide sideways as you scroll down. **Image motion**: parallax, zoom or wipe-in reveal. **Cover motion**: parallax or zoom. A story-wide **scroll animation** setting (off, subtle or expressive) fades blocks in. Everything turns off for readers who ask their device to reduce motion |
-| Editor | Click anything in the live preview to edit it. Visual block picker, drag to reorder, undo on delete, desktop/phone preview, autosave, Ctrl/Cmd+S |
+| Editor | Click anything in the live preview to edit it. Visual block picker, drag to reorder, full undo and redo, a command palette (Ctrl/Cmd+K), keyboard shortcuts (press ?), desktop/phone preview, autosave |
+| Geospatial analysis | In the Data tab, **Analyze** previews every result on a map before adding it. **Buffer**: zones around features, optionally merged. **Hex bins**: count, sum or average points per hexagon. **Count in areas**: a point-in-polygon spatial join. **Distance to nearest**: a field with the distance to the closest feature in another layer. **Within distance**: proximity filter. **Center points**, **outline** (convex hull) and **filter by attribute**. Results are saved as ordinary layers and remember how they were made, so you can re-run them on fresh data |
+| Data tools | **Draw & measure**: sketch points, routes and areas with live distance and area, then save them as a layer. **Insights**: feature count, total area or length, field histograms and top values, with one click to turn them into a Big numbers block. **Heatmap** and **cluster** display for point layers. Add data by dropping files, pasting a link, or using sample data |
 | Sidecar | The map stays fixed while narrative cards scroll past and flies to each card's view. Cards can show an image, video or embed instead. Docked or floating layout |
 | Map actions | Links in sidecar text that send the map to a different view, and back on a second click |
 | Guided tour | Numbered places. Step through them or click a marker |
@@ -101,7 +104,9 @@ public/                the web app (plain ES modules, no build step)
   js/render.js         story → page; all block renderers
   js/effects.js        scroll-driven effects engine (one rAF loop, on-screen elements only)
   js/ui.js             icons, logo, toasts, menus, dialogs
-  js/maps.js           MapLibre helpers: basemaps, views, data layers, legend, popups
+  js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
+  js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)
+  js/workbench.js      Add data, Analyze and Draw & measure workspaces
   js/builder.js        the editor
   js/templates.js      starter templates
   welcome.html         landing page for signed-out visitors (itself a story)

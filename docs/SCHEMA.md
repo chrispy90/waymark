@@ -47,8 +47,11 @@ The camera and markers used by maps.
     "field": "category",                      // used by categorical / graduated
     "colors": { "Park": "#16a34a" },          // optional fixed category colors
     "opacity": 0.45, "radius": 6, "width": 3, // polygon fill opacity, point radius, line width
-    "label": "name"                           // optional label field
+    "label": "name",                          // optional label field
+    "display": "features",                    // points only: "features" | "heatmap" | "clusters"
+    "weight": "visitors"                      // heatmap only: optional numeric field that weights each point
   },
+  "analysis": { "tool": "buffer", "inputs": { "input": "trail" }, "params": { "distance": 1, "units": "kilometers" } },  // set on layers made by Analyze; lets the editor re-run them
   "popup": { "title": "{name}", "fields": ["category", "year"], "enabled": true }
 }
 ```

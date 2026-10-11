@@ -4,6 +4,8 @@ import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, setTitle } from './ui.js';
+import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile } from './workbench.js';
+import { TOOLS, kinds } from './analysis.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const view = (v = {}) => ({ ...clone(DEFAULT_VIEW), ...v });
@@ -103,6 +105,8 @@ async function load() {
   renderRail();
   pushPreview();
   setSave('saved');
+  hist.last = snapshot();
+  syncUndo();
   if (params.get('new')) {
     history.replaceState(null, '', `?id=${meta.id}`);
     const t = $('#title-input');
@@ -128,6 +132,57 @@ function setSave(state, text) {
     : state === 'dirty' ? ['Editing…'] : state === 'error' ? [icon('x', { size: 14 }), text || 'Not saved'] : [icon('check', { size: 14 }), 'Saved']));
 }
 
+/* ---------- Undo / redo ---------- */
+
+const hist = { past: [], future: [], last: null, timer: 0, applying: false };
+const snapshot = () => JSON.stringify(story);
+function recordHistory() {
+  if (hist.applying) return;
+  clearTimeout(hist.timer);
+  hist.timer = setTimeout(commitHistory, 450);
+}
+function commitHistory() {
+  clearTimeout(hist.timer);
+  hist.timer = 0;
+  const snap = snapshot();
+  if (snap === hist.last) return;
+  if (hist.last != null) hist.past.push(hist.last);
+  hist.last = snap;
+  hist.future = [];
+  let total = hist.past.reduce((n, x) => n + x.length, 0);
+  while (hist.past.length > 100 || (total > 40e6 && hist.past.length > 1)) total -= hist.past.shift().length;
+  syncUndo();
+}
+function restore(snap) {
+  hist.last = snap;
+  hist.applying = true;
+  story = JSON.parse(snap);
+  story.blocks ||= [];
+  $('#title-input').value = story.title || '';
+  if (selected != null && selected >= story.blocks.length) selected = null;
+  changed();
+  hist.applying = false;
+  renderRail();
+  syncUndo();
+}
+function undo() {
+  if (hist.timer) commitHistory();
+  const prev = hist.past.pop();
+  if (prev == null) { toast('Nothing to undo', { duration: 1200 }); return; }
+  hist.future.push(hist.last);
+  restore(prev);
+}
+function redo() {
+  const next = hist.future.pop();
+  if (next == null) { toast('Nothing to redo', { duration: 1200 }); return; }
+  hist.past.push(hist.last);
+  restore(next);
+}
+function syncUndo() {
+  $('#btn-undo').disabled = !hist.past.length && !hist.timer;
+  $('#btn-redo').disabled = !hist.future.length;
+}
+
 let saveTimer;
 let previewTimer;
 let dirty = false;
@@ -135,6 +190,7 @@ let saving = false;
 let queued = false;
 
 function changed() {
+  recordHistory();
   dirty = true;
   setSave('dirty');
   clearTimeout(saveTimer);
@@ -182,7 +238,30 @@ async function flush() {
 
 addEventListener('beforeunload', (e) => { if (dirty || saving) e.preventDefault(); });
 addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); flush().then(() => toast('Saved', { tone: 'ok', duration: 1500 })).catch((err) => toast(err.message, { tone: 'error' })); }
+  const mod = e.ctrlKey || e.metaKey;
+  const k = e.key.toLowerCase();
+  if (mod && k === 's') { e.preventDefault(); flush().then(() => toast('Saved', { tone: 'ok', duration: 1500 })).catch((err) => toast(err.message, { tone: 'error' })); return; }
+  if (mod && k === 'k') { e.preventDefault(); if (!document.querySelector('dialog[open]')) openPalette(); return; }
+  if (document.querySelector('dialog[open], .menu')) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && k === 'y') { e.preventDefault(); redo(); return; }
+  if (k === '/' || (k === '+' && !mod)) { e.preventDefault(); openBlockPicker(selected != null ? selected + 1 : story.blocks.length); return; }
+  if (k === '?') { e.preventDefault(); openShortcuts(); return; }
+  if (selected == null || tab !== 'content') return;
+  const i = selected;
+  if (k === 'escape') { select(i); return; }
+  if (k === 'delete' || k === 'backspace') { e.preventDefault(); removeAt(story.blocks, i, 'Block deleted', () => { selected = null; }); return; }
+  if (mod && k === 'd') { e.preventDefault(); story.blocks.splice(i + 1, 0, clone(story.blocks[i])); selected = i + 1; changed(); renderRail(); return; }
+  if (e.altKey && (k === 'arrowup' || k === 'arrowdown')) {
+    e.preventDefault();
+    const j = i + (k === 'arrowup' ? -1 : 1);
+    if (j < 0 || j >= story.blocks.length) return;
+    [story.blocks[i], story.blocks[j]] = [story.blocks[j], story.blocks[i]];
+    selected = j;
+    changed();
+    renderRail();
+  }
 });
 
 /* ---------- Preview ---------- */
@@ -242,11 +321,25 @@ function contentTab() {
     rows.push(blockRow(b, i));
   });
   return [
+    tipCard(),
     h('div', { class: 'rail-section-title' }, `Blocks · ${blocks.length}`),
     blocks.length ? h('div', { class: 'outline' }, rows) : h('p', { class: 'muted', style: 'margin:8px 2px 0' }, 'Your story is empty. Add a first block to get going.'),
     h('button', { type: 'button', class: 'add-block', onclick: () => openBlockPicker(blocks.length) }, icon('plus'), 'Add block'),
   ];
 }
+
+function tipCard() {
+  let seen = false;
+  try { seen = localStorage.getItem('wm.tip.editor') === '1'; } catch { /* storage blocked */ }
+  if (seen) return null;
+  const card = h('div', { class: 'tip' },
+    h('span', { class: 'tip-icon' }, icon('target', { size: 16 })),
+    h('div', {}, h('strong', {}, 'Quick tips'),
+      h('p', {}, 'Click anything in the preview to edit it. Press ', h('kbd', {}, '/'), ' to add a block, or ', h('kbd', {}, modKey, 'K'), ' to find any command.')),
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Dismiss tips', onclick: () => { try { localStorage.setItem('wm.tip.editor', '1'); } catch { /* ignore */ } card.remove(); } }, icon('x', { size: 15 })));
+  return card;
+}
+const modKey = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl ';
 
 function addBetween(index) {
   return h('div', { class: 'add-between' }, h('button', { type: 'button', title: 'Insert block here', 'aria-label': 'Insert block here', onclick: () => openBlockPicker(index) }, icon('plus', { size: 14 })));
@@ -318,6 +411,18 @@ function peek(b) {
   return String(raw).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
 }
 
+function addBlockAt(index, block) {
+  story.blocks.splice(index, 0, block);
+  selected = index;
+  tab = 'content';
+  syncTabs();
+  changed();
+  renderRail();
+  requestAnimationFrame(() => $(`.blk[data-i="${index}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  setTimeout(() => post({ type: 'select', index, scroll: true }), 450);
+}
+const insertIndex = () => (selected != null ? selected + 1 : story.blocks.length);
+
 function openBlockPicker(index) {
   const dlg = dialog({
     title: 'Add a block',
@@ -327,14 +432,7 @@ function openBlockPicker(index) {
       h('div', { class: 'picker-grid' }, Object.entries(CATALOG).filter(([, c]) => c.group === g).map(([type, c]) =>
         h('button', { type: 'button', class: 'pick', onclick: () => {
           dlg.close();
-          story.blocks.splice(index, 0, { type, ...c.make() });
-          selected = index;
-          tab = 'content';
-          syncTabs();
-          changed();
-          renderRail();
-          requestAnimationFrame(() => $(`.blk[data-i="${index}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-          setTimeout(() => post({ type: 'select', index, scroll: true }), 450);
+          addBlockAt(index, { type, ...c.make() });
         } },
         h('span', { class: 'pick-icon' }, icon(c.icon, { size: 19 })),
         h('span', {}, h('strong', {}, c.label, c.isNew ? h('span', { class: 'new' }, 'New') : null), h('span', {}, c.desc)))))))),
@@ -364,21 +462,47 @@ function storyTab() {
 function dataTab() {
   const lib = (story.layers ||= []);
   lib.forEach(inspectLayer);
+  const actions = h('div', { class: 'data-actions' },
+    h('button', { type: 'button', class: 'btn btn-primary', onclick: openAddData }, icon('plus', { size: 16 }), 'Add data'),
+    h('button', { type: 'button', class: 'btn', onclick: () => openAnalysis() }, icon('sparkle', { size: 16 }), 'Analyze'),
+    h('button', { type: 'button', class: 'btn', onclick: openDraw }, icon('pen', { size: 16 }), 'Draw'));
+  if (!lib.length) {
+    return [actions, h('div', { class: 'data-empty' },
+      h('span', { class: 'data-empty-art' }, icon('database', { size: 26 })),
+      h('strong', {}, 'Bring your data to the map'),
+      h('p', {}, 'Drop a GeoJSON or CSV file here, paste a link to an ArcGIS layer, or draw your own shapes. Then analyze it and turn it on in any map.'))];
+  }
   return [
-    h('div', { class: 'rail-section-title' }, `Data layers · ${lib.length}`),
-    h('p', { class: 'field-hint', style: 'margin:0 2px 12px' }, 'Add your data once, then switch it on for any map with "Edit map".'),
+    actions,
+    h('div', { class: 'rail-section-title' }, `Your layers · ${lib.length}`),
     h('div', { class: 'sub-list' }, lib.map((layer, i) => subItem(lib, i, {
-      title: h('span', { class: 'row' }, h('span', { class: 'swatch', style: `background:${layer.style?.color || '#2563eb'}` }), layer.name || 'Layer'),
+      title: h('span', { class: 'row' }, h('span', { class: 'swatch', style: `background:${layer.style?.color || '#2563eb'}` }), layer.name || 'Layer',
+        layer.analysis ? h('span', { class: 'pill no-dot', title: 'Made with an analysis tool' }, TOOLS[layer.analysis.tool]?.name || 'Analysis') : null),
       summary: layerStatus(layer), body: () => layerForm(layer), noun: 'Layer' }))),
-    h('button', { type: 'button', class: 'add-block', onclick: () => {
-      const l = { id: uid('l'), name: 'New layer', url: '', style: { color: '#2563eb' }, popup: {} };
-      lib.push(l);
-      openSubs.add(l);
-      changed();
-      renderRail();
-    } }, icon('plus'), 'Add data layer'),
+    h('p', { class: 'field-hint', style: 'margin:12px 2px 0' }, 'Tip: drop GeoJSON or CSV files anywhere on this panel to add them.'),
   ];
 }
+
+function openLayer(id) {
+  const layer = (story.layers || []).find((l) => l.id === id);
+  if (layer) openSubs.add(layer);
+  tab = 'data';
+  syncTabs();
+  renderRail();
+  requestAnimationFrame(() => [...document.querySelectorAll('.sub')].at((story.layers || []).indexOf(layer))?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+}
+
+// Drop data files onto the Data tab to add them.
+$('#rail').addEventListener('dragover', (e) => { if (tab === 'data' && e.dataTransfer.types.includes('Files')) { e.preventDefault(); $('#rail').classList.add('is-drop'); } });
+$('#rail').addEventListener('dragleave', (e) => { if (!$('#rail').contains(e.relatedTarget)) $('#rail').classList.remove('is-drop'); });
+$('#rail').addEventListener('drop', async (e) => {
+  $('#rail').classList.remove('is-drop');
+  if (tab !== 'data') return;
+  const files = [...e.dataTransfer.files].filter((f) => /\.(geo)?json$|\.csv$/i.test(f.name));
+  if (!files.length) return;
+  e.preventDefault();
+  for (const f of files) await addFromFile(f);
+});
 
 /* ---------- Fields ---------- */
 
@@ -400,7 +524,7 @@ function field(obj, spec) {
       h('select', { onchange: (e) => set(e.target.value) }, spec.opts.map(([v, l]) => h('option', { value: v, selected: String(val) === v }, l))), hint);
     case 'seg': {
       const seg = h('div', { class: 'seg seg-block', role: 'group' }, spec.opts.map(([v, l]) => h('button', { type: 'button', class: String(val) === v ? 'is-on' : '',
-        onclick: (e) => { set(v); seg.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget)); } }, l)));
+        onclick: (e) => { set(v); seg.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget)); if (spec.k === 'display' || spec.k === 'mode') renderRail(); } }, l)));
       return h('div', { class: 'field' }, labelEl(spec.label), seg, hint);
     }
     case 'color': return h('label', { class: 'field' }, labelEl(spec.label),
@@ -622,7 +746,7 @@ function placeForm(place) {
 const layerInfo = {};
 const layerStatus = (l) => {
   const i = layerInfo[l.id] || {};
-  return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${i.count.toLocaleString()} features` : 'No data yet';
+  return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${i.count.toLocaleString()} ${i.count === 1 ? 'feature' : 'features'}` : 'No data yet';
 };
 const sourceKey = (l) => (l.data ? `data:${l.data.features?.length}` : `url:${l.url || ''}`);
 
@@ -663,16 +787,25 @@ function layerForm(layer) {
   const status = info.loading ? h('span', { class: 'pill' }, 'Loading…') : info.error ? h('span', { class: 'pill is-error' }, info.error)
     : info.count != null ? h('span', { class: 'pill is-live' }, `${info.count.toLocaleString()} features · ${flds.length} fields`) : null;
 
+  const isPoints = info.fc ? kinds(info.fc).has('point') : false;
+  const a = layer.analysis;
+  const inputNames = a ? Object.values(a.inputs).map((id) => (story.layers || []).find((l) => l.id === id)?.name || 'a deleted layer').join(' and ') : '';
   return h('div', {},
+    a ? h('div', { class: 'provenance' }, icon('sparkle', { size: 15 }),
+      h('span', {}, `${TOOLS[a.tool]?.name || 'Analysis'} of ${inputNames}`),
+      h('button', { type: 'button', class: 'btn btn-sm', title: 'Run the analysis again with the latest data', onclick: () => rerunAnalysis(layer) }, icon('refresh', { size: 14 }), 'Re-run')) : null,
     field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
-    h('div', { class: 'field' }, labelEl('Data'),
+    a ? null : h('div', { class: 'field' }, labelEl('Data'),
       h('div', { class: 'row' },
         h('input', { class: 'input', type: 'text', value: layer.data ? '' : layer.url || '', placeholder: layer.data ? `Uploaded file (${layer.data.features.length} features)` : 'Paste a GeoJSON or ArcGIS layer link',
           onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; changed(); renderRail(); } }),
         h('button', { type: 'button', class: 'btn', title: 'Upload GeoJSON or CSV', onclick: () => fileInput.click() }, icon('upload', { size: 15 }), 'File'), fileInput),
       h('p', { class: 'field-hint' }, 'GeoJSON link, public ArcGIS FeatureServer layer, or a .geojson / .csv file (CSV needs lat and lon columns).'),
       status ? h('div', { style: 'margin-top:8px' }, status) : null),
+    info.fc ? [h('div', { class: 'rail-section-title' }, 'Insights'), insightsPanel(layer, info.fc)] : null,
     h('div', { class: 'rail-section-title' }, 'Style'),
+    isPoints ? field(st, { k: 'display', t: 'seg', label: 'Show points as', opts: [['features', 'Dots'], ['heatmap', 'Heatmap'], ['clusters', 'Clusters']], dflt: 'features' }) : null,
+    isPoints && st.display === 'heatmap' ? fieldSelect(st, 'weight', 'Weight the heat by (optional)', 'Each point counts the same') : null,
     field(st, { k: 'mode', t: 'seg', label: 'Color', opts: [['single', 'One color'], ['categorical', 'By category'], ['graduated', 'By number']], dflt: 'single' }),
     h('div', { class: 'grid-2' },
       field(st, { k: 'color', t: 'color', label: st.mode === 'categorical' ? 'Other values' : st.mode === 'graduated' ? 'Highest values' : 'Color', dflt: '#2563eb' }),
@@ -834,7 +967,89 @@ function openPublish() {
   draw();
 }
 
+/* ---------- Command palette ---------- */
+
+function commands() {
+  const go = (t) => () => { tab = t; syncTabs(); renderRail(); };
+  return [
+    ...Object.entries(CATALOG).map(([type, c]) => ({ label: `Add ${c.label.toLowerCase()}`, hint: c.desc, icon: c.icon, group: 'Add a block', run: () => addBlockAt(insertIndex(), { type, ...c.make() }) })),
+    { label: 'Add data…', hint: 'Upload a file, paste a link, or use sample data', icon: 'database', group: 'Data', run: openAddData },
+    { label: 'Draw & measure on a map', hint: 'Sketch points, routes and areas', icon: 'pen', group: 'Data', run: openDraw },
+    ...Object.entries(TOOLS).map(([id, t]) => ({ label: `Analyze: ${t.name}`, hint: t.desc, icon: t.icon, group: 'Data', run: () => openAnalysis({ tool: id }) })),
+    ...story.blocks.map((b, i) => ({ label: `${i + 1}. ${CATALOG[b.type]?.label || b.type}`, hint: peek(b), icon: CATALOG[b.type]?.icon || 'file', group: 'Go to block', run: () => { selected = null; select(i); } })),
+    { label: 'Content', hint: 'Blocks in your story', icon: 'text', group: 'Go to', run: go('content') },
+    { label: 'Story settings', hint: 'Cover, theme, scroll animations', icon: 'sliders', group: 'Go to', run: go('story') },
+    { label: 'Data layers', hint: 'Your data and analyses', icon: 'layers', group: 'Go to', run: go('data') },
+    { label: 'Publish…', icon: 'globe', group: 'Story', run: openPublish },
+    { label: 'Preview in a new tab', icon: 'external', group: 'Story', run: () => $('#btn-preview').click() },
+    { label: 'Undo', icon: 'undo', group: 'Story', run: undo, keys: `${modKey}Z` },
+    { label: 'Redo', icon: 'redo', group: 'Story', run: redo, keys: `${modKey}⇧Z` },
+    { label: 'Download story file', icon: 'download', group: 'Story', run: downloadStory },
+    { label: 'Keyboard shortcuts', icon: 'keyboard', group: 'Help', run: openShortcuts, keys: '?' },
+    { label: 'All stories', icon: 'back', group: 'Help', run: () => { location.href = '/'; } },
+  ];
+}
+
+function openPalette() {
+  const all = commands();
+  let shown = all;
+  let active = 0;
+  const input = h('input', { class: 'pal-input', type: 'text', placeholder: 'Type a command, a block, or an analysis…', 'aria-label': 'Search commands', autocomplete: 'off' });
+  const list = h('div', { class: 'pal-list', role: 'listbox' });
+  const draw = () => {
+    let group = null;
+    list.replaceChildren(...(shown.length ? shown.flatMap((c, i) => {
+      const out = [];
+      if (c.group !== group) { group = c.group; out.push(h('div', { class: 'pal-group' }, group)); }
+      out.push(h('button', { type: 'button', role: 'option', class: `pal-item ${i === active ? 'is-active' : ''}`, 'aria-selected': i === active,
+        onmousemove: () => { if (active !== i) { active = i; draw(); } }, onclick: () => pick(c) },
+      icon(c.icon, { size: 16 }), h('span', { class: 'pal-label' }, c.label, c.hint ? h('span', { class: 'pal-hint' }, c.hint) : null),
+      c.keys ? h('kbd', {}, c.keys) : null));
+      return out;
+    }) : [h('p', { class: 'muted', style: 'padding:14px' }, 'No matching commands.')]));
+    list.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
+  };
+  const pick = (c) => { dlg.close(); setTimeout(c.run, 0); };
+  input.addEventListener('input', () => {
+    const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+    shown = all.filter((c) => { const t = `${c.label} ${c.hint || ''} ${c.group}`.toLowerCase(); return words.every((w) => t.includes(w)); });
+    active = 0;
+    draw();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(shown.length - 1, active + 1); draw(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); draw(); }
+    if (e.key === 'Enter' && shown[active]) { e.preventDefault(); pick(shown[active]); }
+  });
+  const dlg = dialog({ title: 'Commands', cls: 'dlg-palette', body: h('div', {}, h('div', { class: 'pal-search' }, icon('search', { size: 17 }), input), list) });
+  dlg.querySelector('.dlg-head').remove();
+  dlg.querySelector('.dlg-body').style.padding = '0';
+  draw();
+  input.focus();
+}
+
+function openShortcuts() {
+  const rows = [
+    [`${modKey}K`, 'Find any command'], ['/', 'Add a block'], [`${modKey}Z`, 'Undo'], [`${modKey}⇧Z`, 'Redo'], [`${modKey}S`, 'Save now'],
+    ['Delete', 'Delete the open block'], [`${modKey}D`, 'Duplicate the open block'], ['Alt ↑ / ↓', 'Move the open block'], ['Esc', 'Close the open block'], ['?', 'Show this list'],
+  ];
+  dialog({ title: 'Keyboard shortcuts', cls: 'dlg-sm', body: h('div', { class: 'keys' }, rows.map(([k, v]) => h('div', {}, h('span', {}, v), h('kbd', {}, k)))) });
+}
+
+function downloadStory() {
+  const blob = new Blob([JSON.stringify(story, null, 2)], { type: 'application/json' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: `${slugify(story.title)}.waymark.json` });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /* ---------- Top bar ---------- */
+
+$('#btn-undo').addEventListener('click', undo);
+$('#btn-redo').addEventListener('click', redo);
+$('#btn-cmd').addEventListener('click', openPalette);
+$('#btn-cmd').title = `Commands (${modKey}K)`;
+$('#cmd-kbd').textContent = `${modKey}K`;
 
 $('#title-input').addEventListener('input', (e) => { story.title = e.target.value; setTitle(story.title || 'Editor'); changed(); });
 $('#title-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
@@ -848,12 +1063,8 @@ $('#btn-more').addEventListener('click', (e) => menu(e.currentTarget, [
   { label: 'Open preview in new tab', icon: 'external', onClick: () => $('#btn-preview').click() },
   { label: 'Story settings', icon: 'sliders', onClick: () => { tab = 'story'; syncTabs(); renderRail(); } },
   'sep',
-  { label: 'Download as file', icon: 'download', onClick: () => {
-    const blob = new Blob([JSON.stringify(story, null, 2)], { type: 'application/json' });
-    const a = h('a', { href: URL.createObjectURL(blob), download: `${slugify(story.title)}.waymark.json` });
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } },
+  { label: 'Keyboard shortcuts', icon: 'keyboard', onClick: openShortcuts },
+  { label: 'Download as file', icon: 'download', onClick: downloadStory },
   { label: 'Import a story file…', icon: 'upload', onClick: () => {
     const input = h('input', { type: 'file', accept: 'application/json,.json', onchange: async () => {
       try {
@@ -867,5 +1078,13 @@ $('#btn-more').addEventListener('click', (e) => menu(e.currentTarget, [
     input.click();
   } },
 ]));
+
+initWorkbench({
+  story: () => story,
+  changed,
+  renderRail,
+  openLayer,
+  insertBlock: (block) => { addBlockAt(insertIndex(), block); toast('Added to your story', { tone: 'ok' }); },
+});
 
 load();

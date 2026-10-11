@@ -18,3 +18,4 @@
 .sm-legend-ramp { height: 10px; border-radius: 2px; margin-top: 4px; border: 1px solid rgba(0,0,0,.15); }
 .sm-legend-range { display: flex; justify-content: space-between; color: #6b7280; }
 .sm-legend-err { color: #b91c1c; }
+.sm-legend-note { color: #6b7280; font-size: 11.5px; line-height: 1.35; margin-top: 2px; }

@@ -199,7 +199,18 @@ function mix(a, b, t) {
 const POLY = ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]];
 const LINE = ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
 const POINT = ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]];
-const subIds = (id) => ['fill', 'line', 'circle', 'label'].map((k) => `dl-${id}-${k}`);
+// Each data layer is drawn with several MapLibre layers; which ones exist depends on style.display.
+const SUBS = ['fill', 'line', 'circle', 'label', 'heat', 'cluster', 'count'];
+const subIds = (id) => SUBS.map((k) => `dl-${id}-${k}`);
+const hitIds = (map) => map._library.flatMap((l) => ['fill', 'line', 'circle', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
+const displayOf = (layer) => layer.style?.display || 'features';
+const NOT_CLUSTER = ['!', ['has', 'point_count']];
+
+function rgba(hex, a) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r},${g},${b},${a})`;
+}
+const heatStops = (color) => [[0, rgba(color, 0)], [0.15, rgba(color, 0.35)], [0.4, color], [0.7, mix(color, '#ffc64d', 0.6)], [1, '#fff4c2']];
 
 function installLayers(map) {
   map._legendInfo = {};
@@ -207,16 +218,39 @@ function installLayers(map) {
     const src = `dl-${layer.id}`;
     if (map.getSource(src)) return;
     const s = layer.style || {};
+    const display = displayOf(layer);
     const vis = map._visible.includes(layer.id) ? 'visible' : 'none';
-    const color = s.color || PALETTE[0];
-    map.addSource(src, { type: 'geojson', data: emptyFC() });
+    const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : PALETTE[0];
+    const radius = s.radius ?? 6;
+    map.addSource(src, { type: 'geojson', data: emptyFC(), ...(display === 'clusters' ? { cluster: true, clusterRadius: 50, clusterMaxZoom: 14 } : {}) });
     map.addLayer({ id: `${src}-fill`, type: 'fill', source: src, filter: POLY, layout: { visibility: vis },
       paint: { 'fill-color': color, 'fill-opacity': s.opacity ?? 0.45 } });
     map.addLayer({ id: `${src}-line`, type: 'line', source: src, filter: ['any', POLY, LINE], layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': color, 'line-width': ['case', LINE, s.width ?? 3, 1] } });
-    map.addLayer({ id: `${src}-circle`, type: 'circle', source: src, filter: POINT, layout: { visibility: vis },
-      paint: { 'circle-color': color, 'circle-radius': s.radius ?? 6, 'circle-opacity': 0.9, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } });
-    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, layout: {
+    if (display === 'heatmap') {
+      map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, filter: POINT, maxzoom: 17, layout: { visibility: vis }, paint: {
+        'heatmap-weight': 1,
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 15, 3],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, radius * 1.6, 15, radius * 6],
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...heatStops(color).flat()],
+        'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.92, 16, 0.2],
+      } });
+    }
+    if (display === 'clusters') {
+      map.addLayer({ id: `${src}-cluster`, type: 'circle', source: src, filter: ['has', 'point_count'], layout: { visibility: vis }, paint: {
+        'circle-color': color, 'circle-opacity': 0.88,
+        'circle-radius': ['step', ['get', 'point_count'], 15, 10, 19, 50, 25, 250, 32, 1000, 40],
+        'circle-stroke-color': rgba(color, 0.35), 'circle-stroke-width': 6,
+      } });
+      map.addLayer({ id: `${src}-count`, type: 'symbol', source: src, filter: ['has', 'point_count'], layout: {
+        visibility: vis, 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true },
+      paint: { 'text-color': '#ffffff' } });
+    }
+    map.addLayer({ id: `${src}-circle`, type: 'circle', source: src, filter: display === 'clusters' ? ['all', POINT, NOT_CLUSTER] : POINT, layout: { visibility: vis },
+      paint: { 'circle-color': color, 'circle-radius': radius, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5,
+        'circle-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 0.92] : 0.92,
+        'circle-stroke-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 1] : 1 } });
+    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, filter: display === 'clusters' ? NOT_CLUSTER : ['all'], layout: {
       visibility: s.label ? vis : 'none', 'text-field': s.label ? ['to-string', ['get', s.label]] : '', 'text-font': ['Noto Sans Regular'],
       'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
     paint: { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
@@ -233,6 +267,7 @@ function loadInto(map, layer) {
   if (!source || source._smLoading) return;
   source._smLoading = true;
   const s = layer.style || {};
+  const display = displayOf(layer);
   loadLayerData(layer).then((fc) => {
     if (map.getSource(src) !== source) return; // style was swapped while loading
     source.setData(fc);
@@ -240,7 +275,18 @@ function loadInto(map, layer) {
     map.setPaintProperty(`${src}-fill`, 'fill-color', expr);
     map.setPaintProperty(`${src}-line`, 'line-color', s.mode && s.mode !== 'single' ? ['case', POLY, '#ffffff', expr] : expr);
     map.setPaintProperty(`${src}-circle`, 'circle-color', expr);
-    map._legendInfo[layer.id] = legend;
+    let info = legend;
+    if (display === 'heatmap') {
+      const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : PALETTE[0];
+      if (s.weight) {
+        const vals = fc.features.map((f) => Number(f.properties?.[s.weight])).filter(Number.isFinite);
+        const max = vals.length ? Math.max(...vals) : 0;
+        if (max > 0) map.setPaintProperty(`${src}-heat`, 'heatmap-weight', ['interpolate', ['linear'], ['to-number', ['get', s.weight], 0], 0, 0, max, 1]);
+      }
+      info = { type: 'heat', stops: heatStops(color), weight: s.weight };
+    }
+    if (display === 'clusters') info = { ...legend, clusters: true };
+    map._legendInfo[layer.id] = info;
     map._legend.render(map);
   }).catch((err) => {
     map._legendInfo[layer.id] = { type: 'error', message: err.message };
@@ -253,9 +299,10 @@ export function setVisibleLayers(map, ids) {
   map._library.forEach((layer) => {
     const vis = ids.includes(layer.id) ? 'visible' : 'none';
     if (vis === 'visible') loadInto(map, layer);
-    subIds(layer.id).forEach((lid, k) => {
+    SUBS.forEach((k) => {
+      const lid = `dl-${layer.id}-${k}`;
       if (!map.getLayer(lid)) return;
-      map.setLayoutProperty(lid, 'visibility', k === 3 && !layer.style?.label ? 'none' : vis);
+      map.setLayoutProperty(lid, 'visibility', k === 'label' && !layer.style?.label ? 'none' : vis);
     });
   });
   map._legend.render(map);
@@ -266,16 +313,21 @@ export function setVisibleLayers(map, ids) {
 function bindPopups(map) {
   const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
   map.on('click', (e) => {
-    const ids = map._library.flatMap((l) => subIds(l.id).slice(0, 3)).filter((id) => map.getLayer(id));
+    const ids = hitIds(map);
     if (!ids.length) return;
     const f = map.queryRenderedFeatures(e.point, { layers: ids })[0];
     if (!f) return;
+    if (f.layer.id.endsWith('-cluster')) { // zoom into a cluster
+      map.getSource(f.layer.source).getClusterExpansionZoom(f.properties.cluster_id)
+        .then((z) => map.easeTo({ center: f.geometry.coordinates, zoom: z + 0.3 })).catch(() => {});
+      return;
+    }
     const layer = map._library.find((l) => f.layer.id.startsWith(`dl-${l.id}-`));
     if (!layer || layer.popup?.enabled === false) return;
     popup.setLngLat(e.lngLat).setDOMContent(popupContent(layer, f.properties)).addTo(map);
   });
   map.on('mousemove', (e) => {
-    const ids = map._library.flatMap((l) => subIds(l.id).slice(0, 3)).filter((id) => map.getLayer(id));
+    const ids = hitIds(map);
     const hit = ids.length && map.queryRenderedFeatures(e.point, { layers: ids }).length;
     map.getCanvas().style.cursor = hit ? 'pointer' : '';
   });
@@ -323,7 +375,18 @@ class LegendControl {
       row.append(name);
       if (!info) { name.append(' …'); return row; }
       if (info.type === 'error') { const e = document.createElement('div'); e.className = 'sm-legend-err'; e.textContent = 'Could not load: ' + info.message; row.append(e); }
-      if (info.type === 'single') name.prepend(swatch(info.color));
+      if (info.type === 'single') name.prepend(swatch(info.color, info.clusters));
+      if (info.clusters) { const d = document.createElement('div'); d.className = 'sm-legend-note'; d.textContent = 'Nearby points are grouped; click a group to zoom in'; row.append(d); }
+      if (info.type === 'heat') {
+        const bar = document.createElement('div');
+        bar.className = 'sm-legend-ramp';
+        bar.style.background = `linear-gradient(to right, ${info.stops.map(([at, c]) => `${c} ${at * 100}%`).join(', ')})`;
+        const lbl = document.createElement('div');
+        lbl.className = 'sm-legend-range';
+        lbl.innerHTML = '<span>Fewer</span><span>More</span>';
+        if (info.weight) lbl.children[1].textContent = `More ${info.weight}`;
+        row.append(bar, lbl);
+      }
       if (info.type === 'categories') info.entries.forEach(([label, c]) => { const d = document.createElement('div'); d.append(swatch(c), label); row.append(d); });
       if (info.type === 'ramp') {
         const bar = document.createElement('div');
@@ -341,5 +404,5 @@ class LegendControl {
   }
 }
 
-const swatch = (c) => { const s = document.createElement('span'); s.className = 'sm-swatch'; s.style.background = c; return s; };
+const swatch = (c, round = false) => { const s = document.createElement('span'); s.className = 'sm-swatch'; s.style.background = c; if (round) s.style.borderRadius = '50%'; return s; };
 const fmt = (n) => (Math.abs(n) >= 1000 ? n.toLocaleString() : String(round(n, 2)));

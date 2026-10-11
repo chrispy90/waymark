@@ -110,6 +110,7 @@ const summary = (r) => ({
   id: r.id, title: r.title, version: r.version, updatedAt: r.updated_at, createdAt: r.created_at,
   slug: r.slug, publishedAt: r.published_at, url: r.slug && r.published ? `/s/${r.slug}` : null,
   hasUnpublishedChanges: !!r.published && r.published_at < r.updated_at,
+  ...(r.cover !== undefined ? { cover: r.cover || null, blocks: r.blocks ?? 0 } : {}),
 });
 
 // Identify image types by their bytes, never by the client's claimed type.
@@ -205,7 +206,7 @@ route('POST', '/api/auth/password', async (req) => {
 
 route('GET', '/api/stories', async (req) => {
   const user = requireUser(req);
-  const rows = db.prepare('SELECT id, title, version, slug, published IS NOT NULL AS published, published_at, created_at, updated_at FROM stories WHERE owner_id = ? ORDER BY updated_at DESC').all(user.id);
+  const rows = db.prepare(`SELECT id, title, version, slug, published IS NOT NULL AS published, published_at, created_at, updated_at, json_extract(draft, '$.cover.image') AS cover, json_array_length(draft, '$.blocks') AS blocks FROM stories WHERE owner_id = ? ORDER BY updated_at DESC`).all(user.id);
   return [200, { stories: rows.map(summary) }];
 });
 
