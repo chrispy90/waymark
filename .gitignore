@@ -2,3 +2,4 @@ _reference/
 node_modules/
 data/
 .env
+.claude/

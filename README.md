@@ -1,110 +1,125 @@
 # StoryMaps
 
-A clean-room, open-source rebuild of the core ArcGIS StoryMaps experience: scroll-driven map stories with a visual builder.
+Self-hosted, scroll-driven map stories with a visual builder. It's an open-source, clean-room take on the ArcGIS StoryMaps experience.
 
-No Esri code, SDK, or API key. Maps use [MapLibre GL JS](https://maplibre.org/) with free [OpenFreeMap](https://openfreemap.org/) vector basemaps (OpenStreetMap data).
+- **Write a story** from blocks: text, images, video, embeds, maps, scrolling map "sidecars", guided tours, and swipe comparisons.
+- **Bring your data**: GeoJSON, CSV, or public ArcGIS feature layers, styled by category or value, with popups and a legend.
+- **Publish it** to a public link. Draft edits stay private until you publish again.
 
-## Run
+There's nothing to install beyond Node.js, and no API keys or accounts with anyone else are needed. Maps use [MapLibre GL JS](https://maplibre.org/) with free [OpenFreeMap](https://openfreemap.org/) basemaps (OpenStreetMap data). It contains no Esri code.
+
+## Quick start
+
+You need [Node.js](https://nodejs.org) **22.13 or newer**. Check with `node --version`.
 
 ```bash
-node --disable-warning=ExperimentalWarning server.js
+git clone <this-repo-url> storymaps
+cd storymaps
+npm start
 ```
 
-Then open http://localhost:5180 and create an account. There's nothing to install: the server uses only Node built-ins, including `node:sqlite` (Node 22.5 or later).
+Open **http://localhost:5180**, create an account, and click **Start from sample** to explore.
 
-| Page | What it does |
-|---|---|
-| `/` | Your stories, with status (draft, published, or published with unpublished changes) |
-| `/builder.html?id=…` | Editor with a live preview, autosave, image uploads and publishing |
-| `/s/<slug>` | A published story. Public, with the title, description and cover image filled in for link previews |
-| `/viewer.html?draft=<id>` | Owner-only preview of the current draft |
-| `/login.html` | Sign in or create an account |
+`npm install` isn't needed, because there are no dependencies. Everything you create lives in the `data/` folder.
 
-### Configuration
-
-| Env var | Default | |
-|---|---|---|
-| `PORT` | `5180` | |
-| `DATA_DIR` | `./data` | SQLite database (`storymaps.db`) and `uploads/` |
-| `COOKIE_SECURE` | off | Set to `1` when serving over HTTPS |
-| `ALLOW_SIGNUP` | on | Set to `0` to close new sign-ups once your accounts exist |
-
-To back up, copy `DATA_DIR`. To deploy, you need a host that runs Node, such as a VPS, Fly.io, Railway or Render with a persistent disk. Shared PHP hosting won't work. Put it behind HTTPS (Caddy or nginx) and set `COOKIE_SECURE=1`.
-
-## Feature map vs. ArcGIS StoryMaps
-
-| ArcGIS StoryMaps | Here | Status |
-|---|---|---|
-| Cover, title, byline | Story `cover` and header | Done |
-| Text, quote, separator, image, video, embed | Blocks of the same names | Done |
-| Express or web map in the story | `map` block (view + markers) | Done |
-| Sidecar (docked / floating), the Map Journal and Cascade scroll pattern | `sidecar` block; each slide sets its own map view or media and the map flies between them | Done |
-| Guided tour (Map Tour) | `tour` block: numbered places, step through them or click a marker | Done |
-| Swipe | `swipe` block: compare two basemaps with a draggable divider | Done |
-| Map actions (inline links that change the map) | Sidecar slides: `#action:<id>` links fly the map to another view and toggle back when clicked again | Done |
-| Data layers: GeoJSON, CSV, ArcGIS feature layers | Story-level layer library, turned on per map view. Styles: single color, color by category, color by number, plus labels, popups and a legend | Done |
-| Swipe between layers | `swipe.leftLayers` / `rightLayers` | Done |
-| Satellite imagery basemap | Needs a licensed imagery provider (e.g. MapTiler or Esri with a key) | Next |
-| Accounts, drafts, publishing to a public link | Email and password accounts. Separate draft and published copies, publish and unpublish, custom links | Done |
-| Image upload and media library | Drag and drop or pick a file. Resized in the browser to at most 2400px, re-encoded as WebP, which also strips EXIF/GPS data. Reusable "My images" library | Done |
-| Collections, themes, collaborators, view counts | | Not built |
-
-## Layout
-
-```
-server.js              entry point
-server/index.js        HTTP server: API routes, uploads, published pages, static files
-server/db.js           SQLite schema (users, sessions, stories, uploads)
-server/auth.js         scrypt password hashing, cookie sessions, rate limiting
-public/
-  js/render.js         story JSON -> DOM; all block renderers
-  js/maps.js           MapLibre helpers: basemaps, views, markers, data layers, legend, popups
-  js/csv.js            CSV parser and lat/long-to-GeoJSON conversion
-  js/builder.js        editor UI, map-view picker, import/export
-  js/api.js            API client and browser-side image resizing
-  js/store.js          legacy browser drafts (offered for import into an account)
-  js/sanitize.js       allow-list HTML sanitizer for author text
-  stories/potomac.json sample story
-  data/                sample GeoJSON
-docs/SCHEMA.md         story document format
-_reference/            cloned open-source projects (git-ignored, read-only reference)
-```
-
-## References
-
-`_reference/` holds shallow clones used only to study data models and UX patterns. No code was copied from them.
-
-- `Esri/storymap-journal`, `Esri/storymap-series`: Esri's classic templates, Apache-2.0
-- `mapbox/storytelling`: BSD-3-Clause
-
-The current ArcGIS StoryMaps product is closed source and was not used.
-
-## Data layers
-
-A layer's source can be any of:
-
-- **A GeoJSON URL.** It must allow cross-origin requests (CORS).
-- **A public ArcGIS REST layer URL**, ending in `/FeatureServer/<n>` or `/MapServer/<n>`. It's queried as GeoJSON with `f=geojson` and paged through the server's record limit, up to 20,000 features. Secured services that need a token aren't supported.
-- **An uploaded `.geojson` or `.csv` file.** A CSV needs latitude and longitude columns, named `lat`/`latitude`/`y` and `lon`/`lng`/`longitude`/`x`. Uploaded data is stored inline in the story, and browser storage holds about 5 MB in total.
-
-Data is fetched only when a layer is first shown, and each URL is cached across maps.
-
-## API
-
-Every request that changes data must send the header `X-StoryMaps: 1`. This is CSRF protection: a cross-site page can't add a custom header without a CORS preflight, and the server never allows one.
+### Other ways to run it
 
 | | |
 |---|---|
-| `POST /api/auth/signup` `{email, password, name}` / `POST /api/auth/login` / `POST /api/auth/logout` / `GET /api/me` | Accounts |
-| `GET /api/stories` / `POST /api/stories {story}` | List and create your stories |
-| `GET /api/stories/:id` / `PUT /api/stories/:id {story, version}` / `DELETE /api/stories/:id` | Draft read, save and delete. A save with an outdated `version` returns `409` |
-| `POST /api/stories/:id/publish {slug?}` / `POST /api/stories/:id/unpublish` | Publish copies the draft to the public copy |
-| `GET /api/public/:slug` | The published story's JSON |
-| `POST /api/uploads` (raw image body) / `GET /api/uploads` / `DELETE /api/uploads/:id` | Images. The type is checked from the file's bytes (JPEG, PNG, WebP or GIF only, so no SVG). 12 MB limit |
+| `npm run dev` | Restarts automatically when you edit server code |
+| `npm test` | Runs the test suite against a temporary database |
+| `docker compose up -d` | Runs in Docker, with data kept in a named volume |
 
-## Security notes
+### Settings
 
-- Passwords are hashed with scrypt. Sessions are random tokens, stored hashed, in an `HttpOnly; SameSite=Lax` cookie. Sign-in and sign-up are limited to 10 attempts per 10 minutes per IP, and the limit resets when the server restarts.
-- Story text is cleaned against an allow-list of HTML tags when it's displayed. Pages also send a Content-Security-Policy that only runs scripts from this site and unpkg (no inline scripts), so a bad story can't run code.
-- Uploads are served with `nosniff` and a `default-src 'none'` policy.
-- Not built yet: password reset (it needs email sending), email verification, and deleting an account.
+Copy `.env.example` to `.env` and edit it. Everything is optional.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `PORT` | `5180` | Port to listen on |
+| `HOST` | this computer only | Set to `0.0.0.0` to let other devices on your network connect |
+| `APP_URL` | `http://localhost:PORT` | Your site's public address, used in password reset emails |
+| `DATA_DIR` | `./data` | Where the database (`storymaps.db`) and uploaded images are stored |
+| `COOKIE_SECURE` | off | Set to `1` when the site is served over HTTPS |
+| `ALLOW_SIGNUP` | on | Set to `0` to stop new sign-ups once your accounts exist |
+| `SMTP_*` | off | Email for password resets. See below |
+
+### Password reset and email
+
+People can reset a forgotten password from the sign-in page. To deliver the emails, set the `SMTP_*` settings in `.env`. Any SMTP provider works, for example Postmark, Resend, SendGrid, Mailgun, or a Gmail app password.
+
+**Without email set up**, the reset link prints in the terminal where the server runs. That's fine for personal or local use. You can also reset passwords yourself from the command line:
+
+```bash
+npm run users                                 # list accounts
+npm run reset-link -- someone@example.com     # print a reset link
+npm run set-password -- someone@example.com   # type a new password directly
+```
+
+## Hosting it for others
+
+Any machine or service that runs Node 22.13+ or Docker and has a persistent disk will work: a VPS, a home server, Fly.io, Railway, Render, and so on. Shared PHP-only web hosting won't.
+
+1. Put it behind HTTPS. Caddy is the easiest: `caddy reverse-proxy --from stories.example.com --to localhost:5180`.
+2. In `.env`, set `APP_URL=https://stories.example.com` and `COOKIE_SECURE=1`, plus `SMTP_*` if you want reset emails.
+3. Once your own accounts exist, set `ALLOW_SIGNUP=0` if you don't want strangers signing up.
+4. **Back up the `data/` folder.** It holds every story, account and image.
+
+## What's included
+
+| | |
+|---|---|
+| Story blocks | Cover and byline, text, quote, separator, image, video (YouTube, Vimeo, files), embed, interactive map |
+| Sidecar | The map stays fixed while narrative cards scroll past and flies to each card's view. Cards can show an image, video or embed instead. Docked or floating layout |
+| Map actions | Links in sidecar text that send the map to a different view, and back on a second click |
+| Guided tour | Numbered places. Step through them or click a marker |
+| Swipe | Compare two basemaps or two sets of layers with a draggable divider |
+| Data layers | GeoJSON URL, uploaded GeoJSON or CSV, or a public ArcGIS FeatureServer/MapServer layer. Single color, color by category, or a color ramp, with labels, popups and a legend |
+| Images | Upload or drag and drop. Resized in the browser to at most 2400px and saved as WebP, which also strips location metadata. Reusable "My images" library |
+| Accounts | Sign up, sign in, change password, password reset by email or CLI |
+| Publishing | Separate draft and published copies, custom links (`/s/your-story`), unpublish, and title and image previews when links are shared |
+
+Not built yet: satellite imagery (it needs a licensed imagery provider), collaborators, collections, view counts, email verification, and deleting an account.
+
+## Project layout
+
+```
+server.js              entry point + startup checks
+server/index.js        HTTP server: API routes, uploads, published pages, static files
+server/db.js           SQLite schema (built-in node:sqlite)
+server/auth.js         password hashing, sessions, reset tokens, rate limiting
+server/mail.js         minimal SMTP client
+server/cli.js          admin commands
+public/                the web app (plain ES modules, no build step)
+  js/render.js         story → page; all block renderers
+  js/maps.js           MapLibre helpers: basemaps, views, data layers, legend, popups
+  js/builder.js        the editor
+  stories/, data/      sample story and sample GeoJSON
+docs/SCHEMA.md         the story file format
+test/                  end-to-end API tests (node:test)
+```
+
+## API
+
+Every request that changes data must send the header `X-StoryMaps: 1`. This guards against cross-site request forgery: another site can't add a custom header without a CORS preflight, and the server never allows one.
+
+| | |
+|---|---|
+| `POST /api/auth/signup` `{email, password, name}` · `POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/me` | Accounts |
+| `POST /api/auth/forgot {email}` · `GET /api/auth/reset/:token` · `POST /api/auth/reset {token, password}` · `POST /api/auth/password {current, password}` | Password reset and change |
+| `GET /api/stories` · `POST /api/stories {story}` | List and create your stories |
+| `GET /api/stories/:id` · `PUT /api/stories/:id {story, version}` · `DELETE /api/stories/:id` | Read, save and delete a draft. A save with an outdated `version` returns `409` |
+| `POST /api/stories/:id/publish {slug?}` · `POST /api/stories/:id/unpublish` | Publish copies the draft to the public copy |
+| `GET /api/public/:slug` | A published story's JSON |
+| `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
+
+## Security
+
+- **Passwords and sessions:** passwords are hashed with scrypt. Sessions are random tokens stored hashed, in an `HttpOnly; SameSite=Lax` cookie. Sign-in, sign-up and reset requests are rate-limited.
+- **Password reset:** reset links are single-use and expire after an hour, and using one signs out every existing session. A reset request gets the same answer whether or not the email has an account. Links are always built from `APP_URL`, never from the request's Host header.
+- **Story content:** story text is cleaned against an allow-list of HTML tags. Every page sends a Content-Security-Policy that only runs scripts from this site and unpkg, with no inline scripts.
+- **Uploads:** uploaded files are checked by their contents, which rules out SVG, and served with `nosniff` and a `default-src 'none'` policy.
+
+## Background
+
+This project started as a rebuild of the ArcGIS StoryMaps reading and authoring experience. It was written from scratch using only public behavior and open formats. Esri's open-source classic templates ([Map Journal](https://github.com/Esri/storymap-journal), [Map Series](https://github.com/Esri/storymap-series), Apache-2.0) and [mapbox/storytelling](https://github.com/mapbox/storytelling) (BSD-3) were studied for data models and UX patterns only. No code was copied, and the current closed-source ArcGIS StoryMaps product was not used.
