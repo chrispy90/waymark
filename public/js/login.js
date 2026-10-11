@@ -18,6 +18,7 @@ function setMode(isSignup) {
   document.getElementById('toggle-text').textContent = signup ? 'Have an account?' : 'No account?';
   document.getElementById('toggle-mode').textContent = signup ? 'Sign in' : 'Create one';
   form.password.autocomplete = signup ? 'new-password' : 'current-password';
+  document.getElementById('forgot-link').hidden = signup;
   err.textContent = '';
 }
 document.getElementById('toggle-mode').addEventListener('click', () => setMode(!signup));

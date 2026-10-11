@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Reset password · StoryMaps</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/builder.css">
+</head>
+<body class="b-auth-page">
+  <main class="b-auth">
+    <h1>Forgot your password?</h1>
+    <p class="b-muted">Enter your account's email and we'll send you a link to choose a new one.</p>
+    <form id="forgot-form" novalidate>
+      <label class="b-field"><span class="b-label">Email</span><input type="text" name="email" inputmode="email" autocomplete="email" required></label>
+      <p class="b-auth-error" id="err" role="alert"></p>
+      <button class="b-btn is-primary b-auth-submit" type="submit">Send reset link</button>
+    </form>
+    <div id="sent" hidden>
+      <p class="b-auth-ok" role="status"></p>
+      <p class="b-muted">Running StoryMaps yourself without email set up? The link is printed in the terminal where the server is running.</p>
+    </div>
+    <p class="b-muted"><a class="b-link" href="/login.html">Back to sign in</a></p>
+  </main>
+  <script type="module" src="/js/forgot.js"></script>
+</body>
+</html>

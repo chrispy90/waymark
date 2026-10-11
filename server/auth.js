@@ -56,16 +56,51 @@ function destroySession(req) {
   if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(token));
 }
 
-// Simple in-memory limiter for auth endpoints: 10 attempts per 10 minutes per IP.
+// Simple in-memory limiter for auth endpoints: `max` attempts per 10 minutes per key (e.g. action + IP).
 const attempts = new Map();
-function rateLimited(ip) {
+function rateLimited(key, max = 10) {
   const now = Date.now();
-  const list = (attempts.get(ip) || []).filter((t) => now - t < 10 * 60e3);
+  const list = (attempts.get(key) || []).filter((t) => now - t < 10 * 60e3);
   list.push(now);
-  attempts.set(ip, list);
-  return list.length > 10;
+  attempts.set(key, list);
+  return list.length > max;
 }
 
-setInterval(() => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now()), 3600e3).unref();
+/* ---------- Password reset ---------- */
 
-module.exports = { hashPassword, verifyPassword, createSession, sessionCookie, clearCookie, currentUser, destroySession, rateLimited, newId };
+const RESET_MINUTES = 60;
+
+/** Creates a single-use reset token for a user and returns the raw token (only its hash is stored). */
+function createResetToken(userId) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(userId); // one live link per user
+  db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), userId, Date.now() + RESET_MINUTES * 60e3);
+  return token;
+}
+
+/** Sets a new password if the token is valid, and signs the user out everywhere. Returns the user id or null. */
+function consumeResetToken(token, newPassword) {
+  const row = db.prepare('SELECT * FROM password_resets WHERE token_hash = ?').get(sha256(String(token)));
+  if (!row || row.used_at || row.expires_at < Date.now()) return null;
+  const hash = hashPassword(newPassword);
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE password_resets SET used_at = ? WHERE token_hash = ?').run(Date.now(), row.token_hash);
+    db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(hash, row.user_id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.user_id);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return row.user_id;
+}
+
+const resetTokenValid = (token) => {
+  const row = db.prepare('SELECT expires_at, used_at FROM password_resets WHERE token_hash = ?').get(sha256(String(token)));
+  return !!row && !row.used_at && row.expires_at >= Date.now();
+};
+
+setInterval(() => {
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  db.prepare('DELETE FROM password_resets WHERE expires_at < ?').run(Date.now() - 864e5);
+}, 3600e3).unref();
+
+module.exports = { hashPassword, verifyPassword, createSession, sessionCookie, clearCookie, currentUser, destroySession, rateLimited, newId, createResetToken, consumeResetToken, resetTokenValid, RESET_MINUTES };

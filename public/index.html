@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>StoryMaps</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/builder.css">
@@ -13,6 +14,7 @@
     <strong>StoryMaps</strong>
     <nav class="b-actions">
       <span class="b-muted" id="who"></span>
+      <button class="b-btn" type="button" id="btn-password">Change password</button>
       <button class="b-btn" type="button" id="btn-signout">Sign out</button>
     </nav>
   </header>
@@ -27,6 +29,20 @@
     <div class="g-grid" id="grid"></div>
     <p class="b-muted" id="empty" hidden>No stories yet. Start a new one, or begin from the sample.</p>
   </div>
+  <dialog id="pw-dialog" class="b-dialog b-dialog-sm">
+    <form id="pw-form" class="b-picker" novalidate>
+      <strong>Change password</strong>
+      <input type="text" name="username" autocomplete="username" hidden>
+      <label class="b-field"><span class="b-label">Current password</span><input type="password" name="current" autocomplete="current-password" required></label>
+      <label class="b-field"><span class="b-label">New password</span><input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="b-muted b-hint">At least 8 characters. Other devices will be signed out.</p>
+      <p class="b-auth-error" id="pw-err" role="alert"></p>
+      <div class="b-row b-picker-actions">
+        <button type="button" class="b-btn" id="pw-cancel">Cancel</button>
+        <button type="submit" class="b-btn is-primary">Change password</button>
+      </div>
+    </form>
+  </dialog>
   <script type="module" src="/js/gallery.js"></script>
 </body>
 </html>

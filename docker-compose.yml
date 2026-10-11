@@ -1,0 +1,17 @@
+services:
+  storymaps:
+    build: .
+    ports:
+      - "5180:5180"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+    volumes:
+      - storymaps-data:/data
+    restart: unless-stopped
+
+volumes:
+  storymaps-data:

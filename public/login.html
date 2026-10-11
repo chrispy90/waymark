@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Sign in · StoryMaps</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/builder.css">
@@ -14,7 +15,7 @@
     <form id="auth-form" novalidate>
       <label class="b-field" id="name-row" hidden><span class="b-label">Name</span><input type="text" name="name" autocomplete="name"></label>
       <label class="b-field"><span class="b-label">Email</span><input type="text" name="email" inputmode="email" autocomplete="email" required></label>
-      <label class="b-field"><span class="b-label">Password</span><input type="password" name="password" autocomplete="current-password" required minlength="8"></label>
+      <label class="b-field"><span class="b-label b-label-row">Password <a class="b-link" href="/forgot.html" id="forgot-link">Forgot password?</a></span><input type="password" name="password" autocomplete="current-password" required minlength="8"></label>
       <p class="b-auth-error" id="auth-error" role="alert"></p>
       <button class="b-btn is-primary b-auth-submit" type="submit" id="auth-submit">Sign in</button>
     </form>

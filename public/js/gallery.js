@@ -5,6 +5,23 @@ const user = await requireUser();
 document.getElementById('who').textContent = user.name || user.email;
 document.getElementById('btn-signout').addEventListener('click', signOut);
 
+const pwDialog = document.getElementById('pw-dialog');
+const pwForm = document.getElementById('pw-form');
+pwForm.elements.username.value = user.email;
+document.getElementById('btn-password').addEventListener('click', () => { pwForm.reset(); pwForm.elements.username.value = user.email; document.getElementById('pw-err').textContent = ''; pwDialog.showModal(); });
+document.getElementById('pw-cancel').addEventListener('click', () => pwDialog.close());
+pwForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('pw-err');
+  const { current, password } = pwForm.elements;
+  if (password.value.length < 8) { errEl.textContent = 'New password must be at least 8 characters.'; return; }
+  try {
+    await api('POST', '/api/auth/password', { current: current.value, password: password.value });
+    pwDialog.close();
+    alert('Password changed.');
+  } catch (ex) { errEl.textContent = ex.message; }
+});
+
 const grid = document.getElementById('grid');
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);

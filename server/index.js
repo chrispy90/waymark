@@ -5,10 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const { db, UPLOAD_DIR } = require('./db');
 const auth = require('./auth');
+const { sendMail, mailConfigured } = require('./mail');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 const PORT = +process.env.PORT || 5180;
 const ALLOW_SIGNUP = process.env.ALLOW_SIGNUP !== '0';
+// Base URL for emailed links. Never taken from the request's Host header, which an attacker controls.
+const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const MAX_STORY = 8 * 1024 * 1024;
 const MAX_UPLOAD = 12 * 1024 * 1024;
 
@@ -126,7 +129,7 @@ const DUMMY_HASH = auth.hashPassword('timing-equalizer');
 
 route('POST', '/api/auth/signup', async (req) => {
   if (!ALLOW_SIGNUP) throw new HttpError(403, 'Sign-ups are closed');
-  if (auth.rateLimited(req.socket.remoteAddress)) throw new HttpError(429, 'Too many attempts, try again later');
+  if (auth.rateLimited(`signup:${req.socket.remoteAddress}`)) throw new HttpError(429, 'Too many attempts, try again later');
   const { email, password, name } = await readJson(req);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) throw new HttpError(400, 'Enter a valid email');
   if (typeof password !== 'string' || password.length < 8) throw new HttpError(400, 'Password must be at least 8 characters');
@@ -139,7 +142,7 @@ route('POST', '/api/auth/signup', async (req) => {
 });
 
 route('POST', '/api/auth/login', async (req) => {
-  if (auth.rateLimited(req.socket.remoteAddress)) throw new HttpError(429, 'Too many attempts, try again later');
+  if (auth.rateLimited(`login:${req.socket.remoteAddress}`)) throw new HttpError(429, 'Too many attempts, try again later');
   const { email, password } = await readJson(req);
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || ''));
   const ok = auth.verifyPassword(String(password || ''), user ? user.pass_hash : DUMMY_HASH);
@@ -154,6 +157,47 @@ route('POST', '/api/auth/logout', async (req) => {
 });
 
 route('GET', '/api/me', async (req) => [200, { user: auth.currentUser(req), signupOpen: ALLOW_SIGNUP }]);
+
+// Always answers the same way, so it can't be used to discover which emails have accounts.
+route('POST', '/api/auth/forgot', async (req) => {
+  const { email } = await readJson(req);
+  const ok = [200, { ok: true, message: 'If that email has an account, a reset link is on its way.' }];
+  const addr = String(email || '').trim().toLowerCase();
+  if (auth.rateLimited(`forgot:${req.socket.remoteAddress}`, 5) || auth.rateLimited(`forgot:${addr}`, 3)) return ok;
+  const user = db.prepare('SELECT id, email, name FROM users WHERE email = ?').get(addr);
+  if (!user) return ok;
+  const link = `${APP_URL}/reset.html?token=${auth.createResetToken(user.id)}`;
+  sendMail({
+    to: user.email,
+    subject: 'Reset your StoryMaps password',
+    text: `Hi${user.name ? ' ' + user.name : ''},\n\nSomeone asked to reset the password for your StoryMaps account. To choose a new password, open this link within ${auth.RESET_MINUTES} minutes:\n\n${link}\n\nIf you didn't ask for this, ignore this email. Your password won't change.\n`,
+  }).catch((err) => console.error(`Could not send reset email to ${user.email}: ${err.message}`));
+  return ok;
+});
+
+route('GET', '/api/auth/reset/:token', async (req, p) => [200, { valid: auth.resetTokenValid(p.token) }]);
+
+route('POST', '/api/auth/reset', async (req) => {
+  if (auth.rateLimited(`reset:${req.socket.remoteAddress}`)) throw new HttpError(429, 'Too many attempts, try again later');
+  const { token, password } = await readJson(req);
+  if (typeof password !== 'string' || password.length < 8) throw new HttpError(400, 'Password must be at least 8 characters');
+  const userId = auth.consumeResetToken(token, password);
+  if (!userId) throw new HttpError(400, 'This reset link is invalid or has expired. Request a new one.');
+  const s = auth.createSession(userId);
+  return [200, { ok: true }, { 'Set-Cookie': auth.sessionCookie(s.token, s.expires) }];
+});
+
+route('POST', '/api/auth/password', async (req) => {
+  const user = requireUser(req);
+  const { current, password } = await readJson(req);
+  const row = db.prepare('SELECT pass_hash FROM users WHERE id = ?').get(user.id);
+  if (!auth.verifyPassword(String(current || ''), row.pass_hash)) throw new HttpError(400, 'Current password is wrong');
+  if (typeof password !== 'string' || password.length < 8) throw new HttpError(400, 'Password must be at least 8 characters');
+  db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(auth.hashPassword(password), user.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id); // sign out other devices
+  const s = auth.createSession(user.id);
+  return [200, { ok: true }, { 'Set-Cookie': auth.sessionCookie(s.token, s.expires) }];
+});
 
 route('GET', '/api/stories', async (req) => {
   const user = requireUser(req);
@@ -290,7 +334,9 @@ function serveFile(res, file, headers = {}) {
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, 'Not found');
     const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    send(res, 200, data, { 'Content-Type': type, ...(type.startsWith('text/html') ? { 'Content-Security-Policy': CSP } : {}), ...headers });
+    // no-referrer: reset links carry a token in the URL, which must never leak to other sites.
+    const html = type.startsWith('text/html') ? { 'Content-Security-Policy': CSP, 'Referrer-Policy': 'no-referrer' } : {};
+    send(res, 200, data, { 'Content-Type': type, ...html, ...headers });
   });
 }
 
@@ -322,5 +368,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (require.main === module) server.listen(PORT, () => console.log(`StoryMaps on http://localhost:${PORT}`));
-module.exports = { server };
+module.exports = { server, mailConfigured, APP_URL };

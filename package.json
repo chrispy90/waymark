@@ -1,0 +1,18 @@
+{
+  "name": "storymaps",
+  "version": "0.1.0",
+  "description": "Self-hosted, scroll-driven map stories with a visual builder. No dependencies.",
+  "private": true,
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test",
+    "users": "node server.js users",
+    "reset-link": "node server.js reset-link",
+    "set-password": "node server.js set-password"
+  }
+}

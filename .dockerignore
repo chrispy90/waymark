@@ -1,0 +1,7 @@
+.git
+_reference
+data
+.env
+node_modules
+test
+.claude

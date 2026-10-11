@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="referrer" content="no-referrer">
+  <title>Choose a new password · StoryMaps</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/builder.css">
+</head>
+<body class="b-auth-page">
+  <main class="b-auth">
+    <h1>Choose a new password</h1>
+    <form id="reset-form" novalidate hidden>
+      <input type="text" name="username" autocomplete="username" hidden>
+      <label class="b-field"><span class="b-label">New password</span><input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="b-field"><span class="b-label">Repeat new password</span><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></label>
+      <p class="b-muted b-hint">At least 8 characters. You'll be signed out on all other devices.</p>
+      <p class="b-auth-error" id="err" role="alert"></p>
+      <button class="b-btn is-primary b-auth-submit" type="submit">Set password</button>
+    </form>
+    <div id="invalid" hidden>
+      <p class="b-auth-error">This reset link is invalid, has expired, or was already used.</p>
+      <p><a class="b-btn" href="/forgot.html">Request a new link</a></p>
+    </div>
+  </main>
+  <script type="module" src="/js/reset.js"></script>
+</body>
+</html>
