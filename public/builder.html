@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Story Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/builder.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</head>
+<body>
+  <header class="b-top">
+    <a href="index.html" class="b-home" aria-label="All stories">◧</a>
+    <input id="title-input" class="b-title" aria-label="Story title" placeholder="Story title">
+    <span id="status" class="b-muted"></span>
+    <nav class="b-actions">
+      <button id="btn-new" class="b-btn" type="button">New</button>
+      <button id="btn-open" class="b-btn" type="button">Open</button>
+      <button id="btn-import" class="b-btn" type="button">Import</button>
+      <button id="btn-export" class="b-btn" type="button">Export JSON</button>
+      <button id="btn-view" class="b-btn is-primary" type="button">View story ↗</button>
+      <input id="import-file" type="file" accept="application/json,.json" hidden>
+    </nav>
+  </header>
+  <div class="b-layout">
+    <aside id="editor" class="b-editor">
+      <details class="b-section" open>
+        <summary>Story settings</summary>
+        <div id="settings"></div>
+      </details>
+      <h2 class="b-h">Blocks</h2>
+      <div id="blocks"></div>
+    </aside>
+    <section class="b-preview">
+      <iframe id="preview" src="viewer.html?preview=1" title="Story preview"></iframe>
+    </section>
+  </div>
+  <dialog id="picker" class="b-dialog"></dialog>
+  <script type="module" src="js/builder.js"></script>
+</body>
+</html>

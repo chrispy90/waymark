@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StoryMaps</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/builder.css">
+  <style>
+    body { height: auto; }
+    .g-wrap { max-width: 960px; margin: 0 auto; padding: 48px 16px; }
+    .g-wrap h1 { font-size: 32px; margin: 0 0 4px; }
+    .g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 24px; }
+    .g-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 6px; }
+    .g-card h3 { margin: 0; font-size: 17px; }
+    .g-card .b-row { margin-top: 8px; }
+    .g-card a.b-btn { text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="g-wrap">
+    <h1>StoryMaps</h1>
+    <p class="b-muted">Scroll-driven map stories. Drafts are saved in this browser.</p>
+    <div class="b-row" style="margin-top:16px">
+      <a class="b-btn is-primary" href="builder.html" style="text-decoration:none">+ New story</a>
+    </div>
+    <div class="g-grid" id="grid"></div>
+  </div>
+  <script type="module">
+    import { listLocalStories, deleteLocalStory } from './js/store.js';
+    const grid = document.getElementById('grid');
+    const card = (title, meta, viewHref, editHref, id) => {
+      const el = document.createElement('div');
+      el.className = 'g-card';
+      el.innerHTML = `<h3></h3><span class="b-muted"></span><div class="b-row">
+        <a class="b-btn" href="${viewHref}">View</a><a class="b-btn" href="${editHref}">Edit</a>
+        ${id ? '<button class="b-btn" type="button">Delete</button>' : ''}</div>`;
+      el.querySelector('h3').textContent = title;
+      el.querySelector('.b-muted').textContent = meta;
+      el.querySelector('button')?.addEventListener('click', () => { if (confirm(`Delete “${title}”?`)) { deleteLocalStory(id); el.remove(); } });
+      return el;
+    };
+    grid.append(card('Down the Potomac', 'Sample story', 'viewer.html?story=stories/potomac.json', 'builder.html?from=stories/potomac.json'));
+    for (const s of listLocalStories())
+      grid.append(card(s.title || 'Untitled', 'Edited ' + new Date(s.updated).toLocaleString(), `viewer.html?local=${s.id}`, `builder.html?id=${s.id}`, s.id));
+  </script>
+</body>
+</html>
