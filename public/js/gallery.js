@@ -3,6 +3,7 @@ import { api, signOut } from './api.js';
 import { listLocalStories, deleteLocalStory } from './store.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, coverGradient, setTitle } from './ui.js';
 import { TEMPLATES } from './templates.js';
+import { openExport } from './export.js';
 
 const { user, firstRun } = await api('GET', '/api/me');
 if (!user) location.replace(firstRun ? '/login.html' : '/welcome.html');
@@ -100,6 +101,7 @@ function storyCard(s, i) {
       s.url ? { label: 'Open live story', icon: 'external', onClick: () => window.open(s.url, '_blank', 'noopener') } : { label: 'Preview draft', icon: 'eye', onClick: () => window.open(`/viewer.html?draft=${s.id}`, '_blank', 'noopener') },
       s.url ? { label: 'Copy link', icon: 'link', onClick: async () => { await copyText(location.origin + s.url); toast('Link copied', { tone: 'ok' }); } } : null,
       { label: 'Duplicate', icon: 'copy', onClick: () => duplicate(s) },
+      { label: 'Export as a website…', icon: 'globe', onClick: () => openExport({ id: s.id }).catch((err) => toast(err.message, { tone: 'error' })) },
       'sep',
       { label: 'Delete', icon: 'trash', danger: true, onClick: () => remove(s) },
     ].filter(Boolean));

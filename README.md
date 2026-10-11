@@ -70,6 +70,29 @@ Any machine or service that runs Node 22.13+ or Docker and has a persistent disk
 3. Once your own accounts exist, set `ALLOW_SIGNUP=0` if you don't want strangers signing up.
 4. **Back up the `data/` folder.** It holds every story, account and image.
 
+## Exporting a story to host anywhere
+
+Don't want to run Waymark on your server? Export a finished story as a plain static website. It needs no Node, no database and no Waymark, just a web server.
+
+In the editor, open **⋯ → Export as a website** (or use the **⋯** menu on a story card in the gallery) and pick a format:
+
+| Format | Use it for |
+|---|---|
+| **Website folder (.zip)** | Apache, nginx, IIS, shared hosting, Amazon S3, GitHub Pages, Netlify, or double-clicking `index.html` on your own computer |
+| **Tomcat web app (.war)** | Copy it into Tomcat's `webapps/` folder. It's served at `http://your-server:8080/<story-name>/`, or rename it `ROOT.war` to serve it at the site root. Works on Tomcat 8.5 to 11 |
+
+The export contains the page, a bundled copy of the story reader (one plain script), the styles, your images, and a snapshot of your map data. You can also include the map library (MapLibre) so nothing loads from a CDN. All paths are relative, so it works in any sub-folder or context path. Only the map tiles and web fonts still load from the internet.
+
+You can export from the command line too, which is handy for scripted deploys:
+
+```bash
+node server.js stories                                    # find the story's link or id
+node server.js export my-story --war --out /opt/tomcat/webapps/my-story.war
+node server.js export my-story --draft                    # the unpublished draft, as a .zip
+```
+
+Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--no-vendor` (keep images, data or the map library as links instead of copying them).
+
 ## What's included
 
 | | |
@@ -107,6 +130,9 @@ public/                the web app (plain ES modules, no build step)
   js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
   js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)
   js/workbench.js      Add data, Analyze and Draw & measure workspaces
+  js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
+  js/export.js         the export dialog
+  js/zip.js            minimal zip writer
   js/builder.js        the editor
   js/templates.js      starter templates
   welcome.html         landing page for signed-out visitors (itself a story)

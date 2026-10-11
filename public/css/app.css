@@ -529,3 +529,25 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 @keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 .no-results { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 40px 0; }
 .pal-input:focus-visible, .mp-search input:focus-visible, .search input:focus-visible { box-shadow: none; }
+
+/* Export dialog */
+.dlg-md { width: min(620px, calc(100vw - 32px)); }
+.ex-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ex-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--panel); cursor: pointer; text-align: left; color: inherit; transition: border-color .15s, background .15s; }
+.ex-card:hover { border-color: var(--line-2); }
+.ex-card.is-on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 5%, var(--panel)); }
+.ex-card.is-on .pick-icon { background: var(--brand); color: #fff; }
+.ex-card strong { display: block; font-size: 14px; margin-bottom: 3px; }
+.ex-card span span { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.ex-check { align-items: flex-start; padding: 8px 0; }
+.ex-check input { margin-top: 2px; }
+.ex-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ex-steps li { display: flex; align-items: center; gap: 10px; color: var(--fg-2); }
+.ex-steps li.is-done { color: var(--muted); }
+.ex-steps li.is-done .spinner { animation: none; border-color: var(--ok); background: var(--ok); position: relative; }
+.ex-howto { margin-top: 18px; padding: 14px 16px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.ex-howto ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.ex-howto code, .ex-warn code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--bg-2); padding: 1px 5px; border-radius: 5px; }
+.ex-warn { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.ex-warn ul { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 560px) { .ex-cards { grid-template-columns: 1fr; } }

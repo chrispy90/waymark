@@ -6,6 +6,7 @@ import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, setTitle } from './ui.js';
 import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile } from './workbench.js';
 import { TOOLS, kinds } from './analysis.js';
+import { openExport } from './export.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const view = (v = {}) => ({ ...clone(DEFAULT_VIEW), ...v });
@@ -984,7 +985,8 @@ function commands() {
     { label: 'Preview in a new tab', icon: 'external', group: 'Story', run: () => $('#btn-preview').click() },
     { label: 'Undo', icon: 'undo', group: 'Story', run: undo, keys: `${modKey}Z` },
     { label: 'Redo', icon: 'redo', group: 'Story', run: redo, keys: `${modKey}⇧Z` },
-    { label: 'Download story file', icon: 'download', group: 'Story', run: downloadStory },
+    { label: 'Export as a website…', hint: 'A .zip for any web server, or a .war for Tomcat', icon: 'globe', group: 'Story', run: exportSite },
+    { label: 'Download story file', hint: 'A .json file you can import again', icon: 'download', group: 'Story', run: downloadStory },
     { label: 'Keyboard shortcuts', icon: 'keyboard', group: 'Help', run: openShortcuts, keys: '?' },
     { label: 'All stories', icon: 'back', group: 'Help', run: () => { location.href = '/'; } },
   ];
@@ -1036,6 +1038,8 @@ function openShortcuts() {
   dialog({ title: 'Keyboard shortcuts', cls: 'dlg-sm', body: h('div', { class: 'keys' }, rows.map(([k, v]) => h('div', {}, h('span', {}, v), h('kbd', {}, k)))) });
 }
 
+function exportSite() { openExport({ story, meta, flush }); }
+
 function downloadStory() {
   const blob = new Blob([JSON.stringify(story, null, 2)], { type: 'application/json' });
   const a = h('a', { href: URL.createObjectURL(blob), download: `${slugify(story.title)}.waymark.json` });
@@ -1063,8 +1067,9 @@ $('#btn-more').addEventListener('click', (e) => menu(e.currentTarget, [
   { label: 'Open preview in new tab', icon: 'external', onClick: () => $('#btn-preview').click() },
   { label: 'Story settings', icon: 'sliders', onClick: () => { tab = 'story'; syncTabs(); renderRail(); } },
   'sep',
+  { label: 'Export as a website…', icon: 'globe', onClick: exportSite },
+  { label: 'Download story file (for re-importing)', icon: 'download', onClick: downloadStory },
   { label: 'Keyboard shortcuts', icon: 'keyboard', onClick: openShortcuts },
-  { label: 'Download as file', icon: 'download', onClick: downloadStory },
   { label: 'Import a story file…', icon: 'upload', onClick: () => {
     const input = h('input', { type: 'file', accept: 'application/json,.json', onchange: async () => {
       try {

@@ -24,7 +24,7 @@ const h = (tag, attrs = {}, ...kids) => {
  * Renders `story` into `root`. Returns a destroy() function.
  * opts.instant: show everything immediately (used when the builder re-renders the preview).
  */
-export function renderStory(story, root, { instant = false } = {}) {
+export function renderStory(story, root, { instant = false, homeHref = '/' } = {}) {
   const ctx = { maps: [], observers: [], cleanups: [], library: story.layers || [], instant };
   const motion = ['none', 'subtle', 'expressive'].includes(story.motion) ? story.motion : 'subtle';
   root.innerHTML = '';
@@ -48,7 +48,7 @@ export function renderStory(story, root, { instant = false } = {}) {
   });
   body.append(h('footer', { class: 'sm-credits' },
     story.credits ? h('div', { html: story.credits }) : null,
-    h('a', { class: 'sm-madewith', href: '/' }, `Made with ${BRAND.name}`)));
+    h(homeHref ? 'a' : 'span', { class: 'sm-madewith', href: homeHref || null }, `Made with ${BRAND.name}`)));
   root.append(body);
 
   // Page colors follow whichever block crosses the middle of the screen (checked once per frame while scrolling).

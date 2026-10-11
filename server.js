@@ -20,9 +20,9 @@ process.removeAllListeners('warning'); // hide the "SQLite is experimental" noti
 process.on('warning', (w) => { if (w.name !== 'ExperimentalWarning') console.warn(w); });
 
 const brand = require('./server/brand.js');
-const [command, arg] = process.argv.slice(2);
+const [command, ...args] = process.argv.slice(2);
 if (command) {
-  require('./server/cli.js').run(command, arg).then((code) => process.exit(code ?? 0), (err) => { console.error(err.message); process.exit(1); });
+  require('./server/cli.js').run(command, ...args).then((code) => process.exit(code ?? 0), (err) => { console.error(err.message); process.exit(1); });
 } else {
   const { server, mailConfigured, APP_URL } = require('./server/index.js');
   const { DATA_DIR } = require('./server/db.js');
