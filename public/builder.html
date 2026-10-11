@@ -7,21 +7,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/map.css">
-  <link rel="stylesheet" href="css/builder.css">
+  <link rel="stylesheet" href="/css/map.css">
+  <link rel="stylesheet" href="/css/builder.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 </head>
 <body>
   <header class="b-top">
-    <a href="index.html" class="b-home" aria-label="All stories">◧</a>
+    <a href="/" class="b-home" aria-label="Your stories" title="Your stories">◧</a>
     <input id="title-input" class="b-title" aria-label="Story title" placeholder="Story title">
-    <span id="status" class="b-muted"></span>
+    <span id="status" class="b-muted" aria-live="polite"></span>
     <nav class="b-actions">
-      <button id="btn-new" class="b-btn" type="button">New</button>
-      <button id="btn-open" class="b-btn" type="button">Open</button>
-      <button id="btn-import" class="b-btn" type="button">Import</button>
+      <button id="btn-import" class="b-btn" type="button" title="Create a new story from a JSON file">Import</button>
       <button id="btn-export" class="b-btn" type="button">Export JSON</button>
-      <button id="btn-view" class="b-btn is-primary" type="button">View story ↗</button>
+      <button id="btn-view" class="b-btn" type="button">Preview draft ↗</button>
+      <button id="btn-publish" class="b-btn is-primary" type="button">Publish…</button>
       <input id="import-file" type="file" accept="application/json,.json" hidden>
     </nav>
   </header>
@@ -39,10 +38,10 @@
       <div id="blocks"></div>
     </aside>
     <section class="b-preview">
-      <iframe id="preview" src="viewer.html?preview=1" title="Story preview"></iframe>
+      <iframe id="preview" src="/viewer.html?preview=1" title="Story preview"></iframe>
     </section>
   </div>
   <dialog id="picker" class="b-dialog"></dialog>
-  <script type="module" src="js/builder.js"></script>
+  <script type="module" src="/js/builder.js"></script>
 </body>
 </html>

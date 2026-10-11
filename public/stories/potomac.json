@@ -403,7 +403,7 @@
     {
       "id": "landmarks",
       "name": "Landmarks",
-      "url": "data/landmarks.geojson",
+      "url": "/data/landmarks.geojson",
       "style": {
         "mode": "categorical",
         "field": "category",

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · StoryMaps</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/builder.css">
+</head>
+<body class="b-auth-page">
+  <main class="b-auth">
+    <h1>StoryMaps</h1>
+    <p class="b-muted" id="auth-sub">Sign in to create and publish stories.</p>
+    <form id="auth-form" novalidate>
+      <label class="b-field" id="name-row" hidden><span class="b-label">Name</span><input type="text" name="name" autocomplete="name"></label>
+      <label class="b-field"><span class="b-label">Email</span><input type="text" name="email" inputmode="email" autocomplete="email" required></label>
+      <label class="b-field"><span class="b-label">Password</span><input type="password" name="password" autocomplete="current-password" required minlength="8"></label>
+      <p class="b-auth-error" id="auth-error" role="alert"></p>
+      <button class="b-btn is-primary b-auth-submit" type="submit" id="auth-submit">Sign in</button>
+    </form>
+    <p class="b-muted" id="toggle-row"><span id="toggle-text">No account?</span> <button type="button" class="b-link" id="toggle-mode">Create one</button></p>
+  </main>
+  <script type="module" src="/js/login.js"></script>
+</body>
+</html>

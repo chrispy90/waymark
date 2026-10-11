@@ -2,7 +2,7 @@
 import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp } from './maps.js';
 import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
-import { getLocalStory, saveLocalStory, listLocalStories, newId } from './store.js';
+import { api, requireUser, uploadImage } from './api.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const h = (tag, attrs = {}, ...kids) => {
@@ -31,7 +31,7 @@ const CATALOG = {
   quote: { label: 'Quote', make: () => ({ text: 'A memorable line.', cite: '' }),
     fields: [{ k: 'text', t: 'textarea', label: 'Quote' }, { k: 'cite', label: 'Attribution' }] },
   image: { label: 'Image', make: () => ({ url: '', alt: '', caption: '', size: 'wide' }),
-    fields: [{ k: 'url', label: 'Image URL' }, { k: 'alt', label: 'Alt text' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'select', label: 'Size', opts: SIZE_OPTS }] },
+    fields: [{ k: 'url', t: 'image', label: 'Image' }, { k: 'alt', label: 'Alt text' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'select', label: 'Size', opts: SIZE_OPTS }] },
   video: { label: 'Video', make: () => ({ url: '', caption: '', size: 'wide' }),
     fields: [{ k: 'url', label: 'YouTube, Vimeo or .mp4 URL' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'select', label: 'Size', opts: SIZE_OPTS }] },
   embed: { label: 'Embed', make: () => ({ url: '', caption: '', size: 'wide' }),
@@ -53,49 +53,224 @@ const CATALOG = {
 function makeSlide() { return { html: '<h3>New slide</h3><p>Narrative text.</p>', media: { type: 'map', view: view() } }; }
 function makePlace() { return { title: 'New place', lngLat: [...DEFAULT_VIEW.center], image: '', html: '' }; }
 
-const blankStory = () => ({
-  id: newId(), title: 'Untitled story', subtitle: '', author: '', date: '', theme: 'light', cover: { image: '' },
-  blocks: [CATALOG.text.make()].map((b) => ({ type: 'text', ...b })), credits: '', layers: [],
-});
-
-/* ---------- State ---------- */
+/* ---------- State & saving ---------- */
 
 let story;
+let meta = {}; // server summary: id, version, slug, url, hasUnpublishedChanges
 const params = new URLSearchParams(location.search);
 const frame = $('#preview');
 let previewReady = false;
 
 async function load() {
-  if (params.get('id')) story = getLocalStory(params.get('id'));
-  if (!story && params.get('from')) {
-    const src = params.get('from');
-    if (/^stories\/[\w-]+\.json$/.test(src)) {
-      const s = await fetch(src).then((r) => r.json()).catch(() => null);
-      if (s) story = { ...s, id: newId() };
-    }
+  await requireUser();
+  const id = params.get('id');
+  if (!id) { location.replace('/'); return; }
+  try {
+    const r = await api('GET', `/api/stories/${encodeURIComponent(id)}`);
+    story = r.story;
+    setMeta(r);
+  } catch (e) {
+    document.body.replaceChildren(h('main', { class: 'b-auth' }, h('h1', {}, 'Story not found'),
+      h('p', { class: 'b-muted' }, e.message), h('a', { class: 'b-btn', href: '/' }, '← Your stories')));
+    return;
   }
-  if (!story) story = blankStory();
-  history.replaceState(null, '', `?id=${story.id}`);
-  saveLocalStory(story);
   renderAll();
 }
 
-let timer;
-function changed() {
-  clearTimeout(timer);
-  $('#status').textContent = 'Editing…';
-  timer = setTimeout(() => {
-    $('#status').textContent = saveLocalStory(story) ? 'Saved in this browser' : 'Could not save (storage blocked)';
-    pushPreview();
-  }, 350);
+function setMeta(m) {
+  const { story: _ignored, ...rest } = m;
+  meta = rest;
+  const btn = $('#btn-publish');
+  btn.textContent = !meta.url ? 'Publish…' : meta.hasUnpublishedChanges ? 'Publish changes…' : 'Published ✓';
 }
+
+const setStatus = (text, isError = false) => {
+  const el = $('#status');
+  el.textContent = text;
+  el.classList.toggle('is-error', isError);
+};
+
+let saveTimer;
+let previewTimer;
+let dirty = false;
+let saving = false;
+let queued = false;
+
+function changed() {
+  dirty = true;
+  setStatus('Unsaved changes');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 800);
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(pushPreview, 350);
+}
+
+async function save() {
+  if (saving) { queued = true; return; }
+  if (!dirty) return;
+  dirty = false;
+  saving = true;
+  setStatus('Saving…');
+  try {
+    setMeta(await api('PUT', `/api/stories/${meta.id}`, { story, version: meta.version }));
+    setStatus(dirty ? 'Unsaved changes' : 'All changes saved');
+  } catch (e) {
+    dirty = true;
+    if (e.status === 409) await resolveConflict(e.body);
+    else { setStatus(`Not saved: ${e.message}. Retrying…`, true); saveTimer = setTimeout(save, 5000); }
+  } finally {
+    saving = false;
+    if (queued) { queued = false; save(); }
+  }
+}
+
+async function resolveConflict(body) {
+  setStatus('Edited somewhere else', true);
+  const reload = confirm('This story was changed in another tab or device.\n\nOK: load the latest version (your recent edits here are discarded).\nCancel: keep your version and overwrite the other one.');
+  if (reload) { dirty = false; location.reload(); return; }
+  meta.version = body?.version ?? meta.version;
+  queued = true;
+}
+
+/** Saves any pending edits now and waits for them to land. */
+async function flush() {
+  clearTimeout(saveTimer);
+  for (let i = 0; i < 20 && (dirty || saving); i++) {
+    if (!saving) await save();
+    else await new Promise((r) => setTimeout(r, 150));
+  }
+  if (dirty) throw new Error('Could not save your latest changes');
+}
+
+addEventListener('beforeunload', (e) => { if (dirty || saving) e.preventDefault(); });
+
 function pushPreview() {
-  if (previewReady) frame.contentWindow.postMessage({ type: 'story', story }, location.origin);
+  if (previewReady && story) frame.contentWindow.postMessage({ type: 'story', story }, location.origin);
 }
 frame.addEventListener('load', () => { previewReady = true; pushPreview(); });
 addEventListener('message', (e) => {
   if (e.origin === location.origin && e.data?.type === 'preview-ready') { previewReady = true; pushPreview(); }
 });
+
+/* ---------- Images ---------- */
+
+function imageField(obj, spec) {
+  const thumb = h('img', { class: 'b-thumb', alt: '', hidden: !obj[spec.k] || null, src: obj[spec.k] || null });
+  const input = h('input', { type: 'text', value: obj[spec.k] ?? '', placeholder: 'Paste a link, upload, or drop an image here', oninput: (e) => set(e.target.value) });
+  const note = h('span', { class: 'b-muted' });
+  const set = (url) => {
+    obj[spec.k] = url;
+    input.value = url;
+    thumb.hidden = !url;
+    if (url) thumb.src = url;
+    changed();
+  };
+  const upload = async (file) => {
+    if (!file) return;
+    note.textContent = 'Uploading…';
+    note.classList.remove('is-error');
+    try { set((await uploadImage(file)).url); note.textContent = ''; } catch (e) { note.textContent = e.message; note.classList.add('is-error'); }
+  };
+  const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', hidden: '', onchange: (e) => { upload(e.target.files[0]); e.target.value = ''; } });
+  const wrap = h('div', { class: 'b-field b-image-field' },
+    h('span', { class: 'b-label' }, spec.label || 'Image'),
+    h('div', { class: 'b-row' }, thumb, input),
+    h('div', { class: 'b-row', style: 'margin-top:6px' },
+      h('button', { type: 'button', class: 'b-btn b-small', onclick: () => fileInput.click() }, 'Upload…'),
+      h('button', { type: 'button', class: 'b-btn b-small', onclick: () => openLibrary(set) }, 'My images'),
+      obj[spec.k] ? h('button', { type: 'button', class: 'b-btn b-small', onclick: (e) => { set(''); e.target.remove(); } }, 'Remove') : null,
+      note, fileInput));
+  wrap.addEventListener('dragover', (e) => { e.preventDefault(); wrap.classList.add('is-drop'); });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('is-drop'));
+  wrap.addEventListener('drop', (e) => { e.preventDefault(); wrap.classList.remove('is-drop'); upload(e.dataTransfer.files[0]); });
+  return wrap;
+}
+
+async function openLibrary(onPick) {
+  const dlg = $('#picker');
+  const grid = h('div', { class: 'b-library' }, h('p', { class: 'b-muted' }, 'Loading…'));
+  const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', multiple: '', hidden: '' });
+  const refresh = async () => {
+    const { uploads } = await api('GET', '/api/uploads');
+    grid.replaceChildren(...(uploads.length ? uploads.map((u) => h('figure', { class: 'b-lib-item' },
+      h('button', { type: 'button', class: 'b-lib-pick', title: u.name || 'Use this image', onclick: () => { onPick(u.url); dlg.close(); } },
+        h('img', { src: u.url, alt: u.name || '', loading: 'lazy' })),
+      h('figcaption', {}, h('span', {}, `${Math.round(u.bytes / 1024)} KB`),
+        h('button', { type: 'button', class: 'b-link is-danger', onclick: async () => {
+          if (!confirm('Delete this image? Stories that use it will show a broken image.')) return;
+          await api('DELETE', `/api/uploads/${u.id}`);
+          refresh();
+        } }, 'Delete')))) : [h('p', { class: 'b-muted' }, 'No uploaded images yet.')]));
+  };
+  fileInput.addEventListener('change', async () => {
+    const files = [...fileInput.files];
+    grid.prepend(h('p', { class: 'b-muted' }, `Uploading ${files.length}…`));
+    for (const f of files) await uploadImage(f).catch((e) => alert(`${f.name}: ${e.message}`));
+    fileInput.value = '';
+    refresh();
+  });
+  dlg.replaceChildren(h('form', { method: 'dialog', class: 'b-picker' },
+    h('div', { class: 'b-row b-picker-top' }, h('strong', {}, 'My images'), h('span', { class: 'b-muted' }, 'Click an image to use it.'),
+      h('button', { type: 'button', class: 'b-btn', onclick: () => fileInput.click() }, 'Upload…'), fileInput),
+    grid,
+    h('div', { class: 'b-row b-picker-actions' }, h('button', { class: 'b-btn' }, 'Close'))));
+  dlg.showModal();
+  refresh().catch((e) => grid.replaceChildren(h('p', { class: 'is-error' }, e.message)));
+}
+
+/* ---------- Publishing ---------- */
+
+function openPublish() {
+  const dlg = $('#picker');
+  const origin = location.origin;
+  const slugInput = h('input', { type: 'text', class: 'b-slug', value: meta.slug || '', placeholder: 'leave blank to use the title', spellcheck: 'false' });
+  const msg = h('p', { class: 'b-muted', role: 'status' });
+  const linkRow = h('div', { class: 'b-publish-live' });
+
+  const showLive = () => {
+    if (!meta.url) { linkRow.replaceChildren(h('p', { class: 'b-muted' }, 'Not published yet. Publishing creates a public link that anyone can open.')); return; }
+    const full = origin + meta.url;
+    linkRow.replaceChildren(
+      h('p', {}, meta.hasUnpublishedChanges ? '● Live, with unpublished changes' : '● Live and up to date'),
+      h('div', { class: 'b-row' }, h('a', { href: meta.url, target: '_blank', rel: 'noopener', class: 'b-live-link' }, full),
+        h('button', { type: 'button', class: 'b-btn b-small', onclick: async (e) => { await navigator.clipboard.writeText(full).catch(() => {}); e.target.textContent = 'Copied'; } }, 'Copy')),
+      h('p', { class: 'b-muted' }, `Last published ${new Date(meta.publishedAt).toLocaleString()}`));
+  };
+
+  const run = async (path, body, label) => {
+    msg.classList.remove('is-error');
+    msg.textContent = label;
+    try {
+      await flush();
+      setMeta(await api('POST', `/api/stories/${meta.id}/${path}`, body));
+      slugInput.value = meta.slug || '';
+      msg.textContent = path === 'publish' ? 'Published.' : 'Unpublished. The link no longer works.';
+      render();
+    } catch (e) { msg.textContent = e.message; msg.classList.add('is-error'); }
+  };
+
+  const render = () => {
+    showLive();
+    actions.replaceChildren(
+      h('button', { value: 'close', class: 'b-btn' }, 'Close'),
+      meta.url ? h('button', { type: 'button', class: 'b-btn', onclick: () => confirm('Unpublish? The public link will stop working.') && run('unpublish', {}, 'Unpublishing…') }, 'Unpublish') : null,
+      h('button', { type: 'button', class: 'b-btn is-primary', onclick: () => {
+        const slug = slugInput.value.trim();
+        run('publish', slug ? { slug } : {}, 'Publishing…');
+      } }, meta.url ? (meta.hasUnpublishedChanges ? 'Publish changes' : 'Republish') : 'Publish'));
+  };
+  const actions = h('div', { class: 'b-row b-picker-actions' });
+
+  dlg.replaceChildren(h('form', { method: 'dialog', class: 'b-picker b-publish' },
+    h('strong', {}, 'Publish story'),
+    linkRow,
+    h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Public link'),
+      h('div', { class: 'b-row b-slug-row' }, h('span', { class: 'b-muted' }, `${origin}/s/`), slugInput)),
+    h('p', { class: 'b-muted b-hint' }, 'Edits are saved as a draft. Readers see the published version until you publish again.'),
+    msg, actions));
+  render();
+  dlg.showModal();
+}
 
 /* ---------- Generic fields ---------- */
 
@@ -111,6 +286,7 @@ function field(obj, spec, onStructure) {
         spec.opts.map(([v, l]) => h('option', { value: v, ...(String(obj[spec.k] ?? '') === v ? { selected: '' } : {}) }, l))));
     case 'view': return viewField(obj, spec);
     case 'layerset': return layerSet(obj, spec);
+    case 'image': return imageField(obj, spec);
     case 'slides': return listField(obj, 'slides', 'Slide', makeSlide, slideForm, onStructure);
     case 'places': return listField(obj, 'places', 'Place', makePlace, placeForm, onStructure);
     default: return h('label', { class: 'b-field' }, label, h('input', { type: 'text', value: obj[spec.k] ?? '', oninput: (e) => set(e.target.value) }));
@@ -173,7 +349,7 @@ function slideForm(slide, onStructure) {
   const m = slide.media;
   const mediaFields = (m.type || 'map') === 'map'
     ? [field(m, { k: 'view', t: 'view', label: 'Map for this slide' })]
-    : [field(m, { k: 'url', label: m.type === 'image' ? 'Image URL' : m.type === 'video' ? 'Video URL' : 'Page URL' }), field(m, { k: 'alt', label: 'Alt text / title' })];
+    : [field(m, { k: 'url', t: m.type === 'image' ? 'image' : undefined, label: m.type === 'image' ? 'Image' : m.type === 'video' ? 'Video URL' : 'Page URL' }), field(m, { k: 'alt', label: 'Alt text / title' })];
   const rich = richEditor(slide, 'html');
   return h('div', {},
     rich,
@@ -246,7 +422,7 @@ function placeForm(place) {
     h('div', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Location'),
       h('div', { class: 'b-row' }, loc, h('button', { type: 'button', class: 'b-btn', onclick: () => openPicker({ mode: 'point', value: { center: place.lngLat, zoom: 13 } },
         (p) => { place.lngLat = p; loc.textContent = p.map((n) => n.toFixed(4)).join(', '); changed(); }) }, 'Pick on map…'))),
-    field(place, { k: 'image', label: 'Image URL' }),
+    field(place, { k: 'image', t: 'image', label: 'Image' }),
     richEditor(place, 'html'));
 }
 
@@ -372,7 +548,7 @@ function renderSettings() {
   $('#settings').replaceChildren(
     field(story, { k: 'subtitle', t: 'textarea', label: 'Subtitle' }),
     h('div', { class: 'b-grid2' }, field(story, { k: 'author', label: 'Author' }), field(story, { k: 'date', label: 'Date' })),
-    field(story.cover, { k: 'image', label: 'Cover image URL' }),
+    field(story.cover, { k: 'image', t: 'image', label: 'Cover image' }),
     field(story, { k: 'theme', t: 'select', label: 'Theme', opts: [['light', 'Light'], ['dark', 'Dark']] }),
     field(story, { k: 'credits', t: 'textarea', label: 'Credits (HTML allowed)' }));
 }
@@ -491,8 +667,12 @@ function openPicker({ mode, value, noMarkers, noLayers }, done) {
 /* ---------- Toolbar ---------- */
 
 $('#title-input').addEventListener('input', (e) => { story.title = e.target.value; changed(); });
-$('#btn-new').addEventListener('click', () => { story = blankStory(); history.replaceState(null, '', `?id=${story.id}`); saveLocalStory(story); renderAll(); });
-$('#btn-view').addEventListener('click', () => { saveLocalStory(story); window.open(`viewer.html?local=${story.id}`, '_blank'); });
+$('#btn-publish').addEventListener('click', openPublish);
+$('#btn-view').addEventListener('click', async () => {
+  const win = window.open('', '_blank');
+  try { await flush(); } catch { /* preview whatever is saved */ }
+  if (win) win.location = `/viewer.html?draft=${meta.id}`;
+});
 $('#btn-export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(story, null, 2)], { type: 'application/json' });
   const a = h('a', { href: URL.createObjectURL(blob), download: `${(story.title || 'story').replace(/\W+/g, '-').toLowerCase()}.json` });
@@ -502,26 +682,15 @@ $('#btn-export').addEventListener('click', () => {
 $('#btn-import').addEventListener('click', () => $('#import-file').click());
 $('#import-file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
+  e.target.value = '';
   if (!file) return;
   try {
     const s = JSON.parse(await file.text());
     if (!Array.isArray(s.blocks)) throw new Error('No blocks array');
-    story = { ...s, id: newId() };
-    history.replaceState(null, '', `?id=${story.id}`);
-    saveLocalStory(story);
-    renderAll();
-  } catch (err) { alert('Not a valid story file: ' + err.message); }
-  e.target.value = '';
-});
-$('#btn-open').addEventListener('click', () => {
-  const dlg = $('#picker');
-  const rows = listLocalStories();
-  dlg.replaceChildren(h('form', { method: 'dialog', class: 'b-picker b-open' },
-    h('strong', {}, 'Your stories (this browser)'),
-    rows.length ? h('ul', {}, rows.map((s) => h('li', {}, h('a', { href: `builder.html?id=${s.id}` }, s.title || 'Untitled'),
-      h('span', { class: 'b-muted' }, ' · ' + new Date(s.updated).toLocaleString())))) : h('p', { class: 'b-muted' }, 'No saved stories yet.'),
-    h('div', { class: 'b-row b-picker-actions' }, h('button', { class: 'b-btn' }, 'Close'))));
-  dlg.showModal();
+    const { id, ...imported } = s;
+    const created = await api('POST', '/api/stories', { story: imported });
+    location.href = `/builder.html?id=${created.id}`;
+  } catch (err) { alert('Could not import: ' + err.message); }
 });
 
 load();

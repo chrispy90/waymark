@@ -7,16 +7,29 @@ No Esri code, SDK, or API key. Maps use [MapLibre GL JS](https://maplibre.org/) 
 ## Run
 
 ```bash
-node server.js
+node --disable-warning=ExperimentalWarning server.js
 ```
 
-Then open http://localhost:5180. There are no dependencies to install.
+Then open http://localhost:5180 and create an account. There's nothing to install: the server uses only Node built-ins, including `node:sqlite` (Node 22.5 or later).
 
 | Page | What it does |
 |---|---|
-| `index.html` | Gallery: the sample story plus drafts saved in this browser |
-| `builder.html` | Editor with a live preview. `?id=<draft>` or `?from=stories/<file>.json` |
-| `viewer.html` | Reader. `?story=stories/<file>.json` (published file) or `?local=<draft id>` |
+| `/` | Your stories, with status (draft, published, or published with unpublished changes) |
+| `/builder.html?id=…` | Editor with a live preview, autosave, image uploads and publishing |
+| `/s/<slug>` | A published story. Public, with the title, description and cover image filled in for link previews |
+| `/viewer.html?draft=<id>` | Owner-only preview of the current draft |
+| `/login.html` | Sign in or create an account |
+
+### Configuration
+
+| Env var | Default | |
+|---|---|---|
+| `PORT` | `5180` | |
+| `DATA_DIR` | `./data` | SQLite database (`storymaps.db`) and `uploads/` |
+| `COOKIE_SECURE` | off | Set to `1` when serving over HTTPS |
+| `ALLOW_SIGNUP` | on | Set to `0` to close new sign-ups once your accounts exist |
+
+To back up, copy `DATA_DIR`. To deploy, you need a host that runs Node, such as a VPS, Fly.io, Railway or Render with a persistent disk. Shared PHP hosting won't work. Put it behind HTTPS (Caddy or nginx) and set `COOKIE_SECURE=1`.
 
 ## Feature map vs. ArcGIS StoryMaps
 
@@ -32,19 +45,24 @@ Then open http://localhost:5180. There are no dependencies to install.
 | Data layers: GeoJSON, CSV, ArcGIS feature layers | Story-level layer library, turned on per map view. Styles: single color, color by category, color by number, plus labels, popups and a legend | Done |
 | Swipe between layers | `swipe.leftLayers` / `rightLayers` | Done |
 | Satellite imagery basemap | Needs a licensed imagery provider (e.g. MapTiler or Esri with a key) | Next |
-| Collections, themes, publishing, sharing, accounts | Drafts live in `localStorage` only; export and import JSON | Needs a backend |
-| Image upload | URLs only | Needs a backend |
+| Accounts, drafts, publishing to a public link | Email and password accounts. Separate draft and published copies, publish and unpublish, custom links | Done |
+| Image upload and media library | Drag and drop or pick a file. Resized in the browser to at most 2400px, re-encoded as WebP, which also strips EXIF/GPS data. Reusable "My images" library | Done |
+| Collections, themes, collaborators, view counts | | Not built |
 
 ## Layout
 
 ```
-server.js              zero-dependency static server
+server.js              entry point
+server/index.js        HTTP server: API routes, uploads, published pages, static files
+server/db.js           SQLite schema (users, sessions, stories, uploads)
+server/auth.js         scrypt password hashing, cookie sessions, rate limiting
 public/
   js/render.js         story JSON -> DOM; all block renderers
   js/maps.js           MapLibre helpers: basemaps, views, markers, data layers, legend, popups
   js/csv.js            CSV parser and lat/long-to-GeoJSON conversion
   js/builder.js        editor UI, map-view picker, import/export
-  js/store.js          localStorage drafts (swap for an API later)
+  js/api.js            API client and browser-side image resizing
+  js/store.js          legacy browser drafts (offered for import into an account)
   js/sanitize.js       allow-list HTML sanitizer for author text
   stories/potomac.json sample story
   data/                sample GeoJSON
@@ -70,3 +88,23 @@ A layer's source can be any of:
 - **An uploaded `.geojson` or `.csv` file.** A CSV needs latitude and longitude columns, named `lat`/`latitude`/`y` and `lon`/`lng`/`longitude`/`x`. Uploaded data is stored inline in the story, and browser storage holds about 5 MB in total.
 
 Data is fetched only when a layer is first shown, and each URL is cached across maps.
+
+## API
+
+Every request that changes data must send the header `X-StoryMaps: 1`. This is CSRF protection: a cross-site page can't add a custom header without a CORS preflight, and the server never allows one.
+
+| | |
+|---|---|
+| `POST /api/auth/signup` `{email, password, name}` / `POST /api/auth/login` / `POST /api/auth/logout` / `GET /api/me` | Accounts |
+| `GET /api/stories` / `POST /api/stories {story}` | List and create your stories |
+| `GET /api/stories/:id` / `PUT /api/stories/:id {story, version}` / `DELETE /api/stories/:id` | Draft read, save and delete. A save with an outdated `version` returns `409` |
+| `POST /api/stories/:id/publish {slug?}` / `POST /api/stories/:id/unpublish` | Publish copies the draft to the public copy |
+| `GET /api/public/:slug` | The published story's JSON |
+| `POST /api/uploads` (raw image body) / `GET /api/uploads` / `DELETE /api/uploads/:id` | Images. The type is checked from the file's bytes (JPEG, PNG, WebP or GIF only, so no SVG). 12 MB limit |
+
+## Security notes
+
+- Passwords are hashed with scrypt. Sessions are random tokens, stored hashed, in an `HttpOnly; SameSite=Lax` cookie. Sign-in and sign-up are limited to 10 attempts per 10 minutes per IP, and the limit resets when the server restarts.
+- Story text is cleaned against an allow-list of HTML tags when it's displayed. Pages also send a Content-Security-Policy that only runs scripts from this site and unpkg (no inline scripts), so a bad story can't run code.
+- Uploads are served with `nosniff` and a `default-src 'none'` policy.
+- Not built yet: password reset (it needs email sending), email verification, and deleting an account.

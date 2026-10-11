@@ -110,7 +110,9 @@ export function loadLayerData(layer) {
 }
 
 const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
-const fetchJson = (url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
+// Relative paths are relative to the site root, so they work from /s/<slug> pages too.
+const absolute = (url) => (/^(https?:)?\/\//i.test(url) || url.startsWith('/') ? url : `/${url}`);
+const fetchJson = (url) => fetch(absolute(url)).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
 
 // Public ArcGIS REST layers expose GeoJSON via /query; page through the server's record limit.
 async function fetchFeatureService(url, maxFeatures = 20000) {

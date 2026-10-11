@@ -7,6 +7,7 @@
 :root[data-theme="dark"] { --bg: #121211; --panel: #1c1c1a; --fg: #ecebe6; --muted: #a09f99; --line: #33322f; --accent: #fb923c; --accent-fg: #121211; --hover: #262624; }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.45 'Inter', system-ui, sans-serif; }
 button, input, select, textarea { font: inherit; color: inherit; }
 .b-muted { color: var(--muted); font-size: 13px; }
@@ -103,3 +104,50 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 700px) { .b-picker-body.has-layers { grid-template-columns: 1fr; } }
 .b-layer { margin-top: 8px; }
 .b-layer .sm-swatch { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+
+/* Images */
+.b-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+.b-thumb[hidden] { display: none; }
+.b-image-field input[type=text] { flex: 1; min-width: 0; }
+.b-image-field.is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 4px; }
+.b-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 60vh; overflow: auto; }
+.b-lib-item { margin: 0; }
+.b-lib-pick { display: block; width: 100%; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; cursor: pointer; background: var(--bg); }
+.b-lib-pick:hover, .b-lib-pick:focus-visible { border-color: var(--accent); }
+.b-lib-pick img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.b-lib-item figcaption { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); padding-top: 4px; }
+.b-link { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.b-link.is-danger { color: #dc2626; }
+
+/* Publish */
+.b-publish { max-width: 640px; }
+.b-publish-live p { margin: 0 0 6px; }
+.b-live-link { color: var(--accent); overflow-wrap: anywhere; }
+.b-slug-row { gap: 2px; }
+.b-slug-row .b-muted { flex: none; white-space: nowrap; }
+.b-slug { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+#status.is-error, .b-muted.is-error, p.is-error { color: #dc2626; }
+
+/* Sign-in */
+.b-auth-page { display: grid; place-items: center; min-height: 100%; padding: 16px; }
+.b-auth { width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 28px; margin: 48px auto; }
+.b-auth h1 { margin: 0 0 4px; font-size: 24px; }
+.b-auth input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.b-auth-submit { width: 100%; margin-top: 16px; padding: 10px; }
+.b-auth-error { color: #dc2626; min-height: 1.2em; margin: 10px 0 0; font-size: 13px; }
+
+/* Gallery */
+body.g-page { height: auto; }
+.g-wrap { max-width: 1000px; margin: 0 auto; padding: 32px 16px 64px; }
+.g-head { flex-wrap: wrap; }
+.g-head h1 { font-size: 28px; margin: 0; }
+.g-spacer { flex: 1; }
+.g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 24px; }
+.g-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 6px; align-content: start; }
+.g-card h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.g-card .b-row { margin-top: 8px; flex-wrap: wrap; }
+.g-card a.b-btn { text-decoration: none; color: inherit; }
+.g-badge { justify-self: start; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--hover); color: var(--muted); }
+.g-badge.is-live { background: #dcfce7; color: #166534; }
+.g-badge.is-warn { background: #fef3c7; color: #92400e; }
+.g-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
