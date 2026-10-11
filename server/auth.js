@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { db } = require('./db');
 
 const SESSION_DAYS = 30;
-const COOKIE = 'sm_session';
+const COOKIE = 'wm_session';
 const SECURE = process.env.COOKIE_SECURE === '1'; // set when served over HTTPS
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');

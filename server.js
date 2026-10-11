@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// StoryMaps entry point.
+// Waymark entry point.
 //   node server.js                       start the server
 //   node server.js reset-link <email>    print a password reset link for an account
 //   node server.js set-password <email>  set a new password from the terminal
@@ -10,7 +10,7 @@ const path = require('path');
 
 const [major, minor] = process.versions.node.split('.').map(Number);
 if (major < 22 || (major === 22 && minor < 13)) {
-  console.error(`StoryMaps needs Node.js 22.13 or newer (for the built-in SQLite module). You have ${process.version}.\nGet a current version from https://nodejs.org`);
+  console.error(`Waymark needs Node.js 22.13 or newer (for the built-in SQLite module). You have ${process.version}.\nGet a current version from https://nodejs.org`);
   process.exit(1);
 }
 
@@ -19,6 +19,7 @@ if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 process.removeAllListeners('warning'); // hide the "SQLite is experimental" notice
 process.on('warning', (w) => { if (w.name !== 'ExperimentalWarning') console.warn(w); });
 
+const brand = require('./server/brand.js');
 const [command, arg] = process.argv.slice(2);
 if (command) {
   require('./server/cli.js').run(command, arg).then((code) => process.exit(code ?? 0), (err) => { console.error(err.message); process.exit(1); });
@@ -39,7 +40,7 @@ if (command) {
       v6.on('error', () => {}); // no IPv6 on this machine: IPv4 alone is fine
       v6.listen(PORT, '::1');
     }
-    console.log(`\n  StoryMaps is running at http://localhost:${PORT}\n`);
+    console.log(`\n  ${brand.name} is running at http://localhost:${PORT}\n`);
     console.log(`  Data:   ${DATA_DIR}`);
     console.log(`  Links:  ${APP_URL}`);
     console.log(`  Email:  ${mailConfigured() ? `SMTP via ${process.env.SMTP_HOST}` : 'not configured (password reset links print here)'}\n`);

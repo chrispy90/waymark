@@ -6,7 +6,7 @@ const os = require('os');
 const net = require('net');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'storymaps-test-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'waymark-test-'));
 const mails = [];
 let smtp;
 let base;
@@ -42,7 +42,7 @@ before(async () => {
   const smtpPort = await startSmtp();
   Object.assign(process.env, {
     DATA_DIR: tmp, APP_URL: 'http://stories.test', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtpPort),
-    SMTP_SECURE: 'none', SMTP_USER: 'u', SMTP_PASS: 'p', SMTP_FROM: 'StoryMaps <no-reply@stories.test>',
+    SMTP_SECURE: 'none', SMTP_USER: 'u', SMTP_PASS: 'p', SMTP_FROM: 'Waymark <no-reply@stories.test>',
   });
   ({ server } = require('../server/index.js'));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -62,7 +62,7 @@ function client() {
   return async (method, url, body, headers = {}) => {
     const res = await fetch(base + url, {
       method,
-      headers: { 'X-StoryMaps': '1', ...(cookie ? { Cookie: cookie } : {}), ...(body && !Buffer.isBuffer(body) ? { 'Content-Type': 'application/json' } : {}), ...headers },
+      headers: { 'X-Waymark': '1', ...(cookie ? { Cookie: cookie } : {}), ...(body && !Buffer.isBuffer(body) ? { 'Content-Type': 'application/json' } : {}), ...headers },
       body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body),
     });
     const set = res.headers.get('set-cookie');
@@ -160,5 +160,5 @@ test('change password requires the current one', async () => {
 
 test('static files cannot escape the public folder', async () => {
   assert.notEqual((await fetch(`${base}/..%2F..%2Fserver%2Fdb.js`)).status, 200);
-  assert.equal((await fetch(`${base}/uploads/..%2Fstorymaps.db`)).status, 404);
+  assert.equal((await fetch(`${base}/uploads/..%2Fwaymark.db`)).status, 404);
 });

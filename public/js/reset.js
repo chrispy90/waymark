@@ -1,4 +1,7 @@
 import { api } from './api.js';
+import { mountAuthShell } from './auth-shell.js';
+
+mountAuthShell('New password');
 
 const token = new URLSearchParams(location.search).get('token') || '';
 // Drop the token from the address bar and history once read.

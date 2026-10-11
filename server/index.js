@@ -1,10 +1,11 @@
-// StoryMaps server: static files, JSON API, image uploads, published story pages.
+// Waymark server: static files, JSON API, image uploads, published story pages.
 // Zero dependencies: node:http + node:sqlite.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { db, UPLOAD_DIR } = require('./db');
 const auth = require('./auth');
+const brand = require('./brand');
 const { sendMail, mailConfigured } = require('./mail');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -128,7 +129,7 @@ const route = (method, pattern, handler) => routes.push({ method, re: new RegExp
 const DUMMY_HASH = auth.hashPassword('timing-equalizer');
 
 route('POST', '/api/auth/signup', async (req) => {
-  if (!ALLOW_SIGNUP) throw new HttpError(403, 'Sign-ups are closed');
+  if (!ALLOW_SIGNUP && db.prepare('SELECT 1 FROM users LIMIT 1').get()) throw new HttpError(403, 'Sign-ups are closed');
   if (auth.rateLimited(`signup:${req.socket.remoteAddress}`)) throw new HttpError(429, 'Too many attempts, try again later');
   const { email, password, name } = await readJson(req);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) throw new HttpError(400, 'Enter a valid email');
@@ -156,7 +157,10 @@ route('POST', '/api/auth/logout', async (req) => {
   return [200, { ok: true }, { 'Set-Cookie': auth.clearCookie() }];
 });
 
-route('GET', '/api/me', async (req) => [200, { user: auth.currentUser(req), signupOpen: ALLOW_SIGNUP }]);
+route('GET', '/api/me', async (req) => {
+  const firstRun = !db.prepare('SELECT 1 FROM users LIMIT 1').get();
+  return [200, { user: auth.currentUser(req), signupOpen: ALLOW_SIGNUP || firstRun, firstRun }];
+});
 
 // Always answers the same way, so it can't be used to discover which emails have accounts.
 route('POST', '/api/auth/forgot', async (req) => {
@@ -169,8 +173,8 @@ route('POST', '/api/auth/forgot', async (req) => {
   const link = `${APP_URL}/reset.html?token=${auth.createResetToken(user.id)}`;
   sendMail({
     to: user.email,
-    subject: 'Reset your StoryMaps password',
-    text: `Hi${user.name ? ' ' + user.name : ''},\n\nSomeone asked to reset the password for your StoryMaps account. To choose a new password, open this link within ${auth.RESET_MINUTES} minutes:\n\n${link}\n\nIf you didn't ask for this, ignore this email. Your password won't change.\n`,
+    subject: `Reset your ${brand.name} password`,
+    text: `Hi${user.name ? ' ' + user.name : ''},\n\nSomeone asked to reset the password for your ${brand.name} account. To choose a new password, open this link within ${auth.RESET_MINUTES} minutes:\n\n${link}\n\nIf you didn't ask for this, ignore this email. Your password won't change.\n`,
   }).catch((err) => console.error(`Could not send reset email to ${user.email}: ${err.message}`));
   return ok;
 });
@@ -293,7 +297,7 @@ route('DELETE', '/api/uploads/:id', async (req, p) => {
 
 async function handleApi(req, res, urlPath) {
   // CSRF: browsers can't send this custom header cross-site without a CORS preflight, which we never allow.
-  if (req.method !== 'GET' && req.headers['x-storymaps'] !== '1') throw new HttpError(403, 'Missing request header');
+  if (req.method !== 'GET' && req.headers['x-waymark'] !== '1') throw new HttpError(403, 'Missing request header');
   for (const r of routes) {
     if (r.method !== req.method) continue;
     const m = r.re.exec(urlPath);
@@ -320,6 +324,7 @@ function renderPublished(req, res, slug) {
     `<meta name="sm-slug" content="${esc(slug)}">`,
     `<meta name="description" content="${esc(story.subtitle)}">`,
     `<meta property="og:type" content="article">`,
+    `<meta property="og:site_name" content="${esc(brand.name)}">`,
     `<meta property="og:title" content="${esc(story.title)}">`,
     `<meta property="og:description" content="${esc(story.subtitle)}">`,
     `<meta property="og:url" content="${esc(`${origin}/s/${slug}`)}">`,
@@ -358,6 +363,7 @@ const server = http.createServer(async (req, res) => {
     if (urlPath.startsWith('/api/')) return await handleApi(req, res, urlPath);
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Method not allowed');
     if (urlPath === '/favicon.ico') return send(res, 204, '');
+    if (urlPath === '/js/brand.js') return send(res, 200, `export const BRAND = ${JSON.stringify(brand)};\n`, { 'Content-Type': 'text/javascript; charset=utf-8' });
     const pub = /^\/s\/([a-z0-9-]+)\/?$/.exec(urlPath);
     if (pub) return renderPublished(req, res, pub[1]);
     return serveStatic(req, res, urlPath);

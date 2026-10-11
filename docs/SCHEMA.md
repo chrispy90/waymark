@@ -10,7 +10,8 @@ A story is a single JSON document.
   "author": "…",
   "date": "October 2026",
   "theme": "light",            // "light" | "dark"
-  "cover": { "image": "https://…" },
+  "motion": "subtle",          // scroll animations: "none" | "subtle" | "expressive"
+  "cover": { "image": "https://…", "effect": "parallax", "kicker": "Small label" },  // effect: "none" | "parallax" | "zoom"
   "layers": [ /* Layer[]: data layer library shared by all maps */ ],
   "blocks": [ /* Block[] */ ],
   "credits": "<p>HTML</p>"
@@ -61,7 +62,11 @@ Every block has a `type`. Rich-text fields (`html`) are sanitized at render time
 | `text` | `html`, `style?` (`"large"`) |
 | `quote` | `text`, `cite?` |
 | `separator` | none |
-| `image` | `url`, `alt`, `caption?`, `size?` (`small` \| `standard` \| `wide` \| `full`) |
+| `image` | `url`, `alt`, `caption?`, `size?` (`small` \| `standard` \| `wide` \| `full`), `effect?` (`none` \| `parallax` \| `zoom` \| `reveal`) |
+| `chapter` | `title`, `kicker?`, `text?`, `bg`, `fg` (hex colors), `align?` (`center` \| `left`), `image?`. A full-screen title. The page takes on `bg`/`fg` from here until the next chapter |
+| `statement` | `text`, `cite?`, `style?` (`sans`). Large text whose words light up as the reader scrolls |
+| `stats` | `items: [{ value, label }]`, `caption?`. `value` can include a prefix or suffix (`$3.4M`, `98%`, `1,200`) and counts up when it appears |
+| `gallery` | `title?`, `text?`, `images: [{ url, caption?, alt? }]`. Scrolling down moves the row of images sideways |
 | `video` | `url` (YouTube, Vimeo or a video file), `caption?`, `size?` |
 | `embed` | `url`, `caption?`, `size?` |
 | `map` | `view`, `caption?`, `size?` |

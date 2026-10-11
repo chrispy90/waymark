@@ -7,7 +7,14 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, '..',
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'storymaps.db'));
+const DB_FILE = path.join(DATA_DIR, 'waymark.db');
+// One-time rename from the project's earlier name.
+const LEGACY = path.join(DATA_DIR, 'storymaps.db');
+if (!fs.existsSync(DB_FILE) && fs.existsSync(LEGACY)) {
+  for (const ext of ['', '-wal', '-shm']) if (fs.existsSync(LEGACY + ext)) fs.renameSync(LEGACY + ext, DB_FILE + ext);
+}
+
+const db = new DatabaseSync(DB_FILE);
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;

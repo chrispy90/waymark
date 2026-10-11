@@ -1,9 +1,10 @@
-# StoryMaps
+# Waymark
 
-Self-hosted, scroll-driven map stories with a visual builder. It's an open-source, clean-room take on the ArcGIS StoryMaps experience.
+**Stories with a sense of place.** Self-hosted, scroll-driven map stories with a visual editor.
 
 - **Write a story** from blocks: text, images, video, embeds, maps, scrolling map "sidecars", guided tours, and swipe comparisons.
 - **Bring your data**: GeoJSON, CSV, or public ArcGIS feature layers, styled by category or value, with popups and a legend.
+- **Make it move**: chapters that recolor the page, statements that light up word by word, numbers that count up, galleries that slide sideways, and parallax photos.
 - **Publish it** to a public link. Draft edits stay private until you publish again.
 
 There's nothing to install beyond Node.js, and no API keys or accounts with anyone else are needed. Maps use [MapLibre GL JS](https://maplibre.org/) with free [OpenFreeMap](https://openfreemap.org/) basemaps (OpenStreetMap data). It contains no Esri code.
@@ -13,12 +14,12 @@ There's nothing to install beyond Node.js, and no API keys or accounts with anyo
 You need [Node.js](https://nodejs.org) **22.13 or newer**. Check with `node --version`.
 
 ```bash
-git clone <this-repo-url> storymaps
-cd storymaps
+git clone <this-repo-url> waymark
+cd waymark
 npm start
 ```
 
-Open **http://localhost:5180**, create an account, and click **Start from sample** to explore.
+Open **http://localhost:5180**. The first visit asks you to create the owner account. Then pick a template. **Immersive essay** shows off every scroll effect, and **Sample: Down the Potomac** shows the map features.
 
 `npm install` isn't needed, because there are no dependencies. Everything you create lives in the `data/` folder.
 
@@ -38,6 +39,7 @@ Copy `.env.example` to `.env` and edit it. Everything is optional.
 
 | Setting | Default | What it does |
 |---|---|---|
+| `APP_NAME`, `APP_TAGLINE` | Waymark | Rename the app (interface, emails, link previews) |
 | `PORT` | `5180` | Port to listen on |
 | `HOST` | this computer only | Set to `0.0.0.0` to let other devices on your network connect |
 | `APP_URL` | `http://localhost:PORT` | Your site's public address, used in password reset emails |
@@ -71,7 +73,9 @@ Any machine or service that runs Node 22.13+ or Docker and has a persistent disk
 
 | | |
 |---|---|
-| Story blocks | Cover and byline, text, quote, separator, image, video (YouTube, Vimeo, files), embed, interactive map |
+| Story blocks | Cover and byline, text, quote, divider, image, video (YouTube, Vimeo, files), embed, interactive map |
+| Scroll effects | **Chapter**: full-screen title that recolors the page from there on. **Statement**: huge text that lights up word by word. **Big numbers**: figures that count up. **Scroll gallery**: photos that slide sideways as you scroll down. **Image motion**: parallax, zoom or wipe-in reveal. **Cover motion**: parallax or zoom. A story-wide **scroll animation** setting (off, subtle or expressive) fades blocks in. Everything turns off for readers who ask their device to reduce motion |
+| Editor | Click anything in the live preview to edit it. Visual block picker, drag to reorder, undo on delete, desktop/phone preview, autosave, Ctrl/Cmd+S |
 | Sidecar | The map stays fixed while narrative cards scroll past and flies to each card's view. Cards can show an image, video or embed instead. Docked or floating layout |
 | Map actions | Links in sidecar text that send the map to a different view, and back on a second click |
 | Guided tour | Numbered places. Step through them or click a marker |
@@ -92,10 +96,15 @@ server/db.js           SQLite schema (built-in node:sqlite)
 server/auth.js         password hashing, sessions, reset tokens, rate limiting
 server/mail.js         minimal SMTP client
 server/cli.js          admin commands
+server/brand.js        app name and tagline
 public/                the web app (plain ES modules, no build step)
   js/render.js         story → page; all block renderers
+  js/effects.js        scroll-driven effects engine (one rAF loop, on-screen elements only)
+  js/ui.js             icons, logo, toasts, menus, dialogs
   js/maps.js           MapLibre helpers: basemaps, views, data layers, legend, popups
   js/builder.js        the editor
+  js/templates.js      starter templates
+  welcome.html         landing page for signed-out visitors (itself a story)
   stories/, data/      sample story and sample GeoJSON
 docs/SCHEMA.md         the story file format
 test/                  end-to-end API tests (node:test)
@@ -103,7 +112,7 @@ test/                  end-to-end API tests (node:test)
 
 ## API
 
-Every request that changes data must send the header `X-StoryMaps: 1`. This guards against cross-site request forgery: another site can't add a custom header without a CORS preflight, and the server never allows one.
+Every request that changes data must send the header `X-Waymark: 1`. This guards against cross-site request forgery: another site can't add a custom header without a CORS preflight, and the server never allows one.
 
 | | |
 |---|---|

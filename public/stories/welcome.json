@@ -1,0 +1,162 @@
+{
+  "title": "Waymark",
+  "subtitle": "Write scroll-driven stories with maps, photos and data. Publish them to a link anyone can open.",
+  "theme": "light",
+  "motion": "expressive",
+  "cover": {
+    "image": "",
+    "effect": "none",
+    "kicker": "Stories with a sense of place"
+  },
+  "layers": [],
+  "blocks": [
+    {
+      "type": "statement",
+      "text": "Some stories can't be told in paragraphs alone. They need a map that moves with the reader, pictures that open up, and a page that changes as the story does.",
+      "cite": "Why Waymark"
+    },
+    {
+      "type": "chapter",
+      "kicker": "Scrolling maps",
+      "title": "The map follows the story",
+      "text": "Cards scroll past while the map flies, tilts and zooms to each place.",
+      "bg": "#0f1d2e",
+      "fg": "#eef2f5",
+      "align": "center"
+    },
+    {
+      "type": "sidecar",
+      "layout": "floating",
+      "slides": [
+        {
+          "html": "<h3>Start with the whole world</h3><p>Every card sets where the map should be. Readers just scroll.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                12,
+                28
+              ],
+              "zoom": 1.4,
+              "bearing": 0,
+              "pitch": 0,
+              "basemap": "dark",
+              "markers": [],
+              "layers": []
+            }
+          }
+        },
+        {
+          "html": "<h3>Then zoom in close</h3><p>Pick a place, tilt the camera, drop a marker. The map flies there on its own.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -122.4194,
+                37.7749
+              ],
+              "zoom": 12.2,
+              "bearing": -18,
+              "pitch": 55,
+              "basemap": "dark",
+              "markers": [
+                {
+                  "lngLat": [
+                    -122.4783,
+                    37.8199
+                  ],
+                  "title": "Golden Gate Bridge"
+                }
+              ],
+              "layers": []
+            }
+          }
+        },
+        {
+          "html": "<h3>Bring your own data</h3><p>GeoJSON, spreadsheets, or public ArcGIS layers, styled by category or value, with popups and a legend.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -77.03,
+                38.9
+              ],
+              "zoom": 11.5,
+              "bearing": 0,
+              "pitch": 0,
+              "basemap": "dark",
+              "markers": [],
+              "layers": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "chapter",
+      "kicker": "Scroll effects",
+      "title": "A page that responds to the reader",
+      "text": "Chapters like this one recolor everything after them. Words light up. Numbers count. Photos drift.",
+      "bg": "#f3e9d8",
+      "fg": "#2b1d0e",
+      "align": "left"
+    },
+    {
+      "type": "stats",
+      "items": [
+        {
+          "value": "14",
+          "label": "kinds of blocks, from plain text to guided tours"
+        },
+        {
+          "value": "0",
+          "label": "dependencies to install. Clone it and run it"
+        },
+        {
+          "value": "100%",
+          "label": "yours: open source and self-hosted"
+        }
+      ]
+    },
+    {
+      "type": "gallery",
+      "title": "Galleries that slide sideways",
+      "text": "Keep scrolling down. The photos move across.",
+      "images": [
+        {
+          "url": "https://picsum.photos/seed/waymark-wg1/1500/1000",
+          "caption": "Scroll galleries"
+        },
+        {
+          "url": "https://picsum.photos/seed/waymark-wg2/1500/1000",
+          "caption": "Parallax and zoom on any image"
+        },
+        {
+          "url": "https://picsum.photos/seed/waymark-wg3/1500/1000",
+          "caption": "Guided tours with numbered stops"
+        },
+        {
+          "url": "https://picsum.photos/seed/waymark-wg4/1500/1000",
+          "caption": "Before-and-after swipe maps"
+        }
+      ]
+    },
+    {
+      "type": "image",
+      "url": "https://picsum.photos/seed/waymark-wparallax/2000/1200",
+      "size": "full",
+      "effect": "parallax",
+      "caption": ""
+    },
+    {
+      "type": "chapter",
+      "kicker": "Get started",
+      "title": "Your first story takes about a minute",
+      "text": "Pick a template, swap in your words and places, and publish.",
+      "bg": "#e4572e",
+      "fg": "#ffffff",
+      "align": "center"
+    }
+  ],
+  "credits": "<p>Photos are placeholders from picsum.photos. Basemaps © OpenStreetMap contributors, OpenFreeMap, OpenMapTiles.</p>"
+}

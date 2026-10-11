@@ -4,23 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <title>Sign in · StoryMaps</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/builder.css">
+  <title>Sign in · Waymark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
 </head>
-<body class="b-auth-page">
-  <main class="b-auth">
-    <h1>StoryMaps</h1>
-    <p class="b-muted" id="auth-sub">Sign in to create and publish stories.</p>
+<body>
+  <div class="auth-card" id="card">
+    <h1 id="auth-title">Welcome back</h1>
+    <p id="auth-sub">Sign in to keep working on your stories.</p>
     <form id="auth-form" novalidate>
-      <label class="b-field" id="name-row" hidden><span class="b-label">Name</span><input type="text" name="name" autocomplete="name"></label>
-      <label class="b-field"><span class="b-label">Email</span><input type="text" name="email" inputmode="email" autocomplete="email" required></label>
-      <label class="b-field"><span class="b-label b-label-row">Password <a class="b-link" href="/forgot.html" id="forgot-link">Forgot password?</a></span><input type="password" name="password" autocomplete="current-password" required minlength="8"></label>
-      <p class="b-auth-error" id="auth-error" role="alert"></p>
-      <button class="b-btn is-primary b-auth-submit" type="submit" id="auth-submit">Sign in</button>
+      <label class="field" id="name-row" hidden><span class="field-label">Your name</span><input type="text" name="name" autocomplete="name"></label>
+      <label class="field"><span class="field-label">Email</span><input type="email" name="email" autocomplete="email" required></label>
+      <label class="field"><span class="field-label"><span>Password</span><a class="link-btn" href="/forgot.html" id="forgot-link">Forgot?</a></span><input type="password" name="password" autocomplete="current-password" required minlength="8"></label>
+      <p class="field-hint" id="pw-hint" hidden>At least 8 characters.</p>
+      <p class="form-error" id="auth-error" role="alert"></p>
+      <button class="btn btn-primary btn-lg btn-block" type="submit" id="auth-submit">Sign in</button>
     </form>
-    <p class="b-muted" id="toggle-row"><span id="toggle-text">No account?</span> <button type="button" class="b-link" id="toggle-mode">Create one</button></p>
-  </main>
+    <p class="auth-foot" id="toggle-row"><span id="toggle-text">New here?</span> <button type="button" class="link-btn" id="toggle-mode">Create an account</button></p>
+  </div>
   <script type="module" src="/js/login.js"></script>
 </body>
 </html>

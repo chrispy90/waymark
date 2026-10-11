@@ -1,4 +1,4 @@
-// Client for the StoryMaps server API.
+// Client for the Waymark server API.
 
 export class ApiError extends Error {
   constructor(status, body) { super(body?.error || `Request failed (${status})`); this.status = status; this.body = body; }
@@ -9,7 +9,7 @@ export async function api(method, url, body, { raw = false, headers = {} } = {})
     method,
     credentials: 'same-origin',
     headers: {
-      'X-StoryMaps': '1',
+      'X-Waymark': '1',
       ...(body !== undefined && !raw ? { 'Content-Type': 'application/json' } : {}),
       ...headers,
     },

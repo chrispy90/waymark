@@ -25,11 +25,35 @@ if (slug) {
   fetch(`/api/public/${encodeURIComponent(slug)}`).then((r) => (r.ok ? r.json() : Promise.reject())).then(show)
     .catch(() => fail('This story is not available.'));
 } else if (params.has('preview')) {
+  // Builder preview: the story arrives by postMessage; clicks select blocks in the editor.
+  let rendered = false;
+  let selected = null;
+  const markSelected = () => root.querySelectorAll('[data-block-index]').forEach((el) => el.classList.toggle('is-selected', +el.dataset.blockIndex === selected));
   addEventListener('message', (e) => {
-    if (e.origin !== location.origin || e.data?.type !== 'story') return;
-    const y = scrollY;
-    show(e.data.story);
-    scrollTo(0, Math.min(y, document.documentElement.scrollHeight));
+    if (e.origin !== location.origin) return;
+    if (e.data?.type === 'story') {
+      const y = scrollY;
+      destroy?.();
+      destroy = renderStory(e.data.story, root, { instant: rendered });
+      root.classList.add('is-editing');
+      rendered = true;
+      markSelected();
+      scrollTo(0, Math.min(y, document.documentElement.scrollHeight));
+    }
+    if (e.data?.type === 'select') {
+      selected = e.data.index;
+      markSelected();
+      const el = root.querySelector(`[data-block-index="${selected}"]`);
+      if (el && e.data.scroll) {
+        const r = el.getBoundingClientRect();
+        if (r.top < 60 || r.top > innerHeight * 0.6) scrollTo({ top: scrollY + r.top - 80, behavior: 'smooth' });
+      }
+    }
+  });
+  root.addEventListener('click', (e) => {
+    const blockEl = e.target.closest('[data-block-index]');
+    if (!blockEl || e.target.closest('a, button, .maplibregl-canvas, .sm-swipe-handle, iframe, video')) return;
+    parent.postMessage({ type: 'select', index: +blockEl.dataset.blockIndex }, location.origin);
   });
   parent.postMessage({ type: 'preview-ready' }, location.origin);
 } else if (params.get('draft')) {
