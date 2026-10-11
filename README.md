@@ -22,6 +22,8 @@ Open **http://localhost:5180**, create an account, and click **Start from sample
 
 `npm install` isn't needed, because there are no dependencies. Everything you create lives in the `data/` folder.
 
+> **Windows:** if PowerShell says *"running scripts is disabled on this system"*, use `node server.js` instead of `npm start`. It does the same thing. `npm.cmd start` also works.
+
 ### Other ways to run it
 
 | | |
