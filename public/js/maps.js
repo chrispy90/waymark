@@ -2,11 +2,25 @@
 // A "view" is { center:[lng,lat], zoom, bearing, pitch, basemap, markers:[…], layers:[layerId…], legend }.
 // Data layers are defined once per story (story.layers) and each view says which are visible.
 
+// Raster basemaps need glyphs for our own label layers, so they point at OpenFreeMap's font server.
+const rasterStyle = (id, tiles, attribution, maxzoom = 19) => ({
+  version: 8,
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  sources: { [id]: { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom, attribution } },
+  layers: [{ id: `${id}-bg`, type: 'background', paint: { 'background-color': '#0b1220' } }, { id, type: 'raster', source: id }],
+});
+
 export const BASEMAPS = {
   streets: { label: 'Streets', style: 'https://tiles.openfreemap.org/styles/liberty' },
   bright: { label: 'Bright', style: 'https://tiles.openfreemap.org/styles/bright' },
   light: { label: 'Light gray', style: 'https://tiles.openfreemap.org/styles/positron' },
   dark: { label: 'Dark', style: 'https://tiles.openfreemap.org/styles/dark' },
+  satellite: { label: 'Satellite', style: rasterStyle('s2', 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
+    '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016)', 15) },
+  'usgs-imagery': { label: 'USGS imagery', style: rasterStyle('usgsimg', 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',
+    'USGS The National Map: Orthoimagery', 16) },
+  'usgs-topo': { label: 'USGS topo', style: rasterStyle('usgstopo', 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+    'USGS The National Map', 16) },
 };
 
 export const DEFAULT_VIEW = { center: [-77.04, 38.85], zoom: 10, bearing: 0, pitch: 0, basemap: 'streets', markers: [], layers: [] };
@@ -96,17 +110,19 @@ const round = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
 const cache = new Map();
 const FEATURE_SERVICE = /\/(FeatureServer|MapServer)\/\d+\/?$/i;
 
-/** Resolves a layer definition to a GeoJSON FeatureCollection (cached by URL). */
+/** Resolves a layer definition to a GeoJSON FeatureCollection (cached by URL + options). */
 export function loadLayerData(layer) {
   if (layer.data) return Promise.resolve(layer.data);
-  if (!layer.url) return Promise.resolve(emptyFC());
-  if (!cache.has(layer.url)) {
-    const p = (FEATURE_SERVICE.test(layer.url) ? fetchFeatureService(layer.url) : fetchJson(layer.url))
+  if (!layer.url || layer.type === 'raster') return Promise.resolve(emptyFC());
+  const key = `${layer.url}|${JSON.stringify(layer.query || {})}|${layer.transform || ''}`;
+  if (!cache.has(key)) {
+    const p = (FEATURE_SERVICE.test(layer.url) ? fetchFeatureService(layer.url, layer.query) : fetchGeoJSON(layer.url))
+      .then((json) => (TRANSFORMS[layer.transform] ? TRANSFORMS[layer.transform](json) : json))
       .then(toFeatureCollection)
-      .catch((err) => { cache.delete(layer.url); throw err; });
-    cache.set(layer.url, p);
+      .catch((err) => { cache.delete(key); throw err; });
+    cache.set(key, p);
   }
-  return cache.get(layer.url);
+  return cache.get(key);
 }
 
 const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
@@ -114,12 +130,27 @@ const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
 const absolute = (url) => (/^(https?:)?\/\//i.test(url) || url.startsWith('/') ? url : `/${url}`);
 const fetchJson = (url) => fetch(absolute(url)).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
 
+// GeoJSON, following OGC API "next" links (e.g. USGS Water Data) up to a sensible limit.
+async function fetchGeoJSON(url, maxFeatures = 20000) {
+  let json = await fetchJson(url);
+  if (json?.type !== 'FeatureCollection' || !Array.isArray(json.links)) return json;
+  const features = [...json.features];
+  for (let pages = 0; pages < 40 && features.length < maxFeatures; pages++) {
+    const next = json.links.find((l) => l.rel === 'next' && /json/i.test(l.type || 'json'))?.href;
+    if (!next || !json.features?.length) break;
+    json = await fetchJson(next);
+    features.push(...(json.features || []));
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 // Public ArcGIS REST layers expose GeoJSON via /query; page through the server's record limit.
-async function fetchFeatureService(url, maxFeatures = 20000) {
+// query: optional { where, outFields, maxAllowableOffset, orderByFields } passed to the server.
+async function fetchFeatureService(url, query = {}, maxFeatures = 20000) {
   const base = url.replace(/\/?$/, '/query');
   const features = [];
   for (let offset = 0; offset < maxFeatures;) {
-    const q = new URLSearchParams({ where: '1=1', outFields: '*', outSR: '4326', f: 'geojson', resultOffset: offset });
+    const q = new URLSearchParams({ where: '1=1', outFields: '*', outSR: '4326', f: 'geojson', ...query, resultOffset: offset });
     const page = await fetchJson(`${base}?${q}`);
     if (page.error) throw new Error(page.error.message || 'Service error');
     features.push(...(page.features || []));
@@ -129,6 +160,77 @@ async function fetchFeatureService(url, maxFeatures = 20000) {
   }
   return { type: 'FeatureCollection', features };
 }
+
+// Converters for public feeds that aren't plain, flat GeoJSON.
+const iso = (t) => (t ? new Date(t).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '');
+const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] != null && o[k] !== '').map((k) => [k, o[k]]));
+export const TRANSFORMS = {
+  'usgs-quakes': (j) => ({ type: 'FeatureCollection', features: j.features.map((f) => ({ ...f, properties: {
+    title: f.properties.title, magnitude: f.properties.mag, place: f.properties.place, when: iso(f.properties.time), time: f.properties.time,
+    depth_km: f.geometry?.coordinates?.[2], alert: f.properties.alert || 'none', tsunami: f.properties.tsunami ? 'yes' : 'no', felt: f.properties.felt, url: f.properties.url,
+  } })) }),
+  eonet: (j) => ({ type: 'FeatureCollection', features: j.features.map((f) => ({ ...f, properties: {
+    title: f.properties.title, category: (f.properties.categories || []).map((c) => c.title).join(', '), date: iso(f.properties.date), time: Date.parse(f.properties.date) || null,
+    magnitude: f.properties.magnitudeValue, unit: f.properties.magnitudeUnit, source: (f.properties.sources || []).map((x) => x.id).join(', '), link: f.properties.link,
+  } })) }),
+  'nws-alerts': (j) => ({ type: 'FeatureCollection', features: j.features.filter((f) => f.geometry).map((f) => ({ ...f, properties: {
+    ...pick(f.properties, ['event', 'severity', 'certainty', 'urgency', 'headline', 'areaDesc', 'senderName']),
+    onset: iso(f.properties.onset || f.properties.effective), expires: iso(f.properties.expires), time: Date.parse(f.properties.onset || f.properties.effective) || null,
+  } })) }),
+  'coops-stations': (j) => ({ type: 'FeatureCollection', features: (j.stations || []).filter((st) => Number.isFinite(+st.lng) && Number.isFinite(+st.lat)).map((st) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [+st.lng, +st.lat] },
+    properties: { name: st.name, station_id: st.id, state: st.state || '', tidal: st.tidal ? 'yes' : 'no', great_lakes: st.greatlakes ? 'yes' : 'no',
+      data: `https://tidesandcurrents.noaa.gov/stationhome.html?id=${st.id}` },
+  })) }),
+  'usgs-water': (j) => ({ type: 'FeatureCollection', features: j.features.map((f) => ({ ...f, properties: {
+    ...pick(f.properties, ['monitoring_location_name', 'monitoring_location_number', 'site_type', 'county_name', 'state_name', 'hydrologic_unit_code', 'altitude', 'drainage_area']),
+    data: f.properties.monitoring_location_number ? `https://waterdata.usgs.gov/monitoring-location/${f.properties.monitoring_location_number}/` : undefined,
+  } })) }),
+};
+
+/* ---------------- Filters ---------------- */
+
+// A layer's filters: layer.filters = [{ field, op, value }], combined with layer.filterMatch ('all' | 'any').
+export const FILTER_OPS = ['=', '≠', '>', '≥', '<', '≤', 'contains', 'in the last (days)', 'is empty', 'is not empty'];
+const asTime = (v) => (typeof v === 'number' ? (v > 1e11 ? v : v * 1000) : Date.parse(String(v ?? '').replace(' UTC', 'Z')));
+export function matchesFilter(props, { field, op, value }) {
+  if (!field || !op) return true;
+  const x = props?.[field];
+  const v = value ?? '';
+  const empty = x == null || x === '';
+  if (op === 'is empty') return empty;
+  if (op === 'is not empty') return !empty;
+  if (op === 'in the last (days)') { const t = asTime(x); return Number.isFinite(t) && Date.now() - t <= Number(v) * 864e5; }
+  if (op === 'contains') return String(x ?? '').toLowerCase().includes(String(v).toLowerCase());
+  const nx = Number(x);
+  const nv = Number(v);
+  const numeric = v !== '' && !empty && Number.isFinite(nx) && Number.isFinite(nv);
+  // dates like 2024-05-01 compare as dates
+  const dates = !numeric && /^\d{4}-\d{2}-\d{2}/.test(String(v)) && Number.isFinite(asTime(x));
+  const a = numeric ? nx : dates ? asTime(x) : String(x ?? '').toLowerCase();
+  const b = numeric ? nv : dates ? Date.parse(v) : String(v).toLowerCase();
+  switch (op) {
+    case '=': return a === b;
+    case '≠': return a !== b;
+    case '>': return a > b;
+    case '≥': return a >= b;
+    case '<': return a < b;
+    case '≤': return a <= b;
+    default: return true;
+  }
+}
+export const activeFilters = (layer) => (layer.filters || []).filter((f) => f.field && f.op);
+export function filterData(layer, fc) {
+  const rules = activeFilters(layer);
+  if (!rules.length) return fc;
+  const any = layer.filterMatch === 'any';
+  return { type: 'FeatureCollection', features: fc.features.filter((f) => (any ? rules.some((r) => matchesFilter(f.properties, r)) : rules.every((r) => matchesFilter(f.properties, r)))) };
+}
+/** The features a layer actually shows: its data with its filters applied. */
+export const layerFeatures = async (layer) => filterData(layer, await loadLayerData(layer));
+
+// GIBS-style daily imagery uses {date}; default to yesterday (today's mosaic is usually incomplete).
+export const tileUrl = (layer) => String(layer.tiles || '').replace('{date}', layer.date || new Date(Date.now() - 864e5).toISOString().slice(0, 10));
 
 function toFeatureCollection(json) {
   if (json?.type === 'FeatureCollection') return { type: 'FeatureCollection', features: json.features.filter((f) => f.geometry) };
@@ -200,7 +302,7 @@ const POLY = ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]]
 const LINE = ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
 const POINT = ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]];
 // Each data layer is drawn with several MapLibre layers; which ones exist depends on style.display.
-const SUBS = ['fill', 'line', 'circle', 'label', 'heat', 'cluster', 'count'];
+const SUBS = ['raster', 'fill', 'line', 'circle', 'label', 'heat', 'cluster', 'count'];
 const subIds = (id) => SUBS.map((k) => `dl-${id}-${k}`);
 const hitIds = (map) => map._library.flatMap((l) => ['fill', 'line', 'circle', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
 const displayOf = (layer) => layer.style?.display || 'features';
@@ -222,7 +324,15 @@ function installLayers(map) {
     const vis = map._visible.includes(layer.id) ? 'visible' : 'none';
     const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : PALETTE[0];
     const radius = s.radius ?? 6;
-    map.addSource(src, { type: 'geojson', data: emptyFC(), ...(display === 'clusters' ? { cluster: true, clusterRadius: 50, clusterMaxZoom: 14 } : {}) });
+    if (layer.type === 'raster') {
+      // Imagery overlays sit under the basemap's labels so place names stay readable.
+      map.addSource(src, { type: 'raster', tiles: [tileUrl(layer)], tileSize: 256, maxzoom: layer.maxzoom ?? 18, attribution: layer.attribution || '' });
+      const labels = map.getStyle().layers.find((l) => l.type === 'symbol' && !l.id.startsWith('dl-'))?.id;
+      map.addLayer({ id: `${src}-raster`, type: 'raster', source: src, layout: { visibility: vis }, paint: { 'raster-opacity': s.opacity ?? 0.85 } }, labels);
+      map._legendInfo[layer.id] = { type: 'imagery' };
+      return;
+    }
+    map.addSource(src, { type: 'geojson', data: emptyFC(), attribution: layer.attribution || undefined, ...(display === 'clusters' ? { cluster: true, clusterRadius: 50, clusterMaxZoom: 14 } : {}) });
     map.addLayer({ id: `${src}-fill`, type: 'fill', source: src, filter: POLY, layout: { visibility: vis },
       paint: { 'fill-color': color, 'fill-opacity': s.opacity ?? 0.45 } });
     map.addLayer({ id: `${src}-line`, type: 'line', source: src, filter: ['any', POLY, LINE], layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
@@ -268,7 +378,8 @@ function loadInto(map, layer) {
   source._smLoading = true;
   const s = layer.style || {};
   const display = displayOf(layer);
-  loadLayerData(layer).then((fc) => {
+  if (layer.type === 'raster') return;
+  layerFeatures(layer).then((fc) => {
     if (map.getSource(src) !== source) return; // style was swapped while loading
     source.setData(fc);
     const { expr, legend } = colorRamp(layer, fc);
@@ -374,6 +485,7 @@ class LegendControl {
       name.textContent = layer.name || 'Layer';
       row.append(name);
       if (!info) { name.append(' …'); return row; }
+      if (layer.attribution) { const src = document.createElement('div'); src.className = 'sm-legend-src'; src.textContent = layer.attribution.replace(/<[^>]+>/g, ''); row.append(src); }
       if (info.type === 'error') { const e = document.createElement('div'); e.className = 'sm-legend-err'; e.textContent = 'Could not load: ' + info.message; row.append(e); }
       if (info.type === 'single') name.prepend(swatch(info.color, info.clusters));
       if (info.clusters) { const d = document.createElement('div'); d.className = 'sm-legend-note'; d.textContent = 'Nearby points are grouped; click a group to zoom in'; row.append(d); }
