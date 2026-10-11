@@ -1,0 +1,185 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Great Falls Park",
+    "category": "Park",
+    "year": 1966
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.2539,
+     38.9985
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Georgetown Waterfront Park",
+    "category": "Park",
+    "year": 2011
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.061,
+     38.9025
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Theodore Roosevelt Island",
+    "category": "Park",
+    "year": 1967
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.064,
+     38.8964
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Lincoln Memorial",
+    "category": "Monument",
+    "year": 1922
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0502,
+     38.8893
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Washington Monument",
+    "category": "Monument",
+    "year": 1884
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0353,
+     38.8895
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Jefferson Memorial",
+    "category": "Monument",
+    "year": 1943
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0365,
+     38.8814
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Gravelly Point",
+    "category": "Park",
+    "year": 1970
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.042,
+     38.865
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Old Town Alexandria",
+    "category": "Historic site",
+    "year": 1749
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0393,
+     38.8048
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Jones Point Lighthouse",
+    "category": "Historic site",
+    "year": 1856
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0418,
+     38.7906
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Fort Hunt Park",
+    "category": "Historic site",
+    "year": 1897
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0464,
+     38.7193
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Fort Washington",
+    "category": "Historic site",
+    "year": 1809
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0326,
+     38.711
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Mount Vernon",
+    "category": "Historic site",
+    "year": 1735
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0861,
+     38.7083
+    ]
+   }
+  }
+ ]
+}

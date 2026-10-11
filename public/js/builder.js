@@ -1,5 +1,6 @@
 // Story builder: form-based editor on the left, live preview iframe on the right.
-import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers } from './maps.js';
+import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp } from './maps.js';
+import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
 import { getLocalStory, saveLocalStory, listLocalStories, newId } from './store.js';
 
@@ -40,10 +41,12 @@ const CATALOG = {
   sidecar: { label: 'Sidecar (scrolling map story)', make: () => ({ layout: 'docked', slides: [makeSlide(), makeSlide()] }),
     fields: [{ k: 'layout', t: 'select', label: 'Layout', opts: [['docked', 'Docked panel'], ['floating', 'Floating cards']] }, { k: 'slides', t: 'slides' }] },
   tour: { label: 'Guided tour', make: () => ({ basemap: 'streets', zoom: 14, places: [makePlace()] }),
-    fields: [{ k: 'basemap', t: 'select', label: 'Basemap', opts: BASEMAP_OPTS }, { k: 'zoom', t: 'number', label: 'Zoom per place' }, { k: 'places', t: 'places' }] },
+    fields: [{ k: 'basemap', t: 'select', label: 'Basemap', opts: BASEMAP_OPTS }, { k: 'zoom', t: 'number', label: 'Zoom per place' }, { k: 'layers', t: 'layerset', label: 'Data layers' }, { k: 'places', t: 'places' }] },
   swipe: { label: 'Swipe compare', make: () => ({ left: 'streets', right: 'dark', leftLabel: '', rightLabel: '', view: view(), caption: '' }),
     fields: [{ k: 'left', t: 'select', label: 'Left basemap', opts: BASEMAP_OPTS }, { k: 'right', t: 'select', label: 'Right basemap', opts: BASEMAP_OPTS },
-      { k: 'leftLabel', label: 'Left label' }, { k: 'rightLabel', label: 'Right label' }, { k: 'view', t: 'view', label: 'Map view', noMarkers: true }, { k: 'caption', label: 'Caption' }] },
+      { k: 'leftLabel', label: 'Left label' }, { k: 'rightLabel', label: 'Right label' },
+      { k: 'leftLayers', t: 'layerset', label: 'Left data layers' }, { k: 'rightLayers', t: 'layerset', label: 'Right data layers' },
+      { k: 'view', t: 'view', label: 'Map view', noMarkers: true, noLayers: true }, { k: 'caption', label: 'Caption' }] },
   separator: { label: 'Separator', make: () => ({}), fields: [] },
 };
 
@@ -52,7 +55,7 @@ function makePlace() { return { title: 'New place', lngLat: [...DEFAULT_VIEW.cen
 
 const blankStory = () => ({
   id: newId(), title: 'Untitled story', subtitle: '', author: '', date: '', theme: 'light', cover: { image: '' },
-  blocks: [CATALOG.text.make()].map((b) => ({ type: 'text', ...b })), credits: '',
+  blocks: [CATALOG.text.make()].map((b) => ({ type: 'text', ...b })), credits: '', layers: [],
 });
 
 /* ---------- State ---------- */
@@ -107,6 +110,7 @@ function field(obj, spec, onStructure) {
       h('select', { onchange: (e) => { set(e.target.value); spec.structural && onStructure(); } },
         spec.opts.map(([v, l]) => h('option', { value: v, ...(String(obj[spec.k] ?? '') === v ? { selected: '' } : {}) }, l))));
     case 'view': return viewField(obj, spec);
+    case 'layerset': return layerSet(obj, spec);
     case 'slides': return listField(obj, 'slides', 'Slide', makeSlide, slideForm, onStructure);
     case 'places': return listField(obj, 'places', 'Place', makePlace, placeForm, onStructure);
     default: return h('label', { class: 'b-field' }, label, h('input', { type: 'text', value: obj[spec.k] ?? '', oninput: (e) => set(e.target.value) }));
@@ -132,12 +136,13 @@ function richEditor(obj, key) {
 function viewField(obj, spec) {
   const summary = () => {
     const v = obj[spec.k] || {};
-    return `${BASEMAPS[v.basemap]?.label || 'Streets'} · zoom ${v.zoom ?? '?'} · ${(v.markers || []).length} marker(s)`;
+    const n = (v.layers || []).length;
+    return `${BASEMAPS[v.basemap]?.label || 'Streets'} · zoom ${v.zoom ?? '?'} · ${(v.markers || []).length} marker(s)${n ? ` · ${n} layer(s)` : ''}`;
   };
   const text = h('span', { class: 'b-muted' }, summary());
   return h('div', { class: 'b-field' }, h('span', { class: 'b-label' }, spec.label || 'Map view'),
     h('div', { class: 'b-row' }, text,
-      h('button', { type: 'button', class: 'b-btn', onclick: () => openPicker({ mode: 'view', value: obj[spec.k], noMarkers: spec.noMarkers },
+      h('button', { type: 'button', class: 'b-btn', onclick: () => openPicker({ mode: 'view', value: obj[spec.k], noMarkers: spec.noMarkers, noLayers: spec.noLayers },
         (v) => { obj[spec.k] = v; text.textContent = summary(); changed(); }) }, 'Set map view…')));
 }
 
@@ -169,12 +174,69 @@ function slideForm(slide, onStructure) {
   const mediaFields = (m.type || 'map') === 'map'
     ? [field(m, { k: 'view', t: 'view', label: 'Map for this slide' })]
     : [field(m, { k: 'url', label: m.type === 'image' ? 'Image URL' : m.type === 'video' ? 'Video URL' : 'Page URL' }), field(m, { k: 'alt', label: 'Alt text / title' })];
+  const rich = richEditor(slide, 'html');
   return h('div', {},
-    richEditor(slide, 'html'),
+    rich,
     h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Media'),
       h('select', { onchange: (e) => { m.type = e.target.value; if (m.type === 'map') m.view ||= view(); changed(); onStructure(); } },
         [['map', 'Map'], ['image', 'Image'], ['video', 'Video'], ['embed', 'Embed']].map(([v, l]) => h('option', { value: v, ...((m.type || 'map') === v ? { selected: '' } : {}) }, l)))),
-    mediaFields);
+    mediaFields,
+    actionsField(slide, rich.querySelector('.b-rich-area'), onStructure));
+}
+
+// Map actions: named alternate views, triggered by #action:<id> links in the slide text.
+function actionsField(slide, editor, onStructure) {
+  const actions = (slide.actions ||= []);
+  const insertLink = (a) => (e) => {
+    e.preventDefault();
+    const sel = getSelection();
+    const inEditor = sel.rangeCount && editor.contains(sel.anchorNode);
+    if (inEditor && !sel.isCollapsed) {
+      document.execCommand('createLink', false, `#action:${a.id}`);
+    } else {
+      // No selection: append the link to the end of the text.
+      const link = h('a', { href: `#action:${a.id}` }, a.label || 'map action');
+      let target = editor.lastElementChild;
+      if (!target || !/^(P|H2|H3|H4|LI)$/.test(target.tagName)) target = editor.appendChild(h('p'));
+      target.append(' ', link);
+    }
+    editor.dispatchEvent(new Event('input'));
+  };
+  return h('div', { class: 'b-field' },
+    h('span', { class: 'b-label' }, 'Map actions'),
+    h('p', { class: 'b-muted b-hint' }, 'Links in the text that change the map. Select words in the text, then click "Link selected text", or insert a new link.'),
+    actions.map((a, i) => {
+      const summary = h('span', { class: 'b-muted' }, viewSummary(a.view));
+      return h('div', { class: 'b-item' },
+        h('div', { class: 'b-item-head' }, h('strong', {}, `Action ${i + 1}`), itemControls(actions, i, onStructure)),
+        field(a, { k: 'label', label: 'Link text' }),
+        h('div', { class: 'b-row', style: 'margin-top:8px' }, summary,
+          h('button', { type: 'button', class: 'b-btn', onclick: () => openPicker({ mode: 'view', value: a.view || slide.media?.view },
+            (v) => { a.view = v; summary.textContent = viewSummary(v); changed(); }) }, 'Set view…')),
+        h('div', { class: 'b-row', style: 'margin-top:8px' },
+          h('button', { type: 'button', class: 'b-btn', onmousedown: insertLink(a) }, 'Link selected text'),
+          h('span', { class: 'b-muted' }, `#action:${a.id}`)));
+    }),
+    h('button', { type: 'button', class: 'b-btn b-add', onclick: () => {
+      actions.push({ id: 'a' + Math.random().toString(36).slice(2, 7), label: 'see this', view: clone(slide.media?.view || view()) });
+      changed(); onStructure();
+    } }, '+ Add map action'));
+}
+
+const viewSummary = (v = {}) => `${BASEMAPS[v.basemap]?.label || 'Streets'} · zoom ${v.zoom ?? '?'}${(v.layers || []).length ? ` · ${v.layers.length} layer(s)` : ''}`;
+
+function layerSet(obj, spec) {
+  const lib = story.layers || [];
+  const ids = (obj[spec.k] ||= []);
+  return h('div', { class: 'b-field' }, h('span', { class: 'b-label' }, spec.label),
+    lib.length ? h('div', { class: 'b-checks' }, lib.map((l) => h('label', {},
+      h('input', { type: 'checkbox', ...(ids.includes(l.id) ? { checked: '' } : {}), onchange: (e) => {
+        const i = ids.indexOf(l.id);
+        if (e.target.checked && i < 0) ids.push(l.id);
+        if (!e.target.checked && i >= 0) ids.splice(i, 1);
+        changed();
+      } }), ' ', l.name || l.id)))
+      : h('span', { class: 'b-muted' }, 'No data layers yet. Add them under "Data layers" above.'));
 }
 
 function placeForm(place) {
@@ -188,10 +250,118 @@ function placeForm(place) {
     richEditor(place, 'html'));
 }
 
+/* ---------- Data layers ---------- */
+
+const layerInfo = {}; // id -> { key, count, fields, fc, loading, error }
+const openLayers = new Set();
+const layerStatus = (l) => {
+  const i = layerInfo[l.id] || {};
+  return i.loading ? 'Loading…' : i.error ? 'Error' : i.count != null ? `${i.count.toLocaleString()} features` : '';
+};
+const sourceKey = (l) => (l.data ? `data:${l.data.features?.length}` : `url:${l.url || ''}`);
+
+function inspectLayer(layer) {
+  const key = sourceKey(layer);
+  if (layerInfo[layer.id]?.key === key) return;
+  layerInfo[layer.id] = { key, loading: true };
+  loadLayerData(layer).then((fc) => {
+    if (layerInfo[layer.id]?.key !== key) return;
+    layerInfo[layer.id] = { key, count: fc.features.length, fields: fieldNames(fc), fc };
+    renderLayers();
+  }).catch((err) => {
+    if (layerInfo[layer.id]?.key !== key) return;
+    layerInfo[layer.id] = { key, error: err.message };
+    renderLayers();
+  });
+}
+
+function renderLayers() {
+  const lib = (story.layers ||= []);
+  lib.forEach(inspectLayer);
+  $('#layers').replaceChildren(
+    h('p', { class: 'b-muted b-hint' }, 'Layers are shared by every map in the story. Turn them on per map in "Set map view…".'),
+    ...lib.map((layer, i) => {
+      const card = h('details', { class: 'b-block b-layer', ...(openLayers.has(layer.id) ? { open: '' } : {}) },
+        h('summary', {}, h('span', { class: 'sm-swatch', style: `background:${layer.style?.color || '#2563eb'}` }),
+          h('span', { class: 'b-type' }, layer.name || 'Layer'), h('span', { class: 'b-peek' }, layerStatus(layer)), itemControls(lib, i, renderAllForms)),
+        h('div', { class: 'b-block-body' }, layerForm(layer)));
+      card.addEventListener('toggle', () => (card.open ? openLayers.add(layer.id) : openLayers.delete(layer.id)));
+      return card;
+    }),
+    h('div', { class: 'b-row', style: 'margin-top:10px' },
+      h('button', { type: 'button', class: 'b-btn', onclick: () => {
+        const id = 'l' + Math.random().toString(36).slice(2, 7);
+        lib.push({ id, name: 'New layer', url: '', style: { color: '#2563eb' }, popup: {} });
+        openLayers.add(id);
+        changed(); renderAllForms();
+      } }, '+ Add layer')));
+}
+
+function layerForm(layer) {
+  layer.style ||= {};
+  layer.popup ||= {};
+  const st = layer.style;
+  const info = layerInfo[layer.id] || {};
+  const fields = info.fields || [];
+  const fieldSelect = (obj, k, label, empty = 'None') => h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, label),
+    h('select', { onchange: (e) => { obj[k] = e.target.value || undefined; changed(); renderLayers(); } },
+      h('option', { value: '' }, empty), fields.map((f) => h('option', { value: f, ...(obj[k] === f ? { selected: '' } : {}) }, f))));
+  const status = info.loading ? 'Loading…' : info.error ? `Could not load: ${info.error}` : info.count != null ? `${info.count.toLocaleString()} features · ${fields.length} fields` : '';
+
+  const fileInput = h('input', { type: 'file', accept: '.geojson,.json,.csv,application/json,text/csv', hidden: '', onchange: async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const fc = /\.csv$/i.test(file.name) ? csvToGeoJSON(text) : JSON.parse(text);
+      if (fc.type !== 'FeatureCollection') throw new Error('Expected a GeoJSON FeatureCollection');
+      layer.data = fc;
+      delete layer.url;
+      if (layer.name === 'New layer') layer.name = file.name.replace(/\.\w+$/, '');
+      const kb = Math.round(JSON.stringify(fc).length / 1024);
+      if (kb > 1500) alert(`This file is ${kb} KB. Browser storage holds about 5 MB in total, so large files may fail to save. Hosting it and using a URL is safer.`);
+      changed(); renderAllForms();
+    } catch (err) { alert('Could not read file: ' + err.message); }
+  } });
+
+  const cats = st.mode === 'categorical' && st.field && info.fc ? colorRamp(layer, info.fc).legend.entries.filter(([v]) => v !== 'Other') : [];
+
+  return h('div', {},
+    field(layer, { k: 'name', label: 'Name (shown in legend)' }),
+    h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Data URL: GeoJSON, or an ArcGIS FeatureServer/MapServer layer'),
+      h('input', { type: 'text', value: layer.data ? '' : layer.url || '', placeholder: layer.data ? `Uploaded file (${layer.data.features.length} features)` : 'https://…',
+        onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; changed(); renderLayers(); } })),
+    h('div', { class: 'b-row', style: 'margin-top:6px' },
+      h('button', { type: 'button', class: 'b-btn', onclick: () => fileInput.click() }, 'Upload GeoJSON / CSV…'), fileInput,
+      h('span', { class: `b-muted ${info.error ? 'is-error' : ''}` }, status)),
+    h('div', { class: 'b-grid2' },
+      h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Style'),
+        h('select', { onchange: (e) => { st.mode = e.target.value; changed(); renderLayers(); } },
+          [['single', 'Single color'], ['categorical', 'Color by category'], ['graduated', 'Color by number']].map(([v, l]) => h('option', { value: v, ...((st.mode || 'single') === v ? { selected: '' } : {}) }, l)))),
+      h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, st.mode === 'categorical' ? 'Fallback color' : 'Color'),
+        h('input', { type: 'color', value: st.color || '#2563eb', oninput: (e) => { st.color = e.target.value; changed(); } }))),
+    st.mode && st.mode !== 'single' ? fieldSelect(st, 'field', 'Field to color by', 'Choose a field…') : null,
+    cats.length ? h('div', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Category colors'),
+      h('div', { class: 'b-cats' }, cats.map(([v, c]) => h('label', { class: 'b-row' },
+        h('input', { type: 'color', value: c, oninput: (e) => { (st.colors ||= {})[v] = e.target.value; changed(); } }), v)))) : null,
+    h('div', { class: 'b-grid3' },
+      field(st, { k: 'opacity', t: 'number', label: 'Fill opacity' }),
+      field(st, { k: 'radius', t: 'number', label: 'Point size' }),
+      field(st, { k: 'width', t: 'number', label: 'Line width' })),
+    fieldSelect(st, 'label', 'Label field'),
+    field(layer.popup, { k: 'title', label: 'Popup title, e.g. {NAME}' }),
+    h('label', { class: 'b-field' }, h('span', { class: 'b-label' }, 'Popup fields (comma separated; blank = first 8)'),
+      h('input', { type: 'text', value: (layer.popup.fields || []).join(', '), placeholder: fields.slice(0, 4).join(', '),
+        oninput: (e) => { layer.popup.fields = e.target.value.split(',').map((f) => f.trim()).filter(Boolean); changed(); } })));
+}
+
+function renderAllForms() { renderLayers(); renderBlocks(); }
+
 /* ---------- Panels ---------- */
 
 function renderAll() {
   renderSettings();
+  renderLayers();
   renderBlocks();
   $('#title-input').value = story.title;
   pushPreview();
@@ -243,15 +413,30 @@ function addBar(index) {
 /* ---------- Map picker modal ---------- */
 
 let pickerMap = null;
-function openPicker({ mode, value, noMarkers }, done) {
+function openPicker({ mode, value, noMarkers, noLayers }, done) {
   const dlg = $('#picker');
   const v = view(clone(value || {}));
   const markers = clone(v.markers || []);
   const mapEl = h('div', { class: 'b-picker-map' });
   const markerList = h('div', { class: 'b-marker-list' });
-  const basemapSel = h('select', { onchange: (e) => { pickerMap.setStyle(BASEMAPS[e.target.value].style); pickerMap._basemap = e.target.value; } },
+  const basemapSel = h('select', { onchange: (e) => { pickerMap.setStyle(BASEMAPS[e.target.value].style, { diff: false }); pickerMap._basemap = e.target.value; } },
     BASEMAP_OPTS.map(([k, l]) => h('option', { value: k, ...(k === v.basemap ? { selected: '' } : {}) }, l)));
   let point = mode === 'point' ? [...v.center] : null;
+  const lib = story.layers || [];
+  const visible = [...(v.layers || [])];
+  const layerPanel = mode === 'point' || noLayers || !lib.length ? null : h('div', { class: 'b-picker-layers' },
+    h('strong', {}, 'Data layers'),
+    lib.map((l) => h('div', { class: 'b-row' },
+      h('label', { class: 'b-row', style: 'flex:1' }, h('input', { type: 'checkbox', ...(visible.includes(l.id) ? { checked: '' } : {}), onchange: (e) => {
+        const i = visible.indexOf(l.id);
+        if (e.target.checked && i < 0) visible.push(l.id);
+        if (!e.target.checked && i >= 0) visible.splice(i, 1);
+        setVisibleLayers(pickerMap, lib.filter((x) => visible.includes(x.id)).map((x) => x.id));
+      } }), l.name || l.id),
+      h('button', { type: 'button', class: 'b-btn b-small', title: 'Zoom to layer', onclick: () => fitToLayer(pickerMap, l.id) }, 'Zoom to'))),
+    h('label', { class: 'b-row', style: 'margin-top:6px' }, h('input', { type: 'checkbox', ...(v.legend !== false ? { checked: '' } : {}), onchange: (e) => {
+      pickerMap._legend.enabled = e.target.checked; pickerMap._legend.render(pickerMap);
+    } }), 'Show legend'));
 
   const drawMarkers = () => {
     if (mode === 'point') { setMarkers(pickerMap, [{ lngLat: point }]); return; }
@@ -270,20 +455,23 @@ function openPicker({ mode, value, noMarkers }, done) {
       mode === 'point' ? null : h('label', { class: 'b-row' }, 'Basemap ', basemapSel)),
     h('div', { class: 'b-row', style: 'gap:8px' }, h('input', { type: 'search', placeholder: 'Search a place (OpenStreetMap)…', class: 'b-search' }),
       h('button', { type: 'button', class: 'b-btn', onclick: (e) => geocode(e.target.previousSibling.value) }, 'Search')),
-    mapEl,
+    h('div', { class: layerPanel ? 'b-picker-body has-layers' : 'b-picker-body' }, mapEl, layerPanel),
     noMarkers || mode === 'point' ? null : markerList,
     h('div', { class: 'b-row b-picker-actions' },
       h('button', { value: 'cancel', class: 'b-btn' }, 'Cancel'),
       h('button', { type: 'button', class: 'b-btn is-primary', onclick: () => {
-        done(mode === 'point' ? point : { ...readView(pickerMap), markers: noMarkers ? [] : markers });
+        const out = { ...readView(pickerMap), markers: noMarkers ? [] : markers };
+        if (noLayers) delete out.layers;
+        done(mode === 'point' ? point : out);
         dlg.close();
       } }, 'Use this'))));
   dlg.showModal();
   pickerMap?.remove();
-  pickerMap = createMap(mapEl, { ...v, markers: [] });
+  pickerMap = createMap(mapEl, { ...v, markers: [], layers: visible }, { library: lib });
   pickerMap.scrollZoom.enable();
   pickerMap.on('click', (e) => {
     const ll = [+e.lngLat.lng.toFixed(5), +e.lngLat.lat.toFixed(5)];
+    if (mode !== 'point' && pickerMap.queryRenderedFeatures(e.point).some((f) => f.layer.id.startsWith('dl-'))) return; // clicked a feature: show its popup
     if (mode === 'point') point = ll;
     else if (!noMarkers) markers.push({ lngLat: ll, title: '' });
     drawMarkers();

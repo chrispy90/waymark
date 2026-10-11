@@ -28,8 +28,9 @@ Then open http://localhost:5180. There are no dependencies to install.
 | Sidecar (docked / floating), the Map Journal and Cascade scroll pattern | `sidecar` block; each slide sets its own map view or media and the map flies between them | Done |
 | Guided tour (Map Tour) | `tour` block: numbered places, step through them or click a marker | Done |
 | Swipe | `swipe` block: compare two basemaps with a draggable divider | Done |
-| Map actions (inline links that change the map) | | Next |
-| Feature layers / GeoJSON overlays, legends, popups from data | | Next |
+| Map actions (inline links that change the map) | Sidecar slides: `#action:<id>` links fly the map to another view and toggle back when clicked again | Done |
+| Data layers: GeoJSON, CSV, ArcGIS feature layers | Story-level layer library, turned on per map view. Styles: single color, color by category, color by number, plus labels, popups and a legend | Done |
+| Swipe between layers | `swipe.leftLayers` / `rightLayers` | Done |
 | Satellite imagery basemap | Needs a licensed imagery provider (e.g. MapTiler or Esri with a key) | Next |
 | Collections, themes, publishing, sharing, accounts | Drafts live in `localStorage` only; export and import JSON | Needs a backend |
 | Image upload | URLs only | Needs a backend |
@@ -40,11 +41,13 @@ Then open http://localhost:5180. There are no dependencies to install.
 server.js              zero-dependency static server
 public/
   js/render.js         story JSON -> DOM; all block renderers
-  js/maps.js           MapLibre helpers: basemaps, views, markers, flyTo
+  js/maps.js           MapLibre helpers: basemaps, views, markers, data layers, legend, popups
+  js/csv.js            CSV parser and lat/long-to-GeoJSON conversion
   js/builder.js        editor UI, map-view picker, import/export
   js/store.js          localStorage drafts (swap for an API later)
   js/sanitize.js       allow-list HTML sanitizer for author text
   stories/potomac.json sample story
+  data/                sample GeoJSON
 docs/SCHEMA.md         story document format
 _reference/            cloned open-source projects (git-ignored, read-only reference)
 ```
@@ -57,3 +60,13 @@ _reference/            cloned open-source projects (git-ignored, read-only refer
 - `mapbox/storytelling`: BSD-3-Clause
 
 The current ArcGIS StoryMaps product is closed source and was not used.
+
+## Data layers
+
+A layer's source can be any of:
+
+- **A GeoJSON URL.** It must allow cross-origin requests (CORS).
+- **A public ArcGIS REST layer URL**, ending in `/FeatureServer/<n>` or `/MapServer/<n>`. It's queried as GeoJSON with `f=geojson` and paged through the server's record limit, up to 20,000 features. Secured services that need a token aren't supported.
+- **An uploaded `.geojson` or `.csv` file.** A CSV needs latitude and longitude columns, named `lat`/`latitude`/`y` and `lon`/`lng`/`longitude`/`x`. Uploaded data is stored inline in the story, and browser storage holds about 5 MB in total.
+
+Data is fetched only when a layer is first shown, and each URL is cached across maps.

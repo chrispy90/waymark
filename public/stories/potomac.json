@@ -5,47 +5,423 @@
   "author": "StoryMaps sample",
   "date": "October 2026",
   "theme": "light",
-  "cover": { "image": "https://picsum.photos/seed/potomac-river/1920/1080" },
+  "cover": {
+    "image": "https://picsum.photos/seed/potomac-river/1920/1080"
+  },
   "blocks": [
-    { "type": "text", "style": "large", "html": "<p>The Potomac runs 405 miles from the Allegheny Mountains to the Chesapeake Bay. Its last stretch above tidewater drops sharply over the fall line, and nearly everything about the region's history follows from that drop.</p>" },
-    { "type": "text", "html": "<h2>The fall line</h2><p>Scroll to follow the river downstream. The map on the right moves with the story.</p>" },
+    {
+      "type": "text",
+      "style": "large",
+      "html": "<p>The Potomac runs 405 miles from the Allegheny Mountains to the Chesapeake Bay. Its last stretch above tidewater drops sharply over the fall line, and nearly everything about the region's history follows from that drop.</p>"
+    },
+    {
+      "type": "text",
+      "html": "<h2>The fall line</h2><p>Scroll to follow the river downstream. The map on the right moves with the story.</p>"
+    },
     {
       "type": "sidecar",
       "layout": "docked",
       "slides": [
-        { "html": "<h3>Great Falls</h3><p>The river falls 76 feet in under a mile, through the narrow Mather Gorge. Boats could not get past it, so cargo had to stop here.</p>",
-          "media": { "type": "map", "view": { "center": [-77.2539, 38.9985], "zoom": 14, "pitch": 45, "bearing": -20, "basemap": "streets", "markers": [{ "lngLat": [-77.2539, 38.9985], "title": "Great Falls", "text": "Mather Gorge overlook" }] } } },
-        { "html": "<h3>Georgetown</h3><p>A tobacco port grew up at the head of navigation, the farthest point upriver that seagoing ships could reach.</p>",
-          "media": { "type": "map", "view": { "center": [-77.061, 38.9025], "zoom": 15, "pitch": 30, "bearing": 0, "basemap": "streets", "markers": [{ "lngLat": [-77.061, 38.9025], "title": "Georgetown Waterfront" }] } } },
-        { "html": "<h3>An image slide</h3><p>A slide can show an image, video or embedded page instead of the map. The map comes back on the next slide.</p>",
-          "media": { "type": "image", "url": "https://picsum.photos/seed/georgetown/1600/1000", "alt": "Placeholder photo" } },
-        { "html": "<h3>The National Mall</h3><p>Much of the Mall and West Potomac Park sits on land dredged from the river's tidal flats in the 1880s.</p>",
-          "media": { "type": "map", "view": { "center": [-77.045, 38.885], "zoom": 13.5, "pitch": 0, "bearing": 0, "basemap": "light", "markers": [{ "lngLat": [-77.0502, 38.8893], "title": "Lincoln Memorial" }] } } },
-        { "html": "<h3>Old Town Alexandria</h3><p>Downstream, Alexandria's deep-water port competed with Georgetown for the river trade.</p>",
-          "media": { "type": "map", "view": { "center": [-77.0393, 38.8048], "zoom": 14.5, "pitch": 40, "bearing": 15, "basemap": "streets", "markers": [{ "lngLat": [-77.0393, 38.8048], "title": "Alexandria waterfront" }] } } },
-        { "html": "<h3>The whole route</h3><p>Zoomed out, the run from the falls to Mount Vernon is about 30 miles.</p>",
-          "media": { "type": "map", "view": { "center": [-77.12, 38.86], "zoom": 10, "pitch": 0, "bearing": 0, "basemap": "dark", "markers": [] } } }
+        {
+          "html": "<h3>Great Falls</h3><p>The river falls 76 feet in under a mile, through the narrow Mather Gorge. Boats could not get past it, so cargo had to stop here.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -77.2539,
+                38.9985
+              ],
+              "zoom": 14,
+              "pitch": 45,
+              "bearing": -20,
+              "basemap": "streets",
+              "markers": [
+                {
+                  "lngLat": [
+                    -77.2539,
+                    38.9985
+                  ],
+                  "title": "Great Falls",
+                  "text": "Mather Gorge overlook"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "html": "<h3>Georgetown</h3><p>A tobacco port grew up at the head of navigation, the farthest point upriver that seagoing ships could reach.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -77.061,
+                38.9025
+              ],
+              "zoom": 15,
+              "pitch": 30,
+              "bearing": 0,
+              "basemap": "streets",
+              "markers": [
+                {
+                  "lngLat": [
+                    -77.061,
+                    38.9025
+                  ],
+                  "title": "Georgetown Waterfront"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "html": "<h3>An image slide</h3><p>A slide can show an image, video or embedded page instead of the map. The map comes back on the next slide.</p>",
+          "media": {
+            "type": "image",
+            "url": "https://picsum.photos/seed/georgetown/1600/1000",
+            "alt": "Placeholder photo"
+          }
+        },
+        {
+          "html": "<h3>The National Mall</h3><p>Much of the Mall and West Potomac Park sits on land dredged from the river's tidal flats in the 1880s. See the <a href=\"#action:parks\">federal park land</a> along the river, or zoom in on the <a href=\"#action:memorials\">memorials</a>.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -77.045,
+                38.885
+              ],
+              "zoom": 13.5,
+              "pitch": 0,
+              "bearing": 0,
+              "basemap": "light",
+              "markers": [
+                {
+                  "lngLat": [
+                    -77.0502,
+                    38.8893
+                  ],
+                  "title": "Lincoln Memorial"
+                }
+              ],
+              "layers": [
+                "landmarks"
+              ]
+            }
+          },
+          "actions": [
+            {
+              "id": "parks",
+              "label": "federal park land",
+              "view": {
+                "center": [
+                  -77.03,
+                  38.89
+                ],
+                "zoom": 12,
+                "basemap": "light",
+                "layers": [
+                  "parks"
+                ],
+                "markers": []
+              }
+            },
+            {
+              "id": "memorials",
+              "label": "memorials",
+              "view": {
+                "center": [
+                  -77.043,
+                  38.886
+                ],
+                "zoom": 14.6,
+                "pitch": 45,
+                "bearing": -30,
+                "basemap": "light",
+                "layers": [
+                  "landmarks"
+                ],
+                "markers": []
+              }
+            }
+          ]
+        },
+        {
+          "html": "<h3>Old Town Alexandria</h3><p>Downstream, Alexandria's deep-water port competed with Georgetown for the river trade.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -77.0393,
+                38.8048
+              ],
+              "zoom": 14.5,
+              "pitch": 40,
+              "bearing": 15,
+              "basemap": "streets",
+              "markers": [
+                {
+                  "lngLat": [
+                    -77.0393,
+                    38.8048
+                  ],
+                  "title": "Alexandria waterfront"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "html": "<h3>The whole route</h3><p>Zoomed out, the run from the falls to Mount Vernon is about 30 miles. The Mount Vernon Trail follows the Virginia shore for the last 18.</p>",
+          "media": {
+            "type": "map",
+            "view": {
+              "center": [
+                -77.12,
+                38.86
+              ],
+              "zoom": 10,
+              "pitch": 0,
+              "bearing": 0,
+              "basemap": "light",
+              "markers": [],
+              "layers": [
+                "trail",
+                "landmarks"
+              ]
+            }
+          }
+        }
       ]
     },
-    { "type": "quote", "text": "The river is the reason the city is where it is.", "cite": "Sample quote" },
-    { "type": "text", "html": "<h2>A guided tour</h2><p>Step through the places below, or click a numbered marker.</p>" },
+    {
+      "type": "quote",
+      "text": "The river is the reason the city is where it is.",
+      "cite": "Sample quote"
+    },
+    {
+      "type": "text",
+      "html": "<h2>A guided tour</h2><p>Step through the places below, or click a numbered marker.</p>"
+    },
     {
       "type": "tour",
       "basemap": "streets",
       "zoom": 14,
       "places": [
-        { "title": "Great Falls Park", "lngLat": [-77.2539, 38.9985], "image": "https://picsum.photos/seed/falls/900/600", "html": "<p>Overlooks above Mather Gorge.</p>" },
-        { "title": "Georgetown Waterfront Park", "lngLat": [-77.061, 38.9025], "image": "https://picsum.photos/seed/gtown/900/600", "html": "<p>The old port, now a riverside park.</p>" },
-        { "title": "Old Town Alexandria", "lngLat": [-77.0393, 38.8048], "image": "https://picsum.photos/seed/oldtown/900/600", "html": "<p>Brick streets down to the water.</p>" },
-        { "title": "Fort Hunt Park", "lngLat": [-77.048, 38.718], "image": "https://picsum.photos/seed/forthunt/900/600", "html": "<p>A former coastal battery on the river bluffs.</p>" },
-        { "title": "Mount Vernon", "lngLat": [-77.0861, 38.7083], "image": "https://picsum.photos/seed/vernon/900/600", "html": "<p>Washington's estate above the river.</p>" }
+        {
+          "title": "Great Falls Park",
+          "lngLat": [
+            -77.2539,
+            38.9985
+          ],
+          "image": "https://picsum.photos/seed/falls/900/600",
+          "html": "<p>Overlooks above Mather Gorge.</p>"
+        },
+        {
+          "title": "Georgetown Waterfront Park",
+          "lngLat": [
+            -77.061,
+            38.9025
+          ],
+          "image": "https://picsum.photos/seed/gtown/900/600",
+          "html": "<p>The old port, now a riverside park.</p>"
+        },
+        {
+          "title": "Old Town Alexandria",
+          "lngLat": [
+            -77.0393,
+            38.8048
+          ],
+          "image": "https://picsum.photos/seed/oldtown/900/600",
+          "html": "<p>Brick streets down to the water.</p>"
+        },
+        {
+          "title": "Fort Hunt Park",
+          "lngLat": [
+            -77.048,
+            38.718
+          ],
+          "image": "https://picsum.photos/seed/forthunt/900/600",
+          "html": "<p>A former coastal battery on the river bluffs.</p>"
+        },
+        {
+          "title": "Mount Vernon",
+          "lngLat": [
+            -77.0861,
+            38.7083
+          ],
+          "image": "https://picsum.photos/seed/vernon/900/600",
+          "html": "<p>Washington's estate above the river.</p>"
+        }
+      ],
+      "layers": [
+        "trail"
       ]
     },
-    { "type": "text", "html": "<h2>Compare basemaps</h2><p>Drag the handle to swipe between two views of the same place.</p>" },
-    { "type": "swipe", "left": "streets", "right": "dark", "leftLabel": "Streets", "rightLabel": "Dark", "view": { "center": [-77.04, 38.89], "zoom": 12.5 }, "caption": "Swipe compares two basemaps or layers with the same camera." },
-    { "type": "separator" },
-    { "type": "map", "caption": "An inline interactive map block.", "view": { "center": [-77.06, 38.8], "zoom": 10.5, "basemap": "light", "markers": [
-      { "lngLat": [-77.061, 38.9025], "title": "Georgetown" }, { "lngLat": [-77.0393, 38.8048], "title": "Alexandria" }, { "lngLat": [-77.0861, 38.7083], "title": "Mount Vernon" } ] } }
+    {
+      "type": "text",
+      "html": "<h2>Compare basemaps</h2><p>Drag the handle to swipe between two views of the same place.</p>"
+    },
+    {
+      "type": "swipe",
+      "left": "light",
+      "right": "light",
+      "leftLabel": "Basemap only",
+      "rightLabel": "Park land",
+      "view": {
+        "center": [
+          -77.04,
+          38.89
+        ],
+        "zoom": 12.5
+      },
+      "caption": "Swipe to reveal DC's National Park Service land, loaded live from the DC GIS ArcGIS REST service.",
+      "leftLayers": [],
+      "rightLayers": [
+        "parks"
+      ]
+    },
+    {
+      "type": "separator"
+    },
+    {
+      "type": "map",
+      "caption": "Landmarks colored by category, with the Mount Vernon Trail. Click a point for details.",
+      "view": {
+        "center": [
+          -77.06,
+          38.8
+        ],
+        "zoom": 10.5,
+        "basemap": "light",
+        "markers": [],
+        "layers": [
+          "landmarks",
+          "trail"
+        ]
+      }
+    }
   ],
-  "credits": "<p>Basemaps © OpenStreetMap contributors, OpenFreeMap, OpenMapTiles. Photos are placeholders from picsum.photos.</p>"
+  "credits": "<p>Basemaps © OpenStreetMap contributors, OpenFreeMap, OpenMapTiles. Park land: DC GIS (Open Data DC). Landmark dates and the trail line are approximate. Photos are placeholders from picsum.photos.</p>",
+  "layers": [
+    {
+      "id": "parks",
+      "name": "National park land (DC)",
+      "url": "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Recreation_WebMercator/MapServer/10",
+      "style": {
+        "color": "#16a34a",
+        "opacity": 0.45
+      },
+      "popup": {
+        "title": "{NAME}",
+        "fields": [
+          "ADDRESS",
+          "SOURCE",
+          "ALPHA_CODE"
+        ]
+      }
+    },
+    {
+      "id": "trail",
+      "name": "Mount Vernon Trail (approx.)",
+      "data": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": {
+              "name": "Mount Vernon Trail",
+              "length_mi": 18
+            },
+            "geometry": {
+              "type": "LineString",
+              "coordinates": [
+                [
+                  -77.066,
+                  38.8975
+                ],
+                [
+                  -77.056,
+                  38.878
+                ],
+                [
+                  -77.044,
+                  38.86
+                ],
+                [
+                  -77.043,
+                  38.845
+                ],
+                [
+                  -77.039,
+                  38.825
+                ],
+                [
+                  -77.04,
+                  38.8048
+                ],
+                [
+                  -77.044,
+                  38.788
+                ],
+                [
+                  -77.05,
+                  38.77
+                ],
+                [
+                  -77.053,
+                  38.75
+                ],
+                [
+                  -77.049,
+                  38.73
+                ],
+                [
+                  -77.056,
+                  38.718
+                ],
+                [
+                  -77.074,
+                  38.711
+                ],
+                [
+                  -77.0861,
+                  38.7083
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      "style": {
+        "color": "#c2410c",
+        "width": 4
+      },
+      "popup": {
+        "title": "{name}"
+      }
+    },
+    {
+      "id": "landmarks",
+      "name": "Landmarks",
+      "url": "data/landmarks.geojson",
+      "style": {
+        "mode": "categorical",
+        "field": "category",
+        "radius": 7,
+        "label": "name",
+        "colors": {
+          "Park": "#16a34a",
+          "Monument": "#7c3aed",
+          "Historic site": "#b45309"
+        }
+      },
+      "popup": {
+        "title": "{name}",
+        "fields": [
+          "category",
+          "year"
+        ]
+      }
+    }
+  ]
 }

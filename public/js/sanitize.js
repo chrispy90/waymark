@@ -25,8 +25,10 @@ function clean(node) {
     });
     if (child.tagName === 'A') {
       if (!/^(https?:|mailto:|#)/i.test(child.getAttribute('href') || '')) child.removeAttribute('href');
-      child.setAttribute('target', '_blank');
-      child.setAttribute('rel', 'noopener noreferrer');
+      if (!(child.getAttribute('href') || '').startsWith('#')) {
+        child.setAttribute('target', '_blank');
+        child.setAttribute('rel', 'noopener noreferrer');
+      }
     }
     clean(child);
   });

@@ -87,5 +87,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .b-open li { margin: 4px 0; }
 .b-open a { color: var(--accent); }
 
-/* Marker styling shared with the viewer */
-.sm-marker { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); display: grid; place-items: center; font: 700 11px 'Inter', sans-serif; }
+
+.b-hint { margin: 6px 0 0; }
+.is-error { color: #dc2626; }
+.b-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.b-checks { display: grid; gap: 4px; }
+.b-checks label, .b-picker-layers label { font-size: 13px; cursor: pointer; }
+.b-cats { display: grid; gap: 4px; max-height: 180px; overflow: auto; }
+.b-cats input[type=color], .b-field input[type=color] { width: 36px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); cursor: pointer; }
+.b-cats label { font-size: 13px; }
+.b-small { padding: 2px 8px; font-size: 12px; }
+.b-picker-body { display: grid; gap: 10px; }
+.b-picker-body.has-layers { grid-template-columns: 1fr 220px; }
+.b-picker-layers { display: grid; align-content: start; gap: 6px; font-size: 13px; max-height: 55vh; overflow: auto; }
+@media (max-width: 700px) { .b-picker-body.has-layers { grid-template-columns: 1fr; } }
+.b-layer { margin-top: 8px; }
+.b-layer .sm-swatch { width: 12px; height: 12px; border-radius: 2px; flex: none; }

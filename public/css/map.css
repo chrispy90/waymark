@@ -1,0 +1,20 @@
+/* Shared by viewer and builder: markers, popups, legend */
+.sm-marker { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35); display: grid; place-items: center; font: 700 12px 'Inter', system-ui, sans-serif; cursor: pointer; transition: transform .2s; }
+.sm-marker.is-active { transform: scale(1.35); z-index: 2; }
+.maplibregl-popup-content { font: 13px/1.4 'Inter', system-ui, sans-serif; color: #1d1d1b; }
+.maplibregl-popup-content p { margin: 4px 0 0; }
+.sm-popup strong { display: block; font-size: 14px; margin: 0 16px 6px 0; }
+.sm-popup table { border-collapse: collapse; width: 100%; }
+.sm-popup td { padding: 3px 0; border-top: 1px solid #eee; vertical-align: top; }
+.sm-popup td:first-child { color: #6b7280; padding-right: 10px; white-space: nowrap; }
+.sm-popup td:last-child { overflow-wrap: anywhere; }
+.sm-legend { background: rgba(255,255,255,.95); color: #1d1d1b; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  padding: 8px 10px; font: 12px/1.5 'Inter', system-ui, sans-serif; max-width: 220px; max-height: 40vh; overflow: auto; }
+.sm-legend[hidden] { display: none; }
+.sm-legend-layer + .sm-legend-layer { margin-top: 8px; }
+.sm-legend-name { font-weight: 600; }
+.sm-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.15); }
+.sm-legend-ramp { height: 10px; border-radius: 2px; margin-top: 4px; border: 1px solid rgba(0,0,0,.15); }
+.sm-legend-range { display: flex; justify-content: space-between; color: #6b7280; }
+.sm-legend-err { color: #b91c1c; }

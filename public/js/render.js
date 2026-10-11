@@ -17,7 +17,7 @@ const h = (tag, attrs = {}, ...kids) => {
 
 /** Renders `story` into `root`. Returns a destroy() function. */
 export function renderStory(story, root) {
-  const ctx = { maps: [], observers: [] };
+  const ctx = { maps: [], observers: [], library: story.layers || [] };
   root.innerHTML = '';
   root.className = 'sm-story';
   document.documentElement.dataset.theme = story.theme === 'dark' ? 'dark' : 'light';
@@ -74,7 +74,7 @@ function lazyMap(ctx, el, view, opts, onReady) {
   const io = new IntersectionObserver((entries) => {
     if (!entries.some((e) => e.isIntersecting)) return;
     io.disconnect();
-    const map = createMap(el, view, opts);
+    const map = createMap(el, view, { ...opts, library: ctx.library });
     ctx.maps.push(map);
     onReady?.(map);
   }, { rootMargin: '200px' });
@@ -140,7 +140,7 @@ const BLOCKS = {
     const mediaPane = h('div', { class: 'sm-sidecar-media' }, mapEl, stage);
     const slideEls = slides.map((s, i) =>
       h('div', { class: 'sm-slide', 'data-i': i },
-        h('div', { class: 'sm-slide-card', html: s.html })));
+        h('div', { class: 'sm-slide-card', html: s.html, onclick: (e) => runAction(e, i) })));
     const section = h('section', { class: `sm-sidecar layout-${b.layout || 'docked'}` },
       mediaPane, h('div', { class: 'sm-sidecar-slides' }, slideEls));
 
@@ -149,17 +149,37 @@ const BLOCKS = {
     let active = -1;
     let pending = null;
 
+    const showView = (v, animate = true) => {
+      if (map) applyView(map, v, { animate });
+      else pending = v;
+    };
+
+    // Map actions: links of the form #action:<id> swap the slide's map view until clicked again.
+    const runAction = (e, i) => {
+      const link = e.target.closest('a[href^="#action:"]');
+      if (!link) return;
+      e.preventDefault();
+      const action = (slides[i].actions || []).find((a) => a.id === link.getAttribute('href').slice(8));
+      if (!action) return;
+      if (i !== active) activate(i);
+      const card = slideEls[i];
+      const wasOn = link.classList.contains('is-on');
+      card.querySelectorAll('a.is-on').forEach((a) => a.classList.remove('is-on'));
+      section.classList.remove('show-stage');
+      if (wasOn) showView(slides[i].media?.view);
+      else { link.classList.add('is-on'); showView(action.view); }
+    };
+
     const activate = (i) => {
       if (i === active) return;
       active = i;
+      slideEls.forEach((el) => el.querySelectorAll('a.is-on').forEach((a) => a.classList.remove('is-on')));
       slideEls.forEach((el, j) => el.classList.toggle('is-active', j === i));
       const media = slides[i]?.media || { type: 'map', view: DEFAULT_VIEW };
       const isMap = (media.type || 'map') === 'map';
       section.classList.toggle('show-stage', !isMap);
-      if (isMap) {
-        if (map) applyView(map, media.view);
-        else pending = media.view;
-      } else {
+      if (isMap) showView(media.view);
+      else {
         const node = mediaElement(media);
         node.classList.add('sm-stage-item');
         stage.replaceChildren(node);
@@ -205,7 +225,7 @@ const BLOCKS = {
             h('button', { type: 'button', onclick: () => show(i - 1), 'aria-label': 'Previous place' }, '←'),
             h('button', { type: 'button', onclick: () => show(i + 1), 'aria-label': 'Next place' }, '→'))));
       if (map) {
-        applyView(map, { basemap: b.basemap, center: p.lngLat, zoom: p.zoom ?? b.zoom ?? 14, pitch: b.pitch || 0, markers }, { animate });
+        applyView(map, { basemap: b.basemap, center: p.lngLat, zoom: p.zoom ?? b.zoom ?? 14, pitch: b.pitch || 0, markers, layers: b.layers || [] }, { animate });
         map._markers.forEach((m, j) => {
           m.getElement().classList.toggle('is-active', j === i);
           m.getElement().onclick = () => show(j);
@@ -214,7 +234,7 @@ const BLOCKS = {
     };
 
     if (places.length) {
-      lazyMap(ctx, mapEl, { basemap: b.basemap, center: places[0].lngLat, zoom: b.zoom ?? 14, markers }, {}, (m) => {
+      lazyMap(ctx, mapEl, { basemap: b.basemap, center: places[0].lngLat, zoom: b.zoom ?? 14, markers, layers: b.layers || [] }, {}, (m) => {
         map = m;
         show(i, false);
       });
@@ -253,8 +273,8 @@ const BLOCKS = {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();
       const view = b.view || DEFAULT_VIEW;
-      const a = createMap(leftEl, { ...view, basemap: b.left || 'streets' });
-      const c = createMap(rightEl, { ...view, basemap: b.right || 'dark' }, { interactive: false });
+      const a = createMap(leftEl, { ...view, basemap: b.left || 'streets', layers: b.leftLayers || [] }, { library: ctx.library });
+      const c = createMap(rightEl, { ...view, basemap: b.right || 'dark', layers: b.rightLayers || [], legend: false }, { interactive: false, library: ctx.library });
       ctx.maps.push(a, c);
       a.on('move', () => c.jumpTo({ center: a.getCenter(), zoom: a.getZoom(), bearing: a.getBearing(), pitch: a.getPitch() }));
     }, { rootMargin: '200px' });

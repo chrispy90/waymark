@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/map.css">
   <link rel="stylesheet" href="css/builder.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 </head>
@@ -26,9 +27,13 @@
   </header>
   <div class="b-layout">
     <aside id="editor" class="b-editor">
-      <details class="b-section" open>
+      <details class="b-section">
         <summary>Story settings</summary>
         <div id="settings"></div>
+      </details>
+      <details class="b-section" open>
+        <summary>Data layers</summary>
+        <div id="layers"></div>
       </details>
       <h2 class="b-h">Blocks</h2>
       <div id="blocks"></div>

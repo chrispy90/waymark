@@ -64,12 +64,10 @@ img, video, iframe { display: block; max-width: 100%; }
 .sm-map-figure .sm-map { height: 70vh; }
 .sm-map { width: 100%; height: 100%; background: var(--line); }
 
-/* Markers */
-.sm-marker { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,.35); display: grid; place-items: center; font: 700 12px var(--sans); cursor: pointer; transition: transform .2s; }
-.sm-marker.is-active { transform: scale(1.35); z-index: 2; }
-.maplibregl-popup-content { font: 14px/1.4 var(--sans); color: #1d1d1b; }
-.maplibregl-popup-content p { margin: 4px 0 0; }
+/* Map action links */
+.sm-slide-card a[href^="#action:"], .sm-text a[href^="#action:"] { color: var(--accent); text-decoration: none; border-bottom: 2px dotted var(--accent); cursor: pointer; }
+.sm-slide-card a[href^="#action:"]::before { content: '◎ '; font-size: .85em; }
+.sm-slide-card a.is-on { background: var(--accent); color: var(--accent-fg); border-radius: 3px; padding: 0 4px; border-bottom-color: transparent; }
 
 /* Sidecar (scroll-driven sticky media) */
 .sm-sidecar { position: relative; margin: 3em 0; }
