@@ -4,6 +4,10 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+Nothing yet.
+
+## 1.1.0 (2026-10-12)
+
 ### Added
 - **Brutalist theme.** Raw monospace and heavy display type, hard black edges, offset shadows, acid-yellow highlights, a ticker headline, outlined statement words, auto-numbered chapters and slightly crooked photos. Pick it under Story → Look & feel.
 - **Brutalist zine template:** a field guide to four brutalist buildings, with shapes drawn on its map.
