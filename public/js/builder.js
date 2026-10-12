@@ -630,10 +630,10 @@ function field(obj, spec) {
   }
 }
 
-function richEditor(obj, key) {
+function richEditor(obj, key, { mapLinks } = {}) {
   const ed = h('div', { class: 'rich-area', contenteditable: 'true', 'data-placeholder': 'Start writing…' });
   ed.innerHTML = sanitize(obj[key] || '');
-  ed.addEventListener('input', () => { obj[key] = sanitize(ed.innerHTML); changed(); });
+  ed.addEventListener('input', () => { obj[key] = sanitize(ed.innerHTML); changed(); mapLinks?.onChange(); });
   const cmd = (c, v) => (e) => { e.preventDefault(); ed.focus(); document.execCommand(c, false, v); };
   const btn = (title, content, fn) => h('button', { type: 'button', title, 'aria-label': title, onmousedown: fn }, content);
   const bar = h('div', { class: 'rich-bar' },
@@ -643,7 +643,13 @@ function richEditor(obj, key) {
     btn('Subheading', 'H3', cmd('formatBlock', 'H3')),
     btn('Normal text', '¶', cmd('formatBlock', 'P')),
     btn('Bulleted list', icon('list', { size: 15 }), cmd('insertUnorderedList')),
-    btn('Link', icon('link', { size: 15 }), (e) => { e.preventDefault(); const u = prompt('Link address (https://…)'); if (u) { ed.focus(); document.execCommand('createLink', false, u); } }));
+    btn('Link', icon('link', { size: 15 }), (e) => { e.preventDefault(); const u = prompt('Link address (https://…)'); if (u) { ed.focus(); document.execCommand('createLink', false, u); } }),
+    mapLinks ? h('button', { type: 'button', class: 'rich-maplink', title: 'Select words, then press this to make them move the map', onmousedown: (e) => { e.preventDefault(); mapLinks.add(e.currentTarget); } },
+      icon('pin', { size: 14 }), 'Map link') : null);
+  if (mapLinks) ed.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href^="#action:"]');
+    if (a) { e.preventDefault(); mapLinks.open(a); }
+  });
   return h('div', { class: 'rich' }, bar, ed);
 }
 
@@ -759,7 +765,9 @@ function listField(obj, key, { noun, make, form, summary }) {
 function slideForm(slide) {
   slide.media ||= { type: 'map', view: view() };
   const m = slide.media;
-  const rich = richEditor(slide, 'html');
+  const links = mapLinkController(slide);
+  const rich = richEditor(slide, 'html', { mapLinks: links });
+  links.editor = rich.querySelector('.rich-area');
   const kind = m.type || 'map';
   return h('div', {},
     rich,
@@ -768,41 +776,127 @@ function slideForm(slide) {
         h('button', { type: 'button', class: kind === v ? 'is-on' : '', onclick: () => { m.type = v; if (v === 'map') m.view ||= view(); changed(); renderRail(); } }, l)))),
     kind === 'map' ? field(m, { k: 'view', t: 'view', label: 'Map for this card' })
       : fields(m, [{ k: 'url', t: kind === 'image' ? 'image' : undefined, label: kind === 'image' ? 'Image' : kind === 'video' ? 'Video link' : 'Page link' }, { k: 'alt', label: 'Description' }]),
-    actionsField(slide, rich.querySelector('.rich-area')));
+    links.panel);
 }
 
-// Map links: alternate views triggered by #action:<id> links in the card text.
-function actionsField(slide, editor) {
+// Map links: words in a moving-map card that send the map to another view (#action:<id> links).
+// They're made and edited right in the text: select words → "Map link", or click a link for its options.
+function mapLinkController(slide) {
   const actions = (slide.actions ||= []);
-  const insertLink = (a) => (e) => {
-    e.preventDefault();
+  const ctl = { editor: null };
+  const panel = h('div', { class: 'field maplinks' });
+  ctl.panel = panel;
+  const anchorsFor = (id) => [...(ctl.editor?.querySelectorAll(`a[href="#action:${id}"]`) || [])];
+  const wordsFor = (a) => anchorsFor(a.id).map((el) => el.textContent.trim()).filter(Boolean).join(' · ');
+  const pick = (title, value, done) => openPicker({ mode: 'view', value: value || slide.media?.view || view(), title }, done);
+  const commit = () => { ctl.editor.dispatchEvent(new Event('input')); };
+  const unwrap = (el) => { el.replaceWith(...el.childNodes); };
+
+  // Remember the selection: the map picker takes focus away from the text.
+  const selectionInEditor = () => {
     const sel = getSelection();
-    const inEditor = sel.rangeCount && editor.contains(sel.anchorNode);
-    if (inEditor && !sel.isCollapsed) document.execCommand('createLink', false, `#action:${a.id}`);
-    else {
-      const link = h('a', { href: `#action:${a.id}` }, a.label || 'see on map');
-      let target = editor.lastElementChild;
-      if (!target || !/^(P|H2|H3|H4|LI)$/.test(target.tagName)) target = editor.appendChild(h('p'));
-      target.append(' ', link);
-    }
-    editor.dispatchEvent(new Event('input'));
-    toast('Link added to the card text', { tone: 'ok', duration: 1800 });
+    if (!sel.rangeCount || sel.isCollapsed || !ctl.editor.contains(sel.anchorNode) || !ctl.editor.contains(sel.focusNode)) return null;
+    const r = sel.getRangeAt(0).cloneRange();
+    // double-clicking a word also selects the space after it; keep links to the words themselves
+    while (r.endContainer.nodeType === 3 && r.endOffset > 0 && /\s/.test(r.endContainer.data[r.endOffset - 1]) && r.toString().trim()) r.setEnd(r.endContainer, r.endOffset - 1);
+    while (r.startContainer.nodeType === 3 && r.startOffset < r.startContainer.data.length && /\s/.test(r.startContainer.data[r.startOffset]) && r.toString().trim()) r.setStart(r.startContainer, r.startOffset + 1);
+    return r.toString().trim() ? r : null;
   };
-  return h('div', { class: 'field' },
-    labelEl('Map links', h('span', { class: 'muted', style: 'font-weight:400' }, 'optional')),
-    h('p', { class: 'field-hint', style: 'margin:0 0 8px' }, 'Links in the text that move the map somewhere else. Select some words in the text, then press "Link selected words".'),
-    h('div', { class: 'sub-list', style: 'margin-top:0' }, actions.map((a, i) => subItem(actions, i, {
-      title: a.label || `Action ${i + 1}`, summary: viewSummary(a.view), noun: 'Action',
-      body: () => h('div', {},
-        field(a, { k: 'label', label: 'Link text' }),
-        field(a, { k: 'view', t: 'view', label: 'Where the map goes' }),
-        h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { type: 'button', class: 'btn btn-sm', onmousedown: insertLink(a) }, icon('link', { size: 14 }), 'Link selected words'))),
-    })),
-    h('button', { type: 'button', class: 'btn btn-sm sub-add', onclick: () => {
-      const a = { id: uid('a'), label: 'see on map', view: clone(slide.media?.view || view()) };
-      actions.push(a); openSubs.add(a); changed(); renderRail();
-    } }, icon('plus', { size: 14 }), 'Add map link')));
+  const linkRange = (range, id) => {
+    const a = actions.find((x) => x.id === id);
+    if (a) a.label = range.toString().trim() || a.label; // remembered so a moved link can still be recognized
+    const sel = getSelection();
+    ctl.editor.focus();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('createLink', false, `#action:${id}`);
+    sel.collapseToEnd();
+    commit();
+  };
+  const newView = (range) => pick('Where should the map go?', null, (v) => {
+    const a = { id: uid('a'), view: v };
+    actions.push(a);
+    // the picker is a modal dialog, so the text can only be linked once it has closed
+    setTimeout(() => {
+      linkRange(range, a.id);
+      toast('Map link added. Click it in the preview to try it.', { tone: 'ok', duration: 2600 });
+    }, 0);
+  });
+
+  ctl.add = (btn) => {
+    const range = selectionInEditor();
+    if (!range) { toast('Select the words that should move the map, then press Map link.', { duration: 3200 }); return; }
+    if (!actions.length) { newView(range); return; }
+    // Offer the views this card already has, so a link can be moved or shared.
+    menu(btn, [
+      { label: 'New map view…', icon: 'plus', onClick: () => newView(range) },
+      'sep',
+      ...actions.map((a, i) => ({ label: wordsFor(a) ? `Use the view of “${clip(wordsFor(a))}”` : `Move “${clip(a.label || `view ${i + 1}`)}” here`, icon: wordsFor(a) ? 'link' : 'pin', onClick: () => linkRange(range, a.id) }))
+        .sort((x, y) => (x.icon === 'pin' ? -1 : 0) - (y.icon === 'pin' ? -1 : 0)), // unattached views first: that's what "move" leaves behind
+    ], { align: 'start' });
+  };
+
+  ctl.open = (el) => {
+    const a = actions.find((x) => `#action:${x.id}` === el.getAttribute('href'));
+    if (!a) { // a link whose view was deleted
+      menu(el, [{ label: 'Remove this broken map link', icon: 'trash', danger: true, onClick: () => { unwrap(el); commit(); } }], { align: 'start' });
+      return;
+    }
+    menu(el, [
+      { label: 'Change where the map goes…', icon: 'map', onClick: () => pick('Where should the map go?', a.view, (v) => { a.view = v; changed(); draw(); }) },
+      { label: 'Move to other words', icon: 'link', onClick: () => {
+        a.label = wordsFor(a) || a.label;
+        unwrap(el);
+        commit();
+        toast('Now select the new words and press Map link, then choose its view.', { duration: 5000 });
+      } },
+      'sep',
+      { label: 'Remove map link', icon: 'trash', danger: true, onClick: () => {
+        unwrap(el);
+        if (!anchorsFor(a.id).length) actions.splice(actions.indexOf(a), 1);
+        commit();
+      } },
+    ], { align: 'start' });
+  };
+
+  const draw = () => {
+    if (!ctl.editor) return;
+    if (!actions.length) {
+      panel.replaceChildren(h('p', { class: 'field-hint maplinks-hint' }, icon('pin', { size: 14 }),
+        h('span', {}, h('strong', {}, 'Map links: '), 'select some words in the text and press ', h('b', {}, 'Map link'), ' to make them move the map.')));
+      return;
+    }
+    panel.replaceChildren(labelEl('Map links in this card'),
+      h('div', { class: 'maplinks-list' }, actions.map((a, i) => {
+        const words = wordsFor(a);
+        return h('div', { class: `maplink${words ? '' : ' is-orphan'}` },
+          h('span', { class: 'maplink-icon' }, icon('pin', { size: 14 })),
+          h('span', { class: 'maplink-text' },
+            h('strong', {}, words ? `“${clip(words, 48)}”` : 'Not attached to any words'),
+            h('span', { class: 'muted' }, words ? viewSummary(a.view) : `${a.label ? `Was “${clip(a.label)}”. ` : ''}Select words and press Map link to attach it`)),
+          words ? h('button', { type: 'button', class: 'icon-btn', title: 'Show in the text', 'aria-label': 'Show in the text', onclick: () => {
+            const el = anchorsFor(a.id)[0];
+            const r = document.createRange();
+            r.selectNodeContents(el);
+            ctl.editor.focus();
+            getSelection().removeAllRanges();
+            getSelection().addRange(r);
+            el.scrollIntoView({ block: 'nearest' });
+          } }, icon('eye', { size: 15 })) : null,
+          h('button', { type: 'button', class: 'icon-btn', title: 'Change where the map goes', 'aria-label': 'Change where the map goes', onclick: () => pick('Where should the map go?', a.view, (v) => { a.view = v; changed(); draw(); }) }, icon('map', { size: 15 })),
+          h('button', { type: 'button', class: 'icon-btn', title: 'Delete map link', 'aria-label': 'Delete map link', onclick: () => {
+            anchorsFor(a.id).forEach(unwrap);
+            actions.splice(i, 1);
+            commit();
+          } }, icon('trash', { size: 15 })));
+      })));
+  };
+  let timer;
+  ctl.onChange = () => { clearTimeout(timer); timer = setTimeout(draw, 150); };
+  queueMicrotask(draw);
+  return ctl;
 }
+const clip = (t, n = 28) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
 function layerSet(obj, spec) {
   const lib = story.layers || [];
@@ -975,7 +1069,7 @@ function layerForm(layer) {
 /* ---------- Map picker ---------- */
 
 let pickerMap = null;
-function openPicker({ mode, value, noMarkers, noLayers }, done) {
+function openPicker({ mode, value, noMarkers, noLayers, title }, done) {
   const v = view(clone(value || {}));
   const markers = clone(v.markers || []);
   const lib = story.layers || [];
@@ -1030,7 +1124,7 @@ function openPicker({ mode, value, noMarkers, noLayers }, done) {
       h('p', { class: 'field-hint', style: 'margin:0' }, 'Drag to move. Scroll to zoom. Right-drag to rotate, Ctrl-drag to tilt.')]);
 
   const dlg = dialog({
-    title: mode === 'point' ? 'Pick a location' : 'Edit map',
+    title: title || (mode === 'point' ? 'Pick a location' : 'Edit map'),
     cls: 'dlg-xl',
     body: h('div', { class: 'mp' }, h('div', { class: 'mp-map' }, mapEl,
       h('div', { class: 'mp-search' }, icon('search', { size: 16 }), search),
