@@ -1,20 +1,40 @@
-# Waymark
+<p align="center">
+  <img src="docs/media/banner.png" alt="Waymark: stories with a sense of place" width="100%">
+</p>
 
-**Stories with a sense of place.** Self-hosted, scroll-driven map stories with a visual editor.
+<p align="center">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e4572e?style=flat-square"></a>
+  <img alt="Node 22.13 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022.13-0d1524?style=flat-square&logo=nodedotjs&logoColor=white">
+  <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-0-0d1524?style=flat-square">
+  <img alt="No API keys" src="https://img.shields.io/badge/API%20keys-none%20needed-0d1524?style=flat-square">
+  <img alt="Docker ready" src="https://img.shields.io/badge/docker-ready-0d1524?style=flat-square&logo=docker&logoColor=white">
+</p>
 
-- **Write a story** from blocks: text, images, video, embeds, maps, moving maps that glide from place to place as you scroll, stop-by-stop walks, and before & after comparisons.
-- **Bring your data**: GeoJSON, CSV, or public ArcGIS feature layers, styled by category or value, with popups and a legend.
-- **Use live public data**: one click adds layers from NOAA, NASA, USGS, the Census Bureau, the Park Service, EPA, wildfire agencies and more, or search thousands of public layers on ArcGIS Online.
-- **Filter it**: magnitude ≥ 5, "in the last 7 days", state = Texas. Filters apply to the map, the analysis and the export.
-- **Analyze it**: buffers, hex bins, counts per area, distance to nearest, heatmaps and clusters, plus drawing and measuring tools. Results become layers you can put in any map.
-- **Make it move**: chapters that recolor the page, statements that light up word by word, numbers that count up, galleries that slide sideways, and parallax photos.
-- **Publish it** to a public link. Draft edits stay private until you publish again.
+<p align="center">
+  <b>Write a story. Scroll it. Publish it anywhere.</b><br>
+  Waymark is a self-hosted editor for scroll-driven map stories.<br>
+  Add maps that move as you read, live government data, and photos, then share a link or export a website.
+</p>
 
-There's nothing to install beyond Node.js, and no API keys or accounts with anyone else are needed. Maps use [MapLibre GL JS](https://maplibre.org/) with free [OpenFreeMap](https://openfreemap.org/) basemaps (OpenStreetMap data). It contains no Esri code.
+<p align="center">
+  <a href="#-start-in-a-minute">Quick start</a> ·
+  <a href="#-what-you-can-make">Features</a> ·
+  <a href="#-publish-it-anywhere">Export</a> ·
+  <a href="#-host-it-yourself">Self-hosting</a> ·
+  <a href="docs/SCHEMA.md">Story format</a>
+</p>
 
-## Quick start
+<br>
 
-You need [Node.js](https://nodejs.org) **22.13 or newer**. Check with `node --version`.
+<p align="center">
+  <img src="docs/media/hero.gif" alt="Scrolling through the Waymark welcome page" width="100%">
+</p>
+
+<br>
+
+## ⚡ Start in a minute
+
+You only need [Node.js](https://nodejs.org) **22.13 or newer**. There's nothing to `npm install`.
 
 ```bash
 git clone https://github.com/chrispy90/waymark.git
@@ -22,21 +42,156 @@ cd waymark
 npm start
 ```
 
-Open **http://localhost:5180**. The first visit asks you to create the owner account. Then pick a template. **Chaptered essay** shows off every scroll effect, and **Sample: Down the Potomac** shows the map features.
+Then open **http://localhost:5180**.
 
-`npm install` isn't needed, because there are no dependencies. Everything you create lives in the `data/` folder.
+1. **Create your account.** The first visit makes you the owner.
+2. **Pick a template.** *Chaptered essay* shows every scroll effect, and *Sample: Down the Potomac* shows the map features.
+3. **Click anything to edit it.** When you're happy with it, press **Publish**.
 
-> **Windows:** if PowerShell says *"running scripts is disabled on this system"*, use `node server.js` instead of `npm start`. It does the same thing. `npm.cmd start` also works.
+> [!TIP]
+> **Windows:** if PowerShell says *"running scripts is disabled"*, run `node server.js` instead. It does the same thing.
+> **Docker:** `docker compose up -d` also works, and keeps your data in a named volume.
 
-### Other ways to run it
+<br>
 
-| | |
+## ✨ What you can make
+
+### A map that moves with the story
+
+The map stays put while story cards scroll past, and it glides to each card's place. You can tilt it, rotate it, switch layers, or swap it for a photo or video on any card.
+
+<p align="center"><img src="docs/media/moving-map.gif" alt="A moving map flying between places as the reader scrolls" width="100%"></p>
+
+### Scroll effects, built in
+
+Effects from the best long-form sites, available as blocks. Add one and it works on phones too. Each effect switches off for readers who ask their device to reduce motion.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/statement.gif" alt="A statement block lighting up word by word"></td>
+    <td width="50%"><img src="docs/media/scroll-gallery.gif" alt="A gallery sliding sideways as the reader scrolls down"></td>
+  </tr>
+  <tr>
+    <td><b>Statement</b>: big type that lights up word by word.</td>
+    <td><b>Scroll gallery</b>: scroll down and the photos slide sideways.</td>
+  </tr>
+</table>
+
+You also get **chapters** that recolor the page, **big numbers** that count up, and **parallax, zoom and wipe-in** photos and covers.
+
+### Live data from NOAA, NASA, USGS and more
+
+Open **Browse public data** and click **Add**. Every layer arrives styled, with popups, a legend and credit to its source. No keys and no sign-ups.
+
+<p align="center"><img src="docs/media/public-data.png" alt="The public data catalog" width="100%"></p>
+
+| Source | Layers |
 |---|---|
-| `npm run dev` | Restarts automatically when you edit server code |
-| `npm test` | Runs the test suite against a temporary database |
-| `docker compose up -d` | Runs in Docker, with data kept in a named volume |
+| **USGS** | Earthquakes (live) · stream gauges by state |
+| **NOAA** | Weather warnings (live) · radar (live) · tide stations · tsunamis · significant earthquakes · volcanoes · plate boundaries |
+| **NASA** | Natural events (EONET) · daily satellite imagery · Earth at night |
+| **Census · NPS · USFS · EPA · NIFC** | States and counties · park units · national forests · Superfund sites · active wildfires and perimeters |
+| **Natural Earth** | Countries · cities · rivers |
+| **ArcGIS Online** | Search thousands more public layers |
 
-### Settings
+Live layers refresh every time someone opens the story, so a published map stays current.
+
+<p align="center"><img src="docs/media/live-quakes.png" alt="This week's earthquakes and tectonic plate boundaries on a dark map" width="100%"></p>
+
+### Filter it, then analyze it
+
+**Filters** narrow a layer with plain rules, like *magnitude ≥ 5*, *in the last 7 days* or *state = Texas*. They apply to the map, the insights, the analysis and the export.
+
+**Analyze** previews every result on a map before you keep it. The tools are buffer, hex bins, count in areas, distance to nearest, within distance, center points, outline and filter. Results become ordinary layers, and you can re-run them on fresh data.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/filters.png" alt="A magnitude filter with live insights"></td>
+    <td width="50%"><img src="docs/media/analysis.gif" alt="Binning a week of earthquakes into hexagons"></td>
+  </tr>
+  <tr>
+    <td><b>Filters and insights</b>: <i>Showing 165 of 361</i>, with histograms of each field.</td>
+    <td><b>Hex bins</b>: a week of earthquakes, grouped into 350 km hexagons.</td>
+  </tr>
+</table>
+
+You can also **draw and measure** routes and areas, and show points as a **heatmap** or **clusters**. Bring your own data too: GeoJSON, CSV, or any public ArcGIS layer.
+
+### An editor that gets out of the way
+
+Click anything in the live preview to edit it. You also get drag to reorder, undo and redo, a command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>), a phone preview and autosave. Drafts stay private until you publish again.
+
+<p align="center"><img src="docs/media/click-to-edit.gif" alt="Clicking a chapter in the preview to edit its title and color" width="100%"></p>
+
+### Every story works on a phone
+
+<p align="center"><img src="docs/media/phones.png" alt="Three stories on phones: a satellite map, a statement block, and a stop-by-stop walk" width="100%"></p>
+
+### Start from a template
+
+<p align="center"><img src="docs/media/templates.png" alt="The new story dialog with templates" width="100%"></p>
+
+| Template | What it is |
+|---|---|
+| **Moving map story** | The map stays fixed and glides to a new place as each card scrolls by |
+| **Stop-by-stop walk** | Numbered places with photos. Readers step through them or tap a marker |
+| **Chaptered essay** | Chapters that recolor the page, text that lights up, numbers that count, photos that slide |
+| **Blank story** | A title and an empty page |
+
+Any story can also use **Before & after**, a block with two maps in one view and a draggable divider.
+
+<br>
+
+## 🚀 Publish it anywhere
+
+**Publish** gives a story a public link like `/s/your-story`, with a preview image when the link is shared.
+
+**Export as a website** turns a story into plain files that run on any web server, with no Node, no database and no Waymark.
+
+<p align="center"><img src="docs/media/export.png" alt="The export dialog with zip and Tomcat options" width="100%"></p>
+
+| Format | Use it for |
+|---|---|
+| **Website folder (.zip)** | Apache, nginx, IIS, shared hosting, S3, GitHub Pages, Netlify, or just double-click `index.html` |
+| **Tomcat web app (.war)** | Drop it in Tomcat's `webapps/` folder (Tomcat 8.5 to 11) |
+
+The export includes the page, your images, a snapshot of your map data and, optionally, the map library. Every path is relative, so it works in any folder. You can also export from the command line:
+
+```bash
+node server.js export my-story --war --out /opt/tomcat/webapps/my-story.war
+```
+
+<details>
+<summary><b>All export options</b></summary>
+
+<br>
+
+```bash
+node server.js stories                       # find the story's link or id
+node server.js export my-story               # published version, as a .zip
+node server.js export my-story --draft       # the unpublished draft
+```
+
+Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--no-vendor`. The last three keep images, data or the map library as links instead of copying them. Only the map tiles and web fonts load from the internet.
+
+</details>
+
+<br>
+
+## 🏠 Host it yourself
+
+Your stories, accounts and images all live in one `data/` folder. Waymark runs anywhere that has Node 22.13+ or Docker and a persistent disk: a VPS, a home server, Fly.io, Railway, Render and so on.
+
+1. **Put it behind HTTPS.** [Caddy](https://caddyserver.com) is the easiest: `caddy reverse-proxy --from stories.example.com --to localhost:5180`
+2. **In `.env`,** set `APP_URL=https://stories.example.com` and `COOKIE_SECURE=1`.
+3. **Once your accounts exist,** set `ALLOW_SIGNUP=0` to close sign-ups.
+4. **Back up `data/`.** It holds everything.
+
+
+<details>
+<summary><b>Settings (<code>.env</code>)</b></summary>
+
+<br>
 
 Copy `.env.example` to `.env` and edit it. Everything is optional.
 
@@ -51,7 +206,12 @@ Copy `.env.example` to `.env` and edit it. Everything is optional.
 | `ALLOW_SIGNUP` | on | Set to `0` to stop new sign-ups once your accounts exist |
 | `SMTP_*` | off | Email for password resets. See below |
 
-### Password reset and email
+</details>
+
+<details>
+<summary><b>Password reset and email</b></summary>
+
+<br>
 
 People can reset a forgotten password from the sign-in page. To deliver the emails, set the `SMTP_*` settings in `.env`. Any SMTP provider works, for example Postmark, Resend, SendGrid, Mailgun, or a Gmail app password.
 
@@ -63,62 +223,32 @@ npm run reset-link -- someone@example.com     # print a reset link
 npm run set-password -- someone@example.com   # type a new password directly
 ```
 
-## Hosting it for others
+</details>
 
-Any machine or service that runs Node 22.13+ or Docker and has a persistent disk will work: a VPS, a home server, Fly.io, Railway, Render, and so on. Shared PHP-only web hosting won't.
+<details>
+<summary><b>Other ways to run it</b></summary>
 
-1. Put it behind HTTPS. Caddy is the easiest: `caddy reverse-proxy --from stories.example.com --to localhost:5180`.
-2. In `.env`, set `APP_URL=https://stories.example.com` and `COOKIE_SECURE=1`, plus `SMTP_*` if you want reset emails.
-3. Once your own accounts exist, set `ALLOW_SIGNUP=0` if you don't want strangers signing up.
-4. **Back up the `data/` folder.** It holds every story, account and image.
-
-## Exporting a story to host anywhere
-
-Don't want to run Waymark on your server? Export a finished story as a plain static website. It needs no Node, no database and no Waymark, just a web server.
-
-In the editor, open **⋯ → Export as a website** (or use the **⋯** menu on a story card in the gallery) and pick a format:
-
-| Format | Use it for |
-|---|---|
-| **Website folder (.zip)** | Apache, nginx, IIS, shared hosting, Amazon S3, GitHub Pages, Netlify, or double-clicking `index.html` on your own computer |
-| **Tomcat web app (.war)** | Copy it into Tomcat's `webapps/` folder. It's served at `http://your-server:8080/<story-name>/`, or rename it `ROOT.war` to serve it at the site root. Works on Tomcat 8.5 to 11 |
-
-The export contains the page, a bundled copy of the story reader (one plain script), the styles, your images, and a snapshot of your map data. You can also include the map library (MapLibre) so nothing loads from a CDN. All paths are relative, so it works in any sub-folder or context path. Only the map tiles and web fonts still load from the internet.
-
-You can export from the command line too, which is handy for scripted deploys:
-
-```bash
-node server.js stories                                    # find the story's link or id
-node server.js export my-story --war --out /opt/tomcat/webapps/my-story.war
-node server.js export my-story --draft                    # the unpublished draft, as a .zip
-```
-
-Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--no-vendor` (keep images, data or the map library as links instead of copying them).
-
-## What's included
+<br>
 
 | | |
 |---|---|
-| Story blocks | Cover and byline, text, quote, divider, image, video (YouTube, Vimeo, files), embed, interactive map |
-| Scroll effects | **Chapter**: full-screen title that recolors the page from there on. **Statement**: huge text that lights up word by word. **Big numbers**: figures that count up. **Scroll gallery**: photos that slide sideways as you scroll down. **Image motion**: parallax, zoom or wipe-in reveal. **Cover motion**: parallax or zoom. A story-wide **scroll animation** setting (off, subtle or expressive) fades blocks in. Everything turns off for readers who ask their device to reduce motion |
-| Editor | Click anything in the live preview to edit it. Visual block picker, drag to reorder, full undo and redo, a command palette (Ctrl/Cmd+K), keyboard shortcuts (press ?), desktop/phone preview, autosave |
-| Geospatial analysis | In the Data tab, **Analyze** previews every result on a map before adding it. **Buffer**: zones around features, optionally merged. **Hex bins**: count, sum or average points per hexagon. **Count in areas**: a point-in-polygon spatial join. **Distance to nearest**: a field with the distance to the closest feature in another layer. **Within distance**: proximity filter. **Center points**, **outline** (convex hull) and **filter by attribute**. Results are saved as ordinary layers and remember how they were made, so you can re-run them on fresh data |
-| Public data catalog | **Browse public data** in the Data tab or in any map's editor. Featured sources, all keyless and browser-ready: **USGS** earthquakes (live) and stream gauges by state. **NOAA** weather warnings (live), radar (live), tide stations, historical tsunamis, significant earthquakes, volcanoes, eruptions and plate boundaries. **NASA** natural events (EONET), daily satellite imagery and Earth at night. **Census** states and counties. **NPS** park units, **USFS** national forests, **EPA** Superfund sites, **NIFC** active wildfires and perimeters, and **Natural Earth** countries, cities and rivers. **Search more** finds public layers on ArcGIS Online. Each layer comes styled, with popups and source credits |
-| Filters | Per-layer rules (`=`, `≠`, `>`, `≥`, `<`, `≤`, contains, in the last N days, empty or not empty), matching all or any. They apply to the map, insights, analysis and export, and show "X of Y features" |
-| Basemaps | Streets, bright, light, dark, **satellite** (Sentinel-2 cloudless, global), **USGS imagery** and **USGS topo** (US) |
-| Data tools | **Draw & measure**: sketch points, routes and areas with live distance and area, then save them as a layer. **Insights**: feature count, total area or length, field histograms and top values, with one click to turn them into a Big numbers block. **Heatmap** and **cluster** display for point layers. Add data by dropping files, pasting a link, or using sample data |
-| Moving map | The map stays fixed while story cards scroll past and glides to each card's view. Cards can show an image, video or embed instead. Cards over the map, or side by side |
-| Map links | Links in a moving map card that send the map to a different view, and back on a second click |
-| Stop by stop | Numbered places with photos. Readers step through them or click a marker |
-| Before & after | Two basemaps or two sets of layers in one view, with a draggable divider |
-| Data layers | GeoJSON URL, uploaded GeoJSON or CSV, or a public ArcGIS FeatureServer/MapServer layer. Single color, color by category, or a color ramp, with labels, popups and a legend |
-| Images | Upload or drag and drop. Resized in the browser to at most 2400px and saved as WebP, which also strips location metadata. Reusable "My images" library |
-| Accounts | Sign up, sign in, change password, password reset by email or CLI |
-| Publishing | Separate draft and published copies, custom links (`/s/your-story`), unpublish, and title and image previews when links are shared |
+| `npm run dev` | Restarts automatically when you edit server code |
+| `npm test` | Runs the test suite against a temporary database |
+| `docker compose up -d` | Runs in Docker, with data kept in a named volume |
 
-Not built yet: satellite imagery (it needs a licensed imagery provider), collaborators, collections, view counts, email verification, and deleting an account.
+</details>
 
-## Project layout
+
+<br>
+
+## 📚 Under the hood
+
+Waymark is plain JavaScript with no build step and no dependencies. The server uses only Node's built-in modules, including `node:sqlite`. The browser app is ordinary ES modules. Maps are drawn with [MapLibre GL JS](https://maplibre.org/) on free [OpenFreeMap](https://openfreemap.org/) and Sentinel-2 basemaps.
+
+<details>
+<summary><b>Project layout</b></summary>
+
+<br>
 
 ```
 server.js              entry point + startup checks
@@ -147,7 +277,12 @@ docs/SCHEMA.md         the story file format
 test/                  end-to-end API tests (node:test)
 ```
 
-## API
+</details>
+
+<details>
+<summary><b>API</b></summary>
+
+<br>
 
 Every request that changes data must send the header `X-Waymark: 1`. This guards against cross-site request forgery: another site can't add a custom header without a CORS preflight, and the server never allows one.
 
@@ -161,12 +296,31 @@ Every request that changes data must send the header `X-Waymark: 1`. This guards
 | `GET /api/public/:slug` | A published story's JSON |
 | `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
 
-## Security
+</details>
+
+<details>
+<summary><b>Security</b></summary>
+
+<br>
 
 - **Passwords and sessions:** passwords are hashed with scrypt. Sessions are random tokens stored hashed, in an `HttpOnly; SameSite=Lax` cookie. Sign-in, sign-up and reset requests are rate-limited.
 - **Password reset:** reset links are single-use and expire after an hour, and using one signs out every existing session. A reset request gets the same answer whether or not the email has an account. Links are always built from `APP_URL`, never from the request's Host header.
 - **Story content:** story text is cleaned against an allow-list of HTML tags. Every page sends a Content-Security-Policy that only runs scripts from this site and unpkg, with no inline scripts.
 - **Uploads:** uploaded files are checked by their contents, which rules out SVG, and served with `nosniff` and a `default-src 'none'` policy.
+
+</details>
+
+<details>
+<summary><b>Story file format</b></summary>
+
+<br>
+
+Stories are plain JSON. See [docs/SCHEMA.md](docs/SCHEMA.md).
+
+</details>
+
+
+<br>
 
 ## Background
 
