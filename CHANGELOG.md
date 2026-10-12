@@ -4,6 +4,10 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+Nothing yet.
+
+## 1.2.2 (2026-10-12)
+
 ### Changed
 - **Draw right on a map.** Every map in the editor (map blocks, moving-map cards, before & after) has a **Draw** button next to **Edit map**. The drawing tools open on exactly that map, over its other layers, and **Add to this map** switches the drawing on there. Press **Draw** again to keep drawing on it or start a new drawing. Data → Draw still works for drawings you want to use on several maps.
 
