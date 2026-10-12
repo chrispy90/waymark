@@ -4,6 +4,10 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+Nothing yet.
+
+## 1.2.1 (2026-10-12)
+
 ### Changed
 - **Map links are made right in the text.** Select words in a moving-map card and press **Map link** in the formatting bar; the map picker opens and the words are linked as soon as you choose the view. Click a map link in the text to change where the map goes, move it to other words, or remove it. Links are highlighted in the editor, and the list under the card shows each link's actual words, plus any view that's no longer attached to text. The separate "Add map link" and "Link selected words" steps are gone.
 
