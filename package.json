@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Waymark: self-hosted, scroll-driven map stories with a visual builder. No dependencies.",
   "private": true,
+  "license": "MIT",
   "main": "server.js",
   "engines": {
     "node": ">=22.13"

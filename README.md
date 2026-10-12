@@ -171,3 +171,12 @@ Every request that changes data must send the header `X-Waymark: 1`. This guards
 ## Background
 
 This project started as a rebuild of the ArcGIS StoryMaps reading and authoring experience. It was written from scratch using only public behavior and open formats. Esri's open-source classic templates ([Map Journal](https://github.com/Esri/storymap-journal), [Map Series](https://github.com/Esri/storymap-series), Apache-2.0) and [mapbox/storytelling](https://github.com/mapbox/storytelling) (BSD-3) were studied for data models and UX patterns only. No code was copied, and the current closed-source ArcGIS StoryMaps product was not used.
+
+## License
+
+Waymark is released under the [MIT License](LICENSE).
+
+It loads these open-source libraries from a CDN (an exported story can bundle MapLibre, along with its license):
+[MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) and, in the editor only, [Turf.js](https://github.com/Turfjs/turf) (MIT).
+
+Map tiles and data come from their providers, which are credited on every map: OpenStreetMap contributors and OpenFreeMap (ODbL), Sentinel-2 cloudless by EOX (CC-BY 4.0), and USGS, NOAA, NASA, US Census Bureau, NPS, USDA Forest Service, EPA, NIFC and Natural Earth (public domain). If you host Waymark for others, keep those credits visible.
