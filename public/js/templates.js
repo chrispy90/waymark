@@ -2,6 +2,17 @@
 const v = (center, zoom, extra = {}) => ({ center, zoom, bearing: 0, pitch: 0, basemap: 'streets', markers: [], layers: [], ...extra });
 // Hand-picked placeholder photos (fixed picsum.photos IDs, so every install gets the same pictures).
 const pic = (id, w = 1600, h = 1000) => `https://picsum.photos/id/${id}/${w}/${h}`;
+// Drawn shapes for the brutalist template, in the same per-feature style a drawing saves.
+const feat = (geometry, properties) => ({ type: 'Feature', properties, geometry });
+const boxAt = ([w, s], [e, n]) => ({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] });
+const ring = ([lng, lat], km, steps = 48) => {
+  const dy = km / 110.57;
+  const dx = km / (111.32 * Math.cos((lat * Math.PI) / 180));
+  const pts = Array.from({ length: steps }, (_, i) => [+(lng + dx * Math.cos((2 * Math.PI * i) / steps)).toFixed(6), +(lat + dy * Math.sin((2 * Math.PI * i) / steps)).toFixed(6)]);
+  return { type: 'Polygon', coordinates: [[...pts, pts[0]]] };
+};
+const ink = { stroke: '#2121ff', 'stroke-width': 4, 'stroke-opacity': 1, 'stroke-dash': 'solid', fill: '#2121ff', 'fill-opacity': 0.12 };
+const label = (text, at, size = 22) => feat({ type: 'Point', coordinates: at }, { text, 'text-size': size, stroke: '#0b0b0b' });
 
 export const TEMPLATES = [
   {
@@ -74,6 +85,54 @@ export const TEMPLATES = [
           { url: pic(11, 1400, 950), caption: 'Third photo' }, { url: pic(1051, 1400, 950), caption: 'Fourth photo' } ] },
         { type: 'image', url: pic(1019, 1800, 1100), caption: 'Images can drift (parallax), slowly zoom, or wipe into view.', size: 'full', effect: 'parallax' },
         { type: 'text', html: '<h2>The end</h2><p>Close the essay here.</p>' },
+      ],
+    }),
+  },
+  {
+    id: 'brutalist',
+    name: 'Brutalist zine',
+    description: 'Raw type, hard edges, loud color. A field guide with shapes drawn right on the map.',
+    icon: 'square',
+    art: 'repeating-linear-gradient(-45deg, #0b0b0b 0 14px, #dcff1e 14px 28px)',
+    make: (author) => ({
+      title: 'Raw concrete', subtitle: 'A field guide to four brutalist buildings, and why people still fight about them.', author, theme: 'brutalist', motion: 'expressive',
+      cover: { image: pic(1054, 1920, 1200), effect: 'zoom', kicker: 'Field guide no. 1' },
+      layers: [{ id: 'lbrut', name: 'Field notes', drawn: true, style: { color: '#2121ff', width: 4, radius: 8, opacity: 0.12 }, popup: { title: '{name}' },
+        data: { type: 'FeatureCollection', features: [
+          feat(boxAt([-0.0985, 51.5182], [-0.089, 51.5226]), { ...ink, name: 'Barbican Estate', description: 'Built 1965 to 1976 on land bombed in the Blitz.' }),
+          feat({ type: 'LineString', coordinates: [[-0.0984, 51.5138], [-0.0978, 51.5158], [-0.0962, 51.5176]] }, { stroke: '#ff4a1c', 'stroke-width': 5, 'stroke-dash': 'dashed', arrow: true, name: "From St Paul's" }),
+          label('BARBICAN', [-0.0937, 51.5236], 26),
+          feat(ring([-73.5435, 45.4997], 0.22), { ...ink, 'stroke-dash': 'dotted', name: 'Habitat 67', description: '354 concrete boxes, stacked for Expo 67.' }),
+          label('HABITAT 67', [-73.5435, 45.5024]),
+          feat({ type: 'Point', coordinates: [5.3963, 43.2614] }, { 'marker-color': '#2121ff', 'marker-size': 'large', name: "Unité d'Habitation" }),
+          label('UNITÉ', [5.3963, 43.2632]),
+          feat(boxAt([-71.0592, 42.3597], [-71.0569, 42.3611]), { ...ink, stroke: '#ff4a1c', fill: '#ff4a1c', 'stroke-dash': 'dashed', name: 'Boston City Hall' }),
+          label('CITY HALL', [-71.058, 42.3621]),
+        ] } }],
+      blocks: [
+        { type: 'text', style: 'large', html: '<p>Brutalism takes its name from <em>béton brut</em>, French for raw concrete. No paint, no cladding, no apology: the marks of the wooden molds stay on the walls for good.</p>' },
+        { type: 'statement', text: 'Honest materials. Heavy shapes. Nothing hidden, nothing pretty, nothing to apologize for.', cite: 'The idea, in one line' },
+        { type: 'chapter', kicker: 'The idea', title: 'Build it raw', text: 'After the war, cities needed housing, schools and town halls fast. Concrete was cheap, strong and honest about what it was.', bg: '#dcff1e', fg: '#0b0b0b', align: 'left' },
+        { type: 'stats', items: [{ value: '1952', label: "Le Corbusier's Unité d'Habitation opens in Marseille" }, { value: '354', label: 'concrete boxes stacked into Habitat 67' }, { value: '1968', label: 'Boston City Hall is finished' }],
+          caption: 'Every block in this story is editable. Click one in the editor to change it.' },
+        { type: 'chapter', kicker: 'Where to see it', title: 'Four buildings', text: 'Scroll on. The outlines, arrows and labels on this map were drawn with Data → Draw.', bg: '#0b0b0b', fg: '#efede6', align: 'left' },
+        { type: 'scrollmap', layout: 'overlay', slides: [
+          { html: "<h3>Unité d'Habitation, Marseille</h3><p>Le Corbusier's “vertical village”: 337 apartments, a shopping street halfway up and a running track on the roof.</p>",
+            media: { type: 'map', view: v([5.3963, 43.2614], 15.2, { basemap: 'light', pitch: 50, bearing: -20, layers: ['lbrut'] }) } },
+          { html: "<h3>Barbican Estate, London</h3><p>Three towers and a ring of terraces around a lake, built on land bombed in the Blitz. The dashed arrow walks you up from St Paul's.</p>",
+            media: { type: 'map', view: v([-0.0945, 51.5185], 14.6, { basemap: 'light', pitch: 45, bearing: 15, layers: ['lbrut'] }) } },
+          { html: "<h3>Habitat 67, Montreal</h3><p>Moshe Safdie's student thesis, built for Expo 67. Every home gets a garden on a neighbor's roof.</p>",
+            media: { type: 'map', view: v([-73.5435, 45.5005], 15, { basemap: 'light', pitch: 40, layers: ['lbrut'] }) } },
+          { html: '<h3>Boston City Hall</h3><p>An upside-down ziggurat over a brick plaza. Regularly called one of the ugliest buildings in America, and fiercely defended by the people who love it.</p>',
+            media: { type: 'map', view: v([-71.058, 42.3605], 16, { basemap: 'light', pitch: 55, bearing: 30, layers: ['lbrut'] }) } },
+        ] },
+        { type: 'gallery', title: 'Texture study', text: 'Scroll down; the wall of photos slides past.', images: [
+          { url: pic(101, 1400, 950), caption: 'Mass' }, { url: pic(1076, 1400, 950), caption: 'Angle' },
+          { url: pic(1078, 1400, 950), caption: 'Repetition' }, { url: pic(1033, 1400, 950), caption: 'Circulation' } ] },
+        { type: 'quote', text: 'Ugly is a matter of time.', cite: 'Field note' },
+        { type: 'image', url: pic(1048, 1800, 1100), caption: 'Look up.', size: 'full', effect: 'parallax' },
+        { type: 'separator' },
+        { type: 'text', html: '<h2>Make it yours</h2><p>This look is the <strong>Brutalist</strong> theme. Switch any story to it under Story → Look &amp; feel. Swap the buildings for your own, and draw on the map with Data → Draw.</p>' },
       ],
     }),
   },

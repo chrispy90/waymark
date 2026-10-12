@@ -134,7 +134,7 @@ function page(story, brand, { vendored }) {
   <meta property="og:description" content="${esc(story.subtitle)}">${cover ? `\n  <meta property="og:image" content="${esc(cover)}">` : ''}
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="${lib}.css">
   <link rel="stylesheet" href="css/map.css">
   <link rel="stylesheet" href="css/story.css">

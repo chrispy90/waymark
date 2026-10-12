@@ -4,7 +4,14 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Brutalist theme.** Raw monospace and heavy display type, hard black edges, offset shadows, acid-yellow highlights, a ticker headline, outlined statement words, auto-numbered chapters and slightly crooked photos. Pick it under Story → Look & feel.
+- **Brutalist zine template:** a field guide to four brutalist buildings, with shapes drawn on its map.
+- **A much richer Draw tool.** New shapes: freehand lines, boxes, circles and text labels, alongside points, lines and areas. Each shape has its own color, fill color and fill opacity, line width, opacity and style (solid, dashed or dotted), an optional arrowhead, marker size, text size, name and description. Select shapes to move, restyle, duplicate or delete them, trace over another layer, and reopen any saved drawing with **Edit shapes**.
+- Layers honor per-feature styles in the simplestyle convention (`stroke`, `fill`, `marker-color` and so on), so styled GeoJSON from geojson.io keeps its colors. See docs/SCHEMA.md.
+
+### Fixed
+- Layers without a source credit (your own uploads and drawings) failed to appear on maps.
 
 ## 1.0.0 (2026-10-12)
 

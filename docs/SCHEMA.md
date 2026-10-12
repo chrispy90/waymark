@@ -9,7 +9,7 @@ A story is a single JSON document.
   "subtitle": "…",
   "author": "…",
   "date": "October 2026",
-  "theme": "light",            // "light" | "dark"
+  "theme": "light",            // "light" | "dark" | "brutalist"
   "motion": "subtle",          // scroll animations: "none" | "subtle" | "expressive"
   "cover": { "image": "https://…", "effect": "parallax", "kicker": "Small label" },  // effect: "none" | "parallax" | "zoom"
   "layers": [ /* Layer[]: data layer library shared by all maps */ ],
@@ -58,9 +58,26 @@ The camera and markers used by maps.
   "attribution": "USGS Earthquake Hazards Program",
   "catalog": "usgs-quakes",                   // set on layers added from the public data catalog
   "analysis": { "tool": "buffer", "inputs": { "input": "trail" }, "params": { "distance": 1, "units": "kilometers" } },  // set on layers made by Analyze; lets the editor re-run them
+  "drawn": true,                              // made with Draw: the legend lists its shapes, popups show only name and description
   "popup": { "title": "{name}", "fields": ["category", "year"], "enabled": true }
 }
 ```
+
+### Per-feature styles
+
+In a single-color layer, each feature can carry its own look in its `properties`. Waymark reads the
+[simplestyle](https://github.com/mapbox/simplestyle-spec) keys, which geojson.io and many other tools write, plus a few of its own.
+Anything a feature doesn't set falls back to the layer's `style`. Draw saves shapes this way.
+
+| Property | For | Value |
+|---|---|---|
+| `stroke`, `stroke-width`, `stroke-opacity` | lines, area outlines, text color | `#rrggbb`, pixels, 0–1 |
+| `fill`, `fill-opacity` | areas | `#rrggbb` (defaults to `stroke`), 0–1 |
+| `marker-color`, `marker-size` | points | `#rrggbb`, `small` \| `medium` \| `large` |
+| `stroke-dash` | lines, area outlines | `solid` \| `dashed` \| `dotted` (Waymark) |
+| `arrow` | lines | `true` draws an arrowhead at the end (Waymark) |
+| `text`, `text-size` | points | draws the point as a text label instead of a dot (Waymark) |
+| `name`, `description` | anything | popup title and text |
 
 ### Imagery layers
 

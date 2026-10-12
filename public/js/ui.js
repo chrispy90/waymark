@@ -76,6 +76,12 @@ const P = {
   keyboard: 'M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM7 10h.01M11 10h.01M15 10h.01M17 10h.01M7 14h10',
   chart: 'M4 20V11M10 20V5M16 20v-6M3 20h18',
   refresh: 'M20 11a8 8 0 0 0-14.6-4.5M4 4v3.5h3.5M4 13a8 8 0 0 0 14.6 4.5M20 20v-3.5h-3.5',
+  cursor: 'M5 3l14 7.5-6 1.8-2.6 6.2z',
+  scribble: 'M3 15c2-5 4-7 5-5s-1 6 1 6 3-8 5-8 0 7 2 7 2-3 5-4',
+  square: 'M5 5h14v14H5z',
+  circle: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+  type: 'M5 6V4h14v2M12 4v16M9 20h6',
+  arrow: 'M5 19L19 5M10 5h9v9',
 };
 
 export function icon(name, { size = 18, cls = '' } = {}) {

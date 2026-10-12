@@ -25,13 +25,15 @@ const h = (tag, attrs = {}, ...kids) => {
  * Renders `story` into `root`. Returns a destroy() function.
  * opts.instant: show everything immediately (used when the builder re-renders the preview).
  */
+export const THEMES = ['light', 'dark', 'brutalist'];
+
 export function renderStory(story, root, { instant = false, homeHref = '/' } = {}) {
   normalizeStory(story);
   const ctx = { maps: [], observers: [], cleanups: [], library: story.layers || [], instant };
   const motion = ['none', 'subtle', 'expressive'].includes(story.motion) ? story.motion : 'subtle';
   root.innerHTML = '';
   root.className = `sm-story motion-${motion}`;
-  document.documentElement.dataset.theme = story.theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = THEMES.includes(story.theme) ? story.theme : 'light';
   document.title = story.title || 'Untitled story';
   setPalette(null);
 
@@ -102,8 +104,10 @@ function setPalette(p) {
 }
 
 function renderHeader(story) {
+  // The brutalist theme runs the title as a ticker; its CSS shows two copies of this repeated string.
+  const ticker = `${Array(6).fill(`\u2731  ${(story.title || '').toUpperCase()}`).join('      ')}      `;
   return h('header', { class: 'sm-topbar' },
-    h('span', { class: 'sm-topbar-title' }, story.title || ''),
+    h('span', { class: 'sm-topbar-title', 'data-ticker': ticker }, story.title || ''),
     h('div', { class: 'sm-progress', 'aria-hidden': 'true' }));
 }
 

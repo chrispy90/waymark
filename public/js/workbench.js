@@ -1,6 +1,6 @@
 // Data workspaces for the editor: Add data, Analyze (with live map preview), and Draw & measure.
 import { h, icon, dialog, toast } from './ui.js';
-import { createMap, setVisibleLayers, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
+import { createMap, setVisibleLayers, reloadLayer, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
 import { openCatalog } from './catalog.js';
 import { TOOLS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
@@ -81,7 +81,7 @@ export function openAddData() {
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Or add by link'), h('div', { class: 'row' }, url, h('button', { type: 'button', class: 'btn btn-primary', onclick: addUrl }, 'Add'))),
       h('div', { class: 'ad-opts' },
         option('globe', 'Public data', 'NOAA, NASA, USGS, Census, NPS and thousands more', () => { dlg.close(); openPublicData(); }),
-        option('pen', 'Draw on the map', 'Sketch points, routes or areas yourself', () => { dlg.close(); openDraw(); }),
+        option('pen', 'Draw on the map', 'Sketch and style points, lines, areas, circles and text', () => { dlg.close(); openDraw(); }),
         option('map', 'Try sample data', 'Landmarks along the Potomac River', () => {
           dlg.close();
           addLayer({ id: uid('l'), name: 'Sample landmarks', url: '/data/landmarks.geojson', style: { color: '#2563eb', mode: 'categorical', field: 'category', label: 'name' }, popup: { title: '{name}' } });
@@ -271,122 +271,381 @@ function seg(opts, value, onPick) {
 
 /* ---------- Draw & measure ---------- */
 
-export function openDraw() {
+const INK = ['#e4572e', '#f59e0b', '#16a34a', '#0891b2', '#2563eb', '#7c3aed', '#db2777', '#111827', '#ffffff'];
+const DRAW_TOOLS = [
+  ['select', 'Select', 'cursor', 'Click a shape to select it. Drag a selected shape to move it.'],
+  ['point', 'Point', 'pin', 'Click the map to drop a point.'],
+  ['line', 'Line', 'line', 'Click to add corners. Double-click or press Enter to finish.'],
+  ['free', 'Freehand', 'scribble', 'Press and drag to draw. Let go to finish.'],
+  ['area', 'Area', 'polygon', 'Click to add corners. Double-click or press Enter to close the area.'],
+  ['rect', 'Box', 'square', 'Press and drag from one corner to the other.'],
+  ['circle', 'Circle', 'circle', 'Press at the center and drag out to the edge.'],
+  ['text', 'Text', 'type', 'Click the map where the text should go, then type it in the panel.'],
+];
+const KIND_OF_TOOL = { point: 'point', text: 'text', line: 'line', free: 'line', area: 'area', rect: 'area', circle: 'area' };
+const DRAG_TOOLS = new Set(['free', 'rect', 'circle']);
+const kindOf = (f) => (f.properties.text != null ? 'text' : /Point/.test(f.geometry.type) ? 'point' : /LineString/.test(f.geometry.type) ? 'line' : 'area');
+const KIND_ICON = { point: 'pin', text: 'type', line: 'line', area: 'polygon' };
+
+// Style properties each kind of shape carries (see FEATURE_STYLE_KEYS in maps.js).
+function styleFor(kind, st) {
+  if (kind === 'point') return { 'marker-color': st.color, 'marker-size': st.size };
+  if (kind === 'text') return { stroke: st.color, 'text-size': st.textSize };
+  const line = { stroke: st.color, 'stroke-width': st.width, 'stroke-opacity': st.opacity, 'stroke-dash': st.dash };
+  if (kind === 'line') return { ...line, arrow: st.arrow || undefined };
+  return { ...line, fill: st.fill || st.color, 'fill-opacity': st.fillOpacity };
+}
+// The panel's values, read back from a shape.
+function styleOf(f, st) {
+  const p = f.properties;
+  return { ...st, color: p.stroke || p['marker-color'] || st.color, size: p['marker-size'] || st.size, textSize: p['text-size'] ?? st.textSize,
+    width: p['stroke-width'] ?? st.width, opacity: p['stroke-opacity'] ?? st.opacity, dash: p['stroke-dash'] || 'solid', arrow: !!p.arrow,
+    fill: p.fill && p.fill !== p.stroke ? p.fill : '', fillOpacity: p['fill-opacity'] ?? st.fillOpacity };
+}
+
+/** The Draw & measure workspace. Pass `layer` to keep editing a layer drawn earlier. */
+export function openDraw({ layer: editing } = {}) {
   const t = window.turf;
-  let mode = 'point';
-  const done = []; // finished features
-  let sketch = []; // coordinates of the shape being drawn
+  const story = ctx.story();
+  let tool = editing ? 'select' : 'line';
+  let sel = -1; // index of the selected shape
+  let sketch = []; // corners of the shape being drawn
   let cursor = null;
+  let drag = null; // { kind: 'free'|'rect'|'circle'|'move', start, ... } while the mouse is down
   let map;
+  let st = { color: INK[0], width: 3, opacity: 1, dash: 'solid', arrow: false, fill: '', fillOpacity: 0.25, size: 'medium', textSize: 20 };
+  const shapes = editing?.data ? structuredClone(editing.data.features) : [];
+  let showNames = editing ? !!editing.style?.label : false;
+  if (shapes.length) st = styleOf(shapes.at(-1), st);
+  let saved = JSON.stringify(shapes); // to warn before closing with unsaved shapes
 
-  const readout = h('div', { class: 'wb-readout' });
-  const listBox = h('div', { class: 'sub-list' });
-  const saveBtn = h('button', { type: 'button', class: 'btn btn-brand btn-block', disabled: true, onclick: () => save() }, icon('plus', { size: 16 }), 'Save as a layer');
-  const nameInput = h('input', { class: 'input', type: 'text', value: 'My drawing' });
-  const modeSeg = h('div', { class: 'seg seg-block' });
+  // The drawing is previewed as a real story layer, so it looks exactly as it will in the story.
+  const draft = { id: 'wm-draft', name: editing?.name || 'My drawing', drawn: true, popup: { enabled: false }, data: { type: 'FeatureCollection', features: [] },
+    style: { color: st.color, width: 3, radius: 7, opacity: 0.25, ...(editing?.style || {}), mode: 'single', display: 'features' } };
+  let trace = '';
 
-  const measure = (geom) => {
-    if (!t) return '';
+  const round6 = (c) => [Math.round(c[0] * 1e6) / 1e6, Math.round(c[1] * 1e6) / 1e6];
+  const ll = (e) => round6([e.lngLat.lng, e.lngLat.lat]);
+  const measure = (geom, props = {}) => {
+    if (!t || !geom) return '';
+    if (props.radius_km) return `radius ${fmtDist(props.radius_km)} · ${fmtArea(t.area(t.feature(geom)) / 1e6)}`;
     if (geom.type === 'LineString' && geom.coordinates.length > 1) return fmtDist(t.length(t.feature(geom), { units: 'kilometers' }));
     if (geom.type === 'Polygon' && geom.coordinates[0].length > 3) return `${fmtArea(t.area(t.feature(geom)) / 1e6)} · edge ${fmtDist(t.length(t.polygonToLine(t.feature(geom)), { units: 'kilometers' }))}`;
     return '';
   };
+  const box = (a, b) => ({ type: 'Polygon', coordinates: [[a, [b[0], a[1]], b, [a[0], b[1]], a]] });
+  const disc = (c, edge) => {
+    const km = t ? t.distance(c, edge, { units: 'kilometers' }) : 0;
+    return { km, geom: km > 0 && t ? t.circle(c, km, { steps: 72, units: 'kilometers' }).geometry : null };
+  };
   const sketchGeom = () => {
+    if (drag?.kind === 'rect' && drag.end) return box(drag.start, drag.end);
+    if (drag?.kind === 'circle' && drag.end) return disc(drag.start, drag.end).geom;
+    if (drag?.kind === 'free' && drag.pts.length > 1) return { type: 'LineString', coordinates: drag.pts };
     const pts = cursor ? [...sketch, cursor] : sketch;
-    if (mode === 'line' && pts.length > 1) return { type: 'LineString', coordinates: pts };
-    if (mode === 'area' && pts.length > 2) return { type: 'Polygon', coordinates: [[...pts, pts[0]]] };
-    if (mode === 'area' && pts.length === 2) return { type: 'LineString', coordinates: pts };
+    if (tool === 'line' && pts.length > 1) return { type: 'LineString', coordinates: pts };
+    if (tool === 'area' && pts.length > 2) return { type: 'Polygon', coordinates: [[...pts, pts[0]]] };
+    if (tool === 'area' && pts.length === 2) return { type: 'LineString', coordinates: pts };
     return null;
+  };
+
+  /* ----- Side panel ----- */
+  const toolGrid = h('div', { class: 'draw-tools', role: 'toolbar', 'aria-label': 'Drawing tools' });
+  const readout = h('div', { class: 'wb-readout' });
+  const stylePanel = h('div', { class: 'draw-style' });
+  const listBox = h('div', { class: 'sub-list draw-list' });
+  const nameInput = h('input', { class: 'input', type: 'text', value: editing?.name || 'My drawing', oninput: () => { draft.name = nameInput.value || 'Drawing'; map?._legend.render(map); } });
+  let cornerBtns;
+  const saveBtn = h('button', { type: 'button', class: 'btn btn-brand btn-block', onclick: () => save() }, icon('plus', { size: 16 }), editing ? 'Save changes' : 'Save as a layer');
+  const traceSelect = h('select', { onchange: (e) => { trace = e.target.value; setVisibleLayers(map, [trace, draft.id].filter(Boolean)); } },
+    h('option', { value: '' }, 'Nothing'), (story.layers || []).filter((l) => l.id !== editing?.id).map((l) => h('option', { value: l.id }, l.name || 'Layer')));
+
+  const update = () => { // shapes changed: redraw the preview layer and the panel
+    draft.data = { type: 'FeatureCollection', features: shapes.map((f, i) => ({ ...f, properties: { ...f.properties, __i: i } })) };
+    draft.style.label = showNames ? 'name' : undefined;
+    if (map?.getSource(`dl-${draft.id}`)) {
+      map.setLayoutProperty(`dl-${draft.id}-label`, 'visibility', showNames ? 'visible' : 'none');
+      map.setLayoutProperty(`dl-${draft.id}-label`, 'text-field', ['to-string', ['get', 'name']]);
+      reloadLayer(map, draft);
+    }
+    render();
+  };
+
+  const swatches = (value, onPick, { none } = {}) => h('div', { class: 'swatches' },
+    none ? h('button', { type: 'button', class: `sw sw-none${!value ? ' is-on' : ''}`, title: none, 'aria-label': none, onclick: () => onPick('') }) : null,
+    INK.map((c) => h('button', { type: 'button', class: `sw${value === c ? ' is-on' : ''}`, style: `--c:${c}`, title: c, 'aria-label': `Color ${c}`, onclick: () => onPick(c) })),
+    h('label', { class: 'sw sw-custom', title: 'Any color' }, h('input', { type: 'color', value: value || st.color, 'aria-label': 'Any color', oninput: (e) => onPick(e.target.value) })));
+  const slider = (label, value, { min, max, step = 1, fmt = String }, onSet) => {
+    const out = h('span', { class: 'muted' }, fmt(value));
+    return h('label', { class: 'field draw-range' }, h('span', { class: 'field-label' }, h('span', {}, label), out),
+      h('input', { type: 'range', min, max, step, value, oninput: (e) => { out.textContent = fmt(+e.target.value); onSet(+e.target.value, false); }, onchange: (e) => onSet(+e.target.value, true) }));
+  };
+  const pct = (v) => `${Math.round(v * 100)}%`;
+
+  // Changing a style sets it for the selected shape and for the next shapes you draw.
+  const setStyle = (patch, full = true) => {
+    st = { ...st, ...patch };
+    const f = shapes[sel];
+    if (f) {
+      const kind = kindOf(f);
+      const props = { ...f.properties, ...styleFor(kind, st) };
+      Object.keys(props).forEach((k) => props[k] === undefined && delete props[k]);
+      f.properties = props;
+      if (full) update();
+      else { draft.data.features[sel].properties = { ...props, __i: sel }; reloadLayer(map, draft); }
+    }
+    if (full) renderStyle();
+  };
+
+  const renderStyle = () => {
+    const f = shapes[sel];
+    const kind = f ? kindOf(f) : KIND_OF_TOOL[tool];
+    if (!kind) { stylePanel.replaceChildren(h('p', { class: 'field-hint', style: 'margin:0' }, 'Select a shape to change how it looks, or pick a drawing tool.')); return; }
+    const title = f ? `Style · ${f.properties.name || 'shape'}` : `Style for new ${kind === 'area' ? 'areas' : kind === 'text' ? 'text' : `${kind}s`}`;
+    const rows = [h('div', { class: 'rail-section-title' }, title)];
+    if (f && kind === 'text') {
+      rows.push(h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Text'),
+        h('textarea', { rows: 2, class: 'draw-text-input', value: f.properties.text, oninput: (e) => { f.properties.text = e.target.value || ' '; draft.data.features[sel].properties.text = f.properties.text; reloadLayer(map, draft); }, onchange: update })));
+    }
+    rows.push(h('div', { class: 'field' }, h('span', { class: 'field-label' }, kind === 'area' ? 'Outline color' : 'Color'), swatches(st.color, (c) => setStyle({ color: c }))));
+    if (kind === 'area') {
+      rows.push(h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Fill color'), swatches(st.fill, (c) => setStyle({ fill: c }), { none: 'Same as the outline' })));
+      rows.push(slider('Fill', st.fillOpacity, { min: 0, max: 1, step: 0.05, fmt: (v) => (v ? pct(v) : 'None') }, (v, full) => setStyle({ fillOpacity: v }, full)));
+    }
+    if (kind === 'line' || kind === 'area') {
+      rows.push(slider('Line width', st.width, { min: 1, max: 14, step: 0.5, fmt: (v) => `${v}px` }, (v, full) => setStyle({ width: v }, full)));
+      rows.push(slider('Line opacity', st.opacity, { min: 0.1, max: 1, step: 0.05, fmt: pct }, (v, full) => setStyle({ opacity: v }, full)));
+      rows.push(h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Line style'), seg([['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']], st.dash, (v) => setStyle({ dash: v }))));
+    }
+    if (kind === 'line') rows.push(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.arrow, onchange: (e) => setStyle({ arrow: e.target.checked }) }), 'Arrowhead at the end'));
+    if (kind === 'point') rows.push(h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Size'), seg([['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], st.size, (v) => setStyle({ size: v }))));
+    if (kind === 'text') rows.push(slider('Text size', st.textSize, { min: 11, max: 56, fmt: (v) => `${v}px` }, (v, full) => setStyle({ textSize: v }, full)));
+    if (f) {
+      if (kind !== 'text') {
+        rows.push(h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Name'),
+          h('input', { class: 'input', type: 'text', value: f.properties.name || '', oninput: (e) => { f.properties.name = e.target.value; }, onchange: update })));
+        rows.push(h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Description (shown when readers click it)'),
+          h('textarea', { rows: 2, value: f.properties.description || '', oninput: (e) => { f.properties.description = e.target.value || undefined; } })));
+      }
+      rows.push(h('div', { class: 'row', style: 'margin-top:4px' },
+        h('button', { type: 'button', class: 'btn btn-sm', onclick: duplicate }, icon('copy', { size: 14 }), 'Duplicate'),
+        h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => remove(sel) }, icon('trash', { size: 14 }), 'Delete')));
+    }
+    stylePanel.replaceChildren(...rows);
   };
 
   const render = () => {
     const g = sketchGeom();
-    const feats = [...done.map((f) => f), ...(g ? [{ type: 'Feature', properties: { sketch: true }, geometry: g }] : []),
-      ...sketch.map((c) => ({ type: 'Feature', properties: { vertex: true }, geometry: { type: 'Point', coordinates: c } }))];
-    map?.getSource('wm-draw')?.setData({ type: 'FeatureCollection', features: feats });
-    const hint = mode === 'point' ? 'Click the map to drop a point.'
-      : sketch.length === 0 ? `Click to start the ${mode === 'line' ? 'route' : 'area'}.`
-        : `Keep clicking to add corners. Double-click or press Enter to finish${mode === 'area' ? ' the area' : ''}. Esc cancels.`;
-    readout.replaceChildren(...kidsOf(h('p', { class: 'field-hint', style: 'margin:0' }, hint), g ? h('div', { class: 'wb-measure' }, icon('ruler', { size: 16 }), measure(g)) : null));
-    listBox.replaceChildren(...done.map((f, i) => h('div', { class: 'sub' }, h('div', { class: 'sub-head' },
-      icon(f.geometry.type === 'Point' ? 'pin' : f.geometry.type === 'LineString' ? 'line' : 'polygon', { size: 15 }),
-      h('input', { class: 'input', style: 'height:30px', type: 'text', value: f.properties.name, oninput: (e) => { f.properties.name = e.target.value; } }),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Delete shape', onclick: () => { done.splice(i, 1); render(); } }, icon('trash', { size: 15 }))),
-    f.geometry.type !== 'Point' ? h('div', { class: 'sub-body muted', style: 'font-size:12.5px' }, measure(f.geometry)) : null)));
-    saveBtn.disabled = !done.length;
-    modeSeg.replaceChildren(...[['point', 'Point', 'pin'], ['line', 'Route', 'line'], ['area', 'Area', 'polygon']].map(([v, l, ic]) =>
-      h('button', { type: 'button', class: mode === v ? 'is-on' : '', onclick: () => { mode = v; sketch = []; render(); } }, icon(ic, { size: 15 }), l)));
+    const f = shapes[sel];
+    const overlay = [
+      ...(g ? [{ type: 'Feature', properties: { sketch: true }, geometry: g }] : []),
+      ...sketch.map((c) => ({ type: 'Feature', properties: { vertex: true }, geometry: { type: 'Point', coordinates: c } })),
+      ...(f ? [{ type: 'Feature', properties: { sel: true, point: f.geometry.type === 'Point' }, geometry: f.geometry }] : []),
+      ...(f ? corners(f.geometry).map((c) => ({ type: 'Feature', properties: { handle: true }, geometry: { type: 'Point', coordinates: c } })) : []),
+    ];
+    map?.getSource('wm-draw')?.setData({ type: 'FeatureCollection', features: overlay });
+    const hint = DRAW_TOOLS.find(([k]) => k === tool)[3];
+    const live = drag?.kind === 'circle' && drag.end ? `radius ${fmtDist(disc(drag.start, drag.end).km)}` : measure(g) || (f ? measure(f.geometry, f.properties) : '');
+    readout.replaceChildren(...kidsOf(h('p', { class: 'field-hint', style: 'margin:0' }, sketch.length ? `${hint} Esc cancels.` : hint),
+      live ? h('div', { class: 'wb-measure' }, icon('ruler', { size: 16 }), live) : null));
+    toolGrid.replaceChildren(...DRAW_TOOLS.map(([k, label, ic]) => h('button', { type: 'button', class: tool === k ? 'is-on' : '', 'aria-pressed': tool === k ? 'true' : 'false', title: label,
+      onclick: () => setTool(k) }, icon(ic, { size: 17 }), h('span', {}, label))));
+    listBox.replaceChildren(...(shapes.length ? shapes.map((s, i) => {
+      const kind = kindOf(s);
+      const c = s.properties.fill || s.properties.stroke || s.properties['marker-color'] || st.color;
+      return h('button', { type: 'button', class: `draw-item${i === sel ? ' is-on' : ''}`, onclick: () => select(i === sel ? -1 : i) },
+        h('span', { class: 'draw-item-icon', style: `--c:${c}${/^#f{3}(f{3})?$/i.test(c) ? ';color:#111827' : ''}` }, icon(KIND_ICON[kind], { size: 14 })),
+        h('span', { class: 'draw-item-name' }, kind === 'text' ? `“${s.properties.text}”` : s.properties.name || 'Shape'),
+        h('span', { class: 'muted' }, kind === 'text' || kind === 'point' ? '' : measure(s.geometry, s.properties).split(' · ')[0]));
+    }) : [h('p', { class: 'field-hint', style: 'margin:0' }, 'Nothing drawn yet.')]));
+    saveBtn.disabled = !shapes.length;
+    mapEl.classList.toggle('is-drawing', tool !== 'select');
+    cornerBtns.hidden = tool !== 'line' && tool !== 'area';
   };
 
+  const setTool = (k) => { tool = k; sketch = []; cursor = null; if (k !== 'select') sel = -1; render(); renderStyle(); };
+  const select = (i) => {
+    sel = i;
+    if (shapes[i]) st = styleOf(shapes[i], st);
+    render(); renderStyle();
+    if (shapes[i] && kindOf(shapes[i]) === 'text') requestAnimationFrame(() => stylePanel.querySelector('.draw-text-input')?.select());
+  };
+  const remove = (i) => { shapes.splice(i, 1); sel = -1; update(); renderStyle(); };
+  const duplicate = () => {
+    const f = structuredClone(shapes[sel]);
+    // nudge the copy a little to the right and down so it's visible
+    const b = map.getBounds();
+    const dx = (b.getEast() - b.getWest()) * 0.03, dy = (b.getNorth() - b.getSouth()) * -0.03;
+    f.geometry = shiftGeom(f.geometry, dx, dy);
+    if (f.properties.name) f.properties.name += ' copy';
+    shapes.push(f);
+    select(shapes.length - 1);
+    update();
+  };
+  const count = (kind) => shapes.filter((s) => kindOf(s) === kind).length + 1;
+  const add = (geometry, extra = {}) => {
+    const kind = extra.text != null ? 'text' : geometry.type === 'Point' ? 'point' : geometry.type === 'LineString' ? 'line' : 'area';
+    const props = { name: { point: 'Point', line: 'Line', area: 'Area', text: '' }[kind] + (kind === 'text' ? '' : ` ${count(kind)}`), ...extra, ...styleFor(kind, st) };
+    if (t && kind === 'line') props.length_km = Math.round(t.length(t.feature(geometry), { units: 'kilometers' }) * 1000) / 1000;
+    if (t && kind === 'area') props.area_km2 = Math.round((t.area(t.feature(geometry)) / 1e6) * 1000) / 1000;
+    Object.keys(props).forEach((k) => (props[k] === undefined || props[k] === '') && delete props[k]);
+    shapes.push({ type: 'Feature', properties: props, geometry });
+    sel = shapes.length - 1;
+    update();
+    renderStyle();
+  };
   const finish = () => {
-    const pts = sketch;
-    if ((mode === 'line' && pts.length < 2) || (mode === 'area' && pts.length < 3)) return;
-    const geometry = mode === 'line' ? { type: 'LineString', coordinates: pts } : { type: 'Polygon', coordinates: [[...pts, pts[0]]] };
-    const props = { name: `${mode === 'line' ? 'Route' : 'Area'} ${done.length + 1}` };
-    if (t) {
-      if (mode === 'line') props.length_km = Math.round(t.length(t.feature(geometry), { units: 'kilometers' }) * 1000) / 1000;
-      else props.area_km2 = Math.round((t.area(t.feature(geometry)) / 1e6) * 1000) / 1000;
-    }
-    done.push({ type: 'Feature', properties: props, geometry });
+    if ((tool === 'line' && sketch.length < 2) || (tool === 'area' && sketch.length < 3)) return;
+    const geometry = tool === 'line' ? { type: 'LineString', coordinates: sketch } : { type: 'Polygon', coordinates: [[...sketch, sketch[0]]] };
     sketch = [];
-    render();
+    cursor = null;
+    add(geometry);
   };
 
   const save = () => {
-    if (!done.length) return;
+    if (!shapes.length) return;
+    const data = { type: 'FeatureCollection', features: structuredClone(shapes) };
+    const name = nameInput.value.trim() || 'My drawing';
+    saved = JSON.stringify(shapes);
     dlg.close();
-    addLayer({ id: uid('l'), name: nameInput.value.trim() || 'My drawing', data: { type: 'FeatureCollection', features: done },
-      style: { color: RESULT, opacity: 0.22, width: 3, radius: 7, label: 'name' }, popup: { title: '{name}' } });
-    toast('Drawing saved as a layer', { tone: 'ok' });
+    if (editing) {
+      Object.assign(editing, { name, data });
+      editing.style = { ...(editing.style || {}), label: showNames ? 'name' : undefined };
+      ctx.changed();
+      ctx.openLayer(editing.id);
+      toast('Drawing updated', { tone: 'ok' });
+      return;
+    }
+    addLayer({ id: uid('l'), name, drawn: true, data, style: { color: st.color, opacity: 0.25, width: 3, radius: 7, label: showNames ? 'name' : undefined }, popup: { title: '{name}' } });
+    toast('Drawing saved as a layer. Turn it on in any map.', { tone: 'ok' });
   };
 
   const side = h('div', { class: 'wb-side' },
-    h('p', { class: 'wb-intro' }, 'Sketch your own points, routes and areas. Distances and areas are measured as you draw.'),
-    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Draw a'), modeSeg),
+    h('p', { class: 'wb-intro' }, 'Sketch points, lines, areas, boxes, circles and text, and style each one. Distances and areas are measured as you draw.'),
+    toolGrid,
     readout,
-    h('div', { class: 'row', style: 'margin-top:10px' },
+    cornerBtns = h('div', { class: 'row', style: 'margin-top:10px' },
       h('button', { type: 'button', class: 'btn btn-sm', onclick: finish }, icon('check', { size: 14 }), 'Finish shape'),
-      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { sketch.pop(); render(); } }, icon('undo', { size: 14 }), 'Undo point')),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { sketch.pop(); render(); } }, icon('undo', { size: 14 }), 'Undo corner')),
+    stylePanel,
     h('div', { class: 'rail-section-title' }, 'Shapes'),
     listBox,
+    h('div', { class: 'rail-section-title' }, 'Layer'),
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Layer name'), nameInput),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: showNames, onchange: (e) => { showNames = e.target.checked; update(); } }), 'Show shape names on the map'),
+    (story.layers || []).length ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Show another layer to trace over'), traceSelect) : null,
     h('div', { style: 'margin-top:12px' }, saveBtn));
 
-  const { dlg, mapEl } = workspace({ title: 'Draw & measure', side, onClose: () => { map?.remove(); removeEventListener('keydown', onKey); } });
-  const story = ctx.story();
+  const { dlg, mapEl } = workspace({ title: editing ? `Edit drawing · ${editing.name}` : 'Draw & measure', side, onClose: () => { map?.remove(); removeEventListener('keydown', onKey, true); removeEventListener('mouseup', onUp); } });
   const first = (story.blocks || []).map((b) => b.view || b.slides?.[0]?.media?.view).find(Boolean) || DEFAULT_VIEW;
-  map = createMap(mapEl, { ...first, markers: [], layers: [] }, { library: story.layers || [] });
+  const others = (story.layers || []).filter((l) => l.id !== editing?.id);
+  map = createMap(mapEl, { ...first, markers: [], layers: [draft.id] }, { library: [...others, draft] });
   map.scrollZoom.enable();
   map.doubleClickZoom.disable();
-  map.getCanvas().style.cursor = 'crosshair';
+  if (editing && shapes.length && t) map.once('load', () => {
+    const b = t.bbox({ type: 'FeatureCollection', features: shapes });
+    map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, maxZoom: 15, duration: 0 });
+  });
   const install = () => {
     if (map.getSource('wm-draw')) return;
     map.addSource('wm-draw', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: 'wm-draw-fill', type: 'fill', source: 'wm-draw', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': RESULT, 'fill-opacity': 0.2 } });
-    map.addLayer({ id: 'wm-draw-line', type: 'line', source: 'wm-draw', filter: ['all', ['!', ['has', 'sketch']], ['in', ['geometry-type'], ['literal', ['Polygon', 'LineString']]]], paint: { 'line-color': RESULT, 'line-width': 3 } });
-    map.addLayer({ id: 'wm-draw-sketch', type: 'line', source: 'wm-draw', filter: ['has', 'sketch'], paint: { 'line-color': RESULT, 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
-    map.addLayer({ id: 'wm-draw-pt', type: 'circle', source: 'wm-draw', filter: ['all', ['==', ['geometry-type'], 'Point'], ['!', ['has', 'vertex']]], paint: { 'circle-color': RESULT, 'circle-radius': 7, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5 } });
-    map.addLayer({ id: 'wm-draw-vx', type: 'circle', source: 'wm-draw', filter: ['has', 'vertex'], paint: { 'circle-color': '#fff', 'circle-radius': 4.5, 'circle-stroke-color': RESULT, 'circle-stroke-width': 2 } });
-    render();
+    map.addLayer({ id: 'wm-draw-sel', type: 'line', source: 'wm-draw', filter: ['all', ['has', 'sel'], ['!=', ['geometry-type'], 'Point']], paint: { 'line-color': '#111827', 'line-width': 1.5, 'line-dasharray': [3, 2] } });
+    map.addLayer({ id: 'wm-draw-selpt', type: 'circle', source: 'wm-draw', filter: ['all', ['has', 'sel'], ['==', ['geometry-type'], 'Point']], paint: { 'circle-radius': 16, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#111827', 'circle-stroke-width': 1.5 } });
+    map.addLayer({ id: 'wm-draw-sketch', type: 'line', source: 'wm-draw', filter: ['has', 'sketch'], paint: { 'line-color': st.color, 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
+    map.addLayer({ id: 'wm-draw-sketchfill', type: 'fill', source: 'wm-draw', filter: ['all', ['has', 'sketch'], ['==', ['geometry-type'], 'Polygon']], paint: { 'fill-color': st.color, 'fill-opacity': 0.12 } });
+    map.addLayer({ id: 'wm-draw-handle', type: 'circle', source: 'wm-draw', filter: ['has', 'handle'], paint: { 'circle-color': '#fff', 'circle-radius': 4, 'circle-stroke-color': '#111827', 'circle-stroke-width': 1.5 } });
+    map.addLayer({ id: 'wm-draw-vx', type: 'circle', source: 'wm-draw', filter: ['has', 'vertex'], paint: { 'circle-color': '#fff', 'circle-radius': 4.5, 'circle-stroke-color': '#111827', 'circle-stroke-width': 2 } });
+    update();
   };
   whenStyled(map, install);
+
+  const hitShape = (point) => {
+    const ids = ['fill', 'line', 'dash', 'dot', 'circle', 'note', 'arrow'].map((k) => `dl-${draft.id}-${k}`).filter((id) => map.getLayer(id));
+    const f = map.queryRenderedFeatures([[point.x - 4, point.y - 4], [point.x + 4, point.y + 4]], { layers: ids }).find((x) => x.properties.__i != null && !x.properties.__arrow);
+    return f ? Number(f.properties.__i) : -1;
+  };
   map.on('click', (e) => {
-    const c = [Math.round(e.lngLat.lng * 1e6) / 1e6, Math.round(e.lngLat.lat * 1e6) / 1e6];
-    if (mode === 'point') done.push({ type: 'Feature', properties: { name: `Point ${done.filter((f) => f.geometry.type === 'Point').length + 1}` }, geometry: { type: 'Point', coordinates: c } });
-    else sketch.push(c);
-    render();
+    if (drag?.moved) return;
+    const c = ll(e);
+    if (tool === 'select') return select(hitShape(e.point));
+    if (tool === 'point') return add({ type: 'Point', coordinates: c });
+    if (tool === 'text') { add({ type: 'Point', coordinates: c }, { text: 'Your text' }); return select(shapes.length - 1); }
+    if (tool === 'line' || tool === 'area') { sketch.push(c); render(); }
   });
   map.on('dblclick', (e) => { e.preventDefault(); if (sketch.length) { sketch.pop(); finish(); } });
-  map.on('mousemove', (e) => { if (mode !== 'point' && sketch.length) { cursor = [e.lngLat.lng, e.lngLat.lat]; render(); } });
+  map.on('mousedown', (e) => {
+    if (e.originalEvent.button !== 0) return;
+    if (DRAG_TOOLS.has(tool)) {
+      drag = { kind: tool, start: ll(e), pts: [ll(e)] };
+      map.dragPan.disable();
+    } else if (tool === 'select') {
+      const i = hitShape(e.point);
+      if (i < 0 || i !== sel) return;
+      drag = { kind: 'move', start: ll(e), geom: structuredClone(shapes[i].geometry) };
+      map.dragPan.disable();
+    }
+  });
+  map.on('mousemove', (e) => {
+    if (drag) {
+      const c = ll(e);
+      drag.moved = true;
+      if (drag.kind === 'free') { const last = drag.pts.at(-1); if (Math.abs(c[0] - last[0]) + Math.abs(c[1] - last[1]) > 0) drag.pts.push(c); }
+      else if (drag.kind === 'move') {
+        shapes[sel].geometry = shiftGeom(drag.geom, c[0] - drag.start[0], c[1] - drag.start[1]);
+        draft.data.features[sel].geometry = shapes[sel].geometry;
+        reloadLayer(map, draft);
+      } else drag.end = c;
+      render();
+      return;
+    }
+    if ((tool === 'line' || tool === 'area') && sketch.length) { cursor = [e.lngLat.lng, e.lngLat.lat]; render(); }
+  });
+  const onUp = () => {
+    if (!drag) return;
+    const d = drag;
+    map.dragPan.enable();
+    setTimeout(() => { drag = null; }, 0); // let the click that follows mouseup see that this was a drag
+    if (!d.moved) { drag = null; return; }
+    drag = { moved: true };
+    if (d.kind === 'free' && d.pts.length > 1) {
+      // thin out the points: about one per screen pixel and a half at the current zoom
+      const tol = (360 / (512 * 2 ** map.getZoom())) * 1.5;
+      const line = t ? t.simplify(t.lineString(d.pts), { tolerance: tol, highQuality: true }).geometry : { type: 'LineString', coordinates: d.pts };
+      add({ ...line, coordinates: line.coordinates.map(round6) });
+    } else if (d.kind === 'rect' && d.end) add(box(d.start, d.end));
+    else if (d.kind === 'circle' && d.end) {
+      const { km, geom } = disc(d.start, d.end);
+      if (geom) add({ ...geom, coordinates: [geom.coordinates[0].map(round6)] }, { radius_km: Math.round(km * 1000) / 1000 });
+    } else if (d.kind === 'move') update();
+    render();
+  };
+  addEventListener('mouseup', onUp);
   map.on('mouseout', () => { cursor = null; render(); });
   const onKey = (e) => {
-    if (e.target.closest?.('input, textarea')) return;
+    if (e.target.closest?.('input, textarea, select')) return;
     if (e.key === 'Enter') finish();
-    if (e.key === 'Backspace' && sketch.length) { sketch.pop(); render(); }
+    if (e.key === 'Backspace' && sketch.length) { e.preventDefault(); sketch.pop(); render(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { e.preventDefault(); remove(sel); }
   };
   addEventListener('keydown', onKey, true);
-  dlg.addEventListener('cancel', (e) => { if (sketch.length) { e.preventDefault(); sketch = []; render(); } });
+  dlg.addEventListener('cancel', (e) => {
+    if (sketch.length) { e.preventDefault(); sketch = []; render(); } else if (sel >= 0) { e.preventDefault(); select(-1); }
+    else if (JSON.stringify(shapes) !== saved && !confirm('Close without saving your drawing?')) e.preventDefault();
+  });
   render();
+  renderStyle();
+}
+
+// Corner handles shown on the selected shape (circles and freehand lines get a sample, not every point).
+function corners(g) {
+  if (g.type === 'Point') return [];
+  const rings = g.type === 'LineString' ? [g.coordinates] : g.type === 'Polygon' ? [g.coordinates[0].slice(0, -1)] : [];
+  return rings.flatMap((r) => (r.length > 24 ? r.filter((_, i) => i % Math.ceil(r.length / 12) === 0) : r));
+}
+
+function shiftGeom(g, dx, dy) {
+  const mv = (c) => (typeof c[0] === 'number' ? [Math.round((c[0] + dx) * 1e6) / 1e6, Math.round((c[1] + dy) * 1e6) / 1e6] : c.map(mv));
+  return { ...g, coordinates: mv(g.coordinates) };
 }
 
 /* ---------- Insights ---------- */

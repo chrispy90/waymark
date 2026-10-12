@@ -305,9 +305,51 @@ const POLY = ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]]
 const LINE = ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
 const POINT = ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]];
 // Each data layer is drawn with several MapLibre layers; which ones exist depends on style.display.
-const SUBS = ['raster', 'fill', 'line', 'circle', 'label', 'heat', 'cluster', 'count'];
+const SUBS = ['raster', 'fill', 'line', 'dash', 'dot', 'circle', 'arrow', 'note', 'label', 'heat', 'cluster', 'count'];
 const subIds = (id) => SUBS.map((k) => `dl-${id}-${k}`);
-const hitIds = (map) => map._library.flatMap((l) => ['fill', 'line', 'circle', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
+const hitIds = (map) => map._library.flatMap((l) => ['fill', 'line', 'dash', 'dot', 'circle', 'note', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
+
+/* Per-feature styles. Features can carry their own look in the simplestyle convention (also written by geojson.io):
+   stroke, stroke-width, stroke-opacity, fill, fill-opacity, marker-color, marker-size. Waymark adds stroke-dash
+   (solid | dashed | dotted), arrow (an arrowhead at the end of a line) and text (a point drawn as a text label,
+   sized by text-size). In single-color layers these win over the layer's own style. */
+export const FEATURE_STYLE_KEYS = ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'marker-color', 'marker-size', 'marker-symbol', 'stroke-dash', 'arrow', 'text', 'text-size'];
+const num = (key, fallback) => ['case', ['has', key], ['to-number', ['get', key], fallback], fallback];
+const DASH = ['coalesce', ['get', 'stroke-dash'], 'solid'];
+const NOTE = ['has', 'text'];
+const ARROWHEAD = ['has', '__arrow'];
+const PLAIN_POINT = ['all', POINT, ['!', NOTE], ['!', ARROWHEAD]];
+
+// Arrowheads are extra points at the end of each line marked `arrow`, rotated to the last segment.
+function withArrows(fc) {
+  const heads = [];
+  fc.features.forEach((f) => {
+    const p = f.properties;
+    if (!p?.arrow || p.arrow === 'false' || !f.geometry) return;
+    const lines = f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [];
+    lines.forEach((c) => {
+      if (c.length < 2) return;
+      const [a, b] = [c.at(-2), c.at(-1)];
+      const k = Math.cos((b[1] * Math.PI) / 180);
+      const rotate = (Math.atan2((b[0] - a[0]) * k, b[1] - a[1]) * 180) / Math.PI;
+      heads.push({ type: 'Feature', geometry: { type: 'Point', coordinates: b },
+        properties: { __arrow: true, rotate, stroke: p.stroke, 'stroke-width': p['stroke-width'], 'stroke-opacity': p['stroke-opacity'] } });
+    });
+  });
+  return heads.length ? { ...fc, features: [...fc.features, ...heads] } : fc;
+}
+
+// A triangle drawn as a signed-distance image, so MapLibre can tint it with icon-color.
+function addArrowImage(map) {
+  if (map.hasImage('wm-arrow')) return;
+  const n = 48;
+  const c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.beginPath(); g.moveTo(n / 2, 6); g.lineTo(n - 8, n - 8); g.lineTo(n / 2, n - 16); g.lineTo(8, n - 8); g.closePath(); g.fill();
+  map.addImage('wm-arrow', g.getImageData(0, 0, n, n), { sdf: true, pixelRatio: 2 });
+}
 const displayOf = (layer) => layer.style?.display || 'features';
 const NOT_CLUSTER = ['!', ['has', 'point_count']];
 
@@ -340,11 +382,19 @@ function installLayers(map) {
       map._legendInfo[layer.id] = { type: 'imagery' };
       return;
     }
-    map.addSource(src, { type: 'geojson', data: emptyFC(), attribution: layer.attribution || undefined, ...(display === 'clusters' ? { cluster: true, clusterRadius: 50, clusterMaxZoom: 14 } : {}) });
+    map.addSource(src, { type: 'geojson', data: emptyFC(), ...(layer.attribution ? { attribution: layer.attribution } : {}), ...(display === 'clusters' ? { cluster: true, clusterRadius: 50, clusterMaxZoom: 14 } : {}) });
+    addArrowImage(map);
+    const width = num('stroke-width', ['case', LINE, s.width ?? 3, 1]);
+    const lineOpacity = num('stroke-opacity', 1);
     map.addLayer({ id: `${src}-fill`, type: 'fill', source: src, filter: POLY, layout: { visibility: vis },
-      paint: { 'fill-color': color, 'fill-opacity': s.opacity ?? 0.45 } });
-    map.addLayer({ id: `${src}-line`, type: 'line', source: src, filter: ['any', POLY, LINE], layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': color, 'line-width': ['case', LINE, s.width ?? 3, 1] } });
+      paint: { 'fill-color': color, 'fill-opacity': num('fill-opacity', s.opacity ?? 0.45) } });
+    // Dashes can't vary per feature in MapLibre, so dashed and dotted outlines get layers of their own.
+    map.addLayer({ id: `${src}-line`, type: 'line', source: src, filter: ['all', ['any', POLY, LINE], ['==', DASH, 'solid']], layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': color, 'line-width': width, 'line-opacity': lineOpacity } });
+    map.addLayer({ id: `${src}-dash`, type: 'line', source: src, filter: ['all', ['any', POLY, LINE], ['==', DASH, 'dashed']], layout: { visibility: vis, 'line-join': 'round' },
+      paint: { 'line-color': color, 'line-width': width, 'line-opacity': lineOpacity, 'line-dasharray': [2.4, 1.6] } });
+    map.addLayer({ id: `${src}-dot`, type: 'line', source: src, filter: ['all', ['any', POLY, LINE], ['==', DASH, 'dotted']], layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': color, 'line-width': width, 'line-opacity': lineOpacity, 'line-dasharray': [0, 2] } });
     if (display === 'heatmap') {
       map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, filter: POINT, maxzoom: 17, layout: { visibility: vis }, paint: {
         'heatmap-weight': 1,
@@ -364,11 +414,20 @@ function installLayers(map) {
         visibility: vis, 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true },
       paint: { 'text-color': '#ffffff' } });
     }
-    map.addLayer({ id: `${src}-circle`, type: 'circle', source: src, filter: display === 'clusters' ? ['all', POINT, NOT_CLUSTER] : POINT, layout: { visibility: vis },
-      paint: { 'circle-color': color, 'circle-radius': radius, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5,
+    map.addLayer({ id: `${src}-circle`, type: 'circle', source: src, filter: display === 'clusters' ? ['all', PLAIN_POINT, NOT_CLUSTER] : PLAIN_POINT, layout: { visibility: vis },
+      paint: { 'circle-color': color, 'circle-radius': ['match', ['get', 'marker-size'], 'small', radius * 0.7, 'large', radius * 1.7, radius],
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': ['match', ['get', 'marker-size'], 'large', 2.5, 1.5],
         'circle-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 0.92] : 0.92,
         'circle-stroke-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 1] : 1 } });
-    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, filter: display === 'clusters' ? NOT_CLUSTER : ['all'], layout: {
+    map.addLayer({ id: `${src}-arrow`, type: 'symbol', source: src, filter: ['all', POINT, ARROWHEAD], layout: {
+      visibility: vis, 'icon-image': 'wm-arrow', 'icon-rotate': ['get', 'rotate'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-size': ['interpolate', ['linear'], num('stroke-width', s.width ?? 3), 1, 0.55, 12, 2.2] },
+    paint: { 'icon-color': color, 'icon-opacity': lineOpacity } });
+    map.addLayer({ id: `${src}-note`, type: 'symbol', source: src, filter: ['all', POINT, NOTE], layout: {
+      visibility: vis, 'text-field': ['to-string', ['get', 'text']], 'text-font': ['Noto Sans Bold'], 'text-size': num('text-size', 18),
+      'text-max-width': 14, 'text-allow-overlap': true, 'text-ignore-placement': true },
+    paint: { 'text-color': color, 'text-halo-color': '#ffffff', 'text-halo-width': 2, 'text-opacity': lineOpacity } });
+    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, filter: display === 'clusters' ? NOT_CLUSTER : ['all', ['!', NOTE], ['!', ARROWHEAD]], layout: {
       visibility: s.label ? vis : 'none', 'text-field': s.label ? ['to-string', ['get', s.label]] : '', 'text-font': ['Noto Sans Regular'],
       'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
     paint: { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
@@ -389,12 +448,16 @@ function loadInto(map, layer) {
   if (layer.type === 'raster') return;
   layerFeatures(layer).then((fc) => {
     if (map.getSource(src) !== source) return; // style was swapped while loading
-    source.setData(fc);
+    source.setData(display === 'features' ? withArrows(fc) : fc);
     const { expr, legend } = colorRamp(layer, fc);
-    map.setPaintProperty(`${src}-fill`, 'fill-color', expr);
-    map.setPaintProperty(`${src}-line`, 'line-color', s.mode && s.mode !== 'single' ? ['case', POLY, '#ffffff', expr] : expr);
-    map.setPaintProperty(`${src}-circle`, 'circle-color', expr);
-    let info = legend;
+    const own = !s.mode || s.mode === 'single'; // features' own colors only override a single-color style
+    const line = own ? ['to-color', ['get', 'stroke'], expr] : ['case', POLY, '#ffffff', expr];
+    map.setPaintProperty(`${src}-fill`, 'fill-color', own ? ['to-color', ['get', 'fill'], ['get', 'stroke'], expr] : expr);
+    ['line', 'dash', 'dot'].forEach((k) => map.setPaintProperty(`${src}-${k}`, 'line-color', line));
+    map.setPaintProperty(`${src}-arrow`, 'icon-color', line);
+    map.setPaintProperty(`${src}-note`, 'text-color', own ? ['to-color', ['get', 'stroke'], '#1f2937'] : expr);
+    map.setPaintProperty(`${src}-circle`, 'circle-color', own ? ['to-color', ['get', 'marker-color'], expr] : expr);
+    let info = drawnLegend(layer, fc) || legend;
     if (display === 'heatmap') {
       const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : PALETTE[0];
       if (s.weight) {
@@ -411,6 +474,30 @@ function loadInto(map, layer) {
     map._legendInfo[layer.id] = { type: 'error', message: err.message };
     map._legend.render(map);
   });
+}
+
+/** Re-reads a layer's data and paint after its features changed (used while drawing). */
+export function reloadLayer(map, layer) {
+  const source = map.getSource(`dl-${layer.id}`);
+  if (!source) return;
+  source._smLoading = false;
+  loadInto(map, layer);
+}
+
+// A drawn layer's legend lists its named shapes with their own colors.
+function drawnLegend(layer, fc) {
+  if (!layer.drawn || (layer.style?.mode && layer.style.mode !== 'single')) return null;
+  const seen = new Set();
+  const entries = [];
+  fc.features.forEach((f) => {
+    const p = f.properties || {};
+    const name = String(p.name || '').trim();
+    const c = p.fill || p.stroke || p['marker-color'] || layer.style?.color || PALETTE[0];
+    if (!name || p.text || seen.has(name + c) || entries.length >= 8) return;
+    seen.add(name + c);
+    entries.push([name, c]);
+  });
+  return entries.length ? { type: 'categories', entries } : null;
 }
 
 export function setVisibleLayers(map, ids) {
@@ -443,7 +530,8 @@ function bindPopups(map) {
     }
     const layer = map._library.find((l) => f.layer.id.startsWith(`dl-${l.id}-`));
     if (!layer || layer.popup?.enabled === false) return;
-    popup.setLngLat(e.lngLat).setDOMContent(popupContent(layer, f.properties)).addTo(map);
+    const content = popupContent(layer, f.properties);
+    if (content.childNodes.length) popup.setLngLat(e.lngLat).setDOMContent(content).addTo(map);
   });
   map.on('mousemove', (e) => {
     const ids = hitIds(map);
@@ -458,7 +546,9 @@ function popupContent(layer, props = {}) {
   el.className = 'sm-popup';
   const title = (p.title || '').replace(/\{([^}]+)\}/g, (_, k) => props[k.trim()] ?? '');
   if (title.trim()) { const h = document.createElement('strong'); h.textContent = title; el.append(h); }
-  const fields = p.fields?.length ? p.fields : Object.keys(props).filter((k) => !/^(OBJECTID|GLOBALID|FID|SHAPE.*|Shape.*)$/i.test(k)).slice(0, 8);
+  if (props.description && !p.fields?.includes('description')) { const d = document.createElement('p'); d.textContent = String(props.description); el.append(d); }
+  const fields = p.fields?.length ? p.fields : layer.drawn ? [] : Object.keys(props)
+    .filter((k) => !/^(OBJECTID|GLOBALID|FID|SHAPE.*|Shape.*|description)$/i.test(k) && !FEATURE_STYLE_KEYS.includes(k)).slice(0, 8);
   const table = document.createElement('table');
   fields.forEach((k) => {
     if (props[k] == null || props[k] === '') return;

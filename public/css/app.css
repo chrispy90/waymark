@@ -628,3 +628,30 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .dlg-catalog .dlg-foot > .muted { display: none; }
 }
 .cat-side .seg button { white-space: nowrap; padding: 0 8px; }
+
+/* Draw & measure */
+.row[hidden] { display: none; }
+.draw-tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.draw-tools button { display: grid; justify-items: center; gap: 4px; padding: 9px 2px 7px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+  color: var(--fg-2); font-size: 11.5px; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.draw-tools button:hover { border-color: var(--line-2); color: var(--fg); }
+.draw-tools button.is-on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, var(--panel)); color: var(--brand-ink); }
+.draw-style { margin-top: 4px; }
+.draw-style .rail-section-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+.sw { position: relative; width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(0,0,0,.18); background: var(--c); cursor: pointer; padding: 0; }
+.sw.is-on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--fg); }
+.sw-none { background: linear-gradient(135deg, transparent 45%, #dc2626 45% 55%, transparent 55%), var(--panel); }
+.sw-custom { background: conic-gradient(#e4572e, #f59e0b, #16a34a, #0891b2, #7c3aed, #db2777, #e4572e); overflow: hidden; }
+.sw-custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.draw-range input[type=range] { width: 100%; accent-color: var(--brand); margin: 2px 0 0; }
+.draw-list { gap: 4px; }
+.draw-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: none; color: inherit;
+  font-size: 13px; text-align: left; cursor: pointer; }
+.draw-item:hover { background: var(--panel-2); }
+.draw-item.is-on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, var(--panel)); }
+.draw-item-icon { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; flex: none; color: #fff; background: var(--c);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.draw-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.draw-item .muted { font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+.is-drawing .maplibregl-canvas { cursor: crosshair !important; }

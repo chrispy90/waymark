@@ -14,7 +14,7 @@
   --ease: cubic-bezier(.2, .8, .2, 1);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg: #121211; --fg: #ecebe6; --muted: #a3a19a; --card: #1d1d1b; --line: #2f2e2b; --accent: #f2744c; --accent-fg: #121211; }
+  :root:not([data-theme]) { --bg: #121211; --fg: #ecebe6; --muted: #a3a19a; --card: #1d1d1b; --line: #2f2e2b; --accent: #f2744c; --accent-fg: #121211; }
 }
 :root[data-theme="dark"] { --bg: #121211; --fg: #ecebe6; --muted: #a3a19a; --card: #1d1d1b; --line: #2f2e2b; --accent: #f2744c; --accent-fg: #121211; }
 
@@ -213,6 +213,160 @@ img, video, iframe { display: block; max-width: 100%; }
 .sm-madewith { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 13px; }
 .sm-madewith::before { content: ''; width: 14px; height: 14px; border-radius: 4px; background: var(--accent); }
 .sm-madewith:hover { color: var(--fg); }
+
+/* ---------- Brutalist theme: raw type, hard edges, loud color, things slightly out of line ---------- */
+:root[data-theme="brutalist"] {
+  --bg: #efede6; --fg: #0b0b0b; --muted: #3c3b38; --card: #ffffff; --line: #0b0b0b;
+  --accent: #2121ff; --accent-fg: #ffffff; --acid: #dcff1e; --hot: #ff4a1c;
+  --shadow: 7px 7px 0 var(--fg);
+  --serif: 'Space Mono', ui-monospace, 'Courier New', monospace;
+  --sans: 'Space Mono', ui-monospace, 'Courier New', monospace;
+  --display: 'Archivo Black', 'Arial Black', Impact, sans-serif;
+  --edge: 3px solid var(--fg);
+  --ease: steps(6, end);
+}
+[data-theme="brutalist"] body { font-size: 16.5px; line-height: 1.65; cursor: crosshair; transition: none; }
+[data-theme="brutalist"] a, [data-theme="brutalist"] button { cursor: pointer; }
+[data-theme="brutalist"] ::selection { background: var(--acid); color: #0b0b0b; }
+[data-theme="brutalist"] .sm-story { counter-reset: chapter; }
+
+/* Top bar: the title runs as a ticker */
+[data-theme="brutalist"] .sm-topbar { background: var(--acid); color: #0b0b0b; backdrop-filter: none; border-bottom: var(--edge); height: 40px; padding: 0;
+  font: 700 12px var(--sans); letter-spacing: .12em; text-transform: uppercase; overflow: hidden; }
+/* the real title is hidden; two identical copies (the title repeated) scroll by, so the loop is seamless */
+[data-theme="brutalist"] .sm-topbar-title { display: flex; overflow: visible; text-overflow: clip; font-size: 0; animation: brut-ticker 40s linear infinite; }
+[data-theme="brutalist"] .sm-topbar-title::before, [data-theme="brutalist"] .sm-topbar-title::after { content: attr(data-ticker); font-size: 12px; white-space: pre; }
+[data-theme="brutalist"] .sm-progress { height: 6px; background: var(--fg); }
+@keyframes brut-ticker { to { transform: translateX(-50%); } }
+
+/* Cover: huge, left-aligned, set in black bars */
+[data-theme="brutalist"] .sm-cover { place-items: end start; text-align: left; padding: 120px clamp(16px, 4vw, 56px) 72px; border-bottom: var(--edge); }
+[data-theme="brutalist"] .sm-cover-bg { filter: grayscale(1) contrast(1.35) brightness(.92); }
+[data-theme="brutalist"] .sm-cover.has-image::before { background: color-mix(in srgb, var(--accent) 38%, transparent); mix-blend-mode: multiply; }
+[data-theme="brutalist"] .sm-cover-inner { max-width: none; animation: none; }
+[data-theme="brutalist"] .sm-cover h1 { display: inline; font: 400 clamp(3.2rem, 11.5vw, 10.5rem)/1.04 var(--display); letter-spacing: -.045em; text-transform: uppercase;
+  background: var(--fg); color: var(--bg); padding: 0 .12em; box-decoration-break: clone; -webkit-box-decoration-break: clone; text-shadow: none; }
+[data-theme="brutalist"] .sm-cover.has-image h1 { background: #0b0b0b; color: #fff; }
+[data-theme="brutalist"] .sm-subtitle { margin: 1.3em 0 1.3em; max-width: 44ch; font: 700 clamp(1rem, 1.7vw, 1.25rem)/1.45 var(--sans); background: var(--card); color: var(--fg);
+  border: var(--edge); box-shadow: var(--shadow); padding: .7em .9em; opacity: 1; display: table; }
+[data-theme="brutalist"] .sm-kicker, [data-theme="brutalist"] .sm-cover.has-image .sm-kicker { display: table; margin: 0 0 1.4em; padding: .45em .8em; background: var(--acid); color: #0b0b0b;
+  border: 2px solid #0b0b0b; transform: rotate(-3deg); opacity: 1; font: 700 12px var(--sans); letter-spacing: .14em; }
+[data-theme="brutalist"] .sm-byline { display: inline-block; font: 700 12px var(--sans); letter-spacing: .14em; background: var(--fg); color: var(--bg); padding: .45em .7em; opacity: 1; }
+[data-theme="brutalist"] .sm-cover.has-image .sm-byline { background: #fff; color: #0b0b0b; }
+[data-theme="brutalist"] .sm-scroll-cue { width: auto; height: auto; left: auto; right: clamp(16px, 4vw, 56px); margin: 0; border: 0; border-radius: 0; opacity: 1; }
+[data-theme="brutalist"] .sm-scroll-cue span { position: static; display: block; width: auto; height: auto; margin: 0; background: none; border-radius: 0; font: 400 46px/1 var(--display); animation: brut-blink 1s steps(1) infinite; }
+[data-theme="brutalist"] .sm-scroll-cue span::before { content: '\2193'; }
+@keyframes brut-blink { 50% { opacity: 0; } }
+
+/* Text */
+[data-theme="brutalist"] .sm-narrow { max-width: 760px; }
+[data-theme="brutalist"] .sm-text h2 { font: 400 clamp(2rem, 5vw, 3.6rem)/.95 var(--display); letter-spacing: -.035em; text-transform: uppercase; margin: 2em 0 .55em;
+  padding-bottom: .2em; border-bottom: 8px solid var(--fg); }
+[data-theme="brutalist"] .sm-text h3 { font: 700 1.1rem/1.3 var(--sans); text-transform: uppercase; letter-spacing: .06em; display: inline-block; background: var(--fg); color: var(--bg); padding: .15em .45em; }
+[data-theme="brutalist"] .sm-text a { color: var(--fg); text-decoration: none; background: linear-gradient(var(--acid), var(--acid)) 0 88% / 100% .45em no-repeat; font-weight: 700; }
+[data-theme="brutalist"] .sm-text a:hover { background: var(--accent); color: var(--accent-fg); }
+[data-theme="brutalist"] .sm-text.is-large p { font: 700 clamp(1.15rem, 2.1vw, 1.45rem)/1.5 var(--sans); letter-spacing: -.01em; }
+[data-theme="brutalist"] .sm-text.is-large p:first-child::first-letter { font: 400 4.4em/.8 var(--display); background: var(--accent); color: var(--accent-fg); padding: .08em .1em 0; margin: .06em .14em 0 0; }
+[data-theme="brutalist"] .sm-quote { font: 400 clamp(1.7rem, 4vw, 3rem)/1.02 var(--display); text-transform: uppercase; letter-spacing: -.03em; border: var(--edge); border-left-width: 16px;
+  padding: .7em .8em; background: var(--card); box-shadow: var(--shadow); }
+[data-theme="brutalist"] .sm-quote::before { content: none; }
+[data-theme="brutalist"] .sm-quote p { padding-left: 0; }
+[data-theme="brutalist"] .sm-quote cite { padding-left: 0; font: 700 12px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--fg); }
+[data-theme="brutalist"] .sm-separator { height: 22px; margin: 4.5em 0; border-block: var(--edge); background: repeating-linear-gradient(-45deg, var(--fg) 0 10px, var(--acid) 10px 20px); }
+[data-theme="brutalist"] .sm-separator::before { content: none; }
+
+/* Images, video, maps: framed, hard shadows, slightly crooked */
+[data-theme="brutalist"] .sm-img-wrap, [data-theme="brutalist"] .sm-ratio iframe, [data-theme="brutalist"] .sm-ratio video,
+[data-theme="brutalist"] .sm-figure:not(.size-full) .sm-map { border-radius: 0; border: var(--edge); box-shadow: var(--shadow); }
+[data-theme="brutalist"] .sm-figure.size-full .sm-img-wrap, [data-theme="brutalist"] .sm-figure.size-full .sm-map { border: 0; border-block: var(--edge); box-shadow: none; }
+[data-theme="brutalist"] .sm-figure:nth-of-type(odd):not(.size-full) .sm-img-wrap { transform: rotate(-.8deg); }
+[data-theme="brutalist"] .sm-figure:nth-of-type(even):not(.size-full) .sm-img-wrap { transform: rotate(.6deg); }
+[data-theme="brutalist"] .sm-img-wrap.fx-reveal, [data-theme="brutalist"] .sm-img-wrap.fx-reveal.is-in { clip-path: inset(0 0 100% 0); }
+[data-theme="brutalist"] .sm-img-wrap.fx-reveal.is-in { clip-path: inset(-20px -20px -20px -20px); }
+[data-theme="brutalist"] .sm-caption { font: 700 11.5px/1.5 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--fg); padding-top: 16px; }
+[data-theme="brutalist"] .sm-caption::before { content: 'FIG.\00a0'; background: var(--fg); color: var(--bg); padding: .1em .4em; margin-right: .6em; }
+
+/* Scroll reveals snap in steps instead of easing */
+[data-theme="brutalist"] .motion-subtle .fx-reveal { transform: translateX(-28px); }
+[data-theme="brutalist"] .motion-expressive .fx-reveal { transform: translateX(-90px) rotate(-1.5deg); filter: none; }
+[data-theme="brutalist"] .fx-reveal.is-in { transform: none; }
+
+/* Chapters: numbered automatically, giant type */
+[data-theme="brutalist"] .sm-chapter { counter-increment: chapter; border-block: var(--edge); transition: none; }
+[data-theme="brutalist"] .sm-chapter-bg { filter: grayscale(1) contrast(1.3); }
+[data-theme="brutalist"] .sm-chapter.has-image::before { background: color-mix(in srgb, #0b0b0b 55%, transparent); }
+[data-theme="brutalist"] .sm-chapter-inner { max-width: 1240px; transform: translateY(60px) skewY(2deg); }
+[data-theme="brutalist"] .sm-chapter-inner.is-in { transform: none; }
+[data-theme="brutalist"] .sm-chapter-inner::before { content: counter(chapter, decimal-leading-zero); display: block; font: 400 clamp(5rem, 20vw, 16rem)/.8 var(--display);
+  color: transparent; -webkit-text-stroke: 2px var(--chapter-fg, var(--fg)); margin-bottom: .05em; }
+[data-theme="brutalist"] .sm-chapter.has-image .sm-chapter-inner::before { -webkit-text-stroke-color: #fff; }
+[data-theme="brutalist"] .sm-chapter h2 { font: 400 clamp(2.8rem, 9.5vw, 8rem)/.9 var(--display); letter-spacing: -.045em; text-transform: uppercase; }
+[data-theme="brutalist"] .sm-chapter .sm-kicker { transform: rotate(2deg); opacity: 1; }
+[data-theme="brutalist"] .sm-chapter-text { font: 700 clamp(1rem, 1.8vw, 1.3rem)/1.5 var(--sans); max-width: 46ch; opacity: 1; }
+
+/* Statement: outlined words fill in as they light up */
+[data-theme="brutalist"] .sm-statement-text { font: 400 clamp(2.3rem, 7vw, 6rem)/.95 var(--display); letter-spacing: -.04em; text-transform: uppercase; }
+[data-theme="brutalist"] .sm-word { opacity: 1; color: transparent; -webkit-text-stroke: 1.5px var(--fg); transition: none; }
+[data-theme="brutalist"] .sm-word.is-lit { color: var(--fg); }
+[data-theme="brutalist"] .sm-word.is-lit:nth-child(5n + 3) { color: var(--accent); -webkit-text-stroke-color: var(--accent); }
+[data-theme="brutalist"] .sm-statement-cite { color: var(--fg); font-weight: 700; }
+
+/* Big numbers: a hard grid with one loud cell */
+[data-theme="brutalist"] .sm-stats-grid { border: var(--edge); gap: 0; background: var(--fg); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 3px; box-shadow: var(--shadow); }
+[data-theme="brutalist"] .sm-stat { background: var(--card); border: 0; padding: 26px 22px 22px; }
+[data-theme="brutalist"] .sm-stat:nth-child(3n + 2) { background: var(--acid); color: #0b0b0b; }
+[data-theme="brutalist"] .sm-stat:nth-child(3n + 2) .sm-stat-num, [data-theme="brutalist"] .sm-stat:nth-child(3n + 2) .sm-stat-label { color: #0b0b0b; }
+[data-theme="brutalist"] .sm-stat-num { font: 400 clamp(2.6rem, 6vw, 4.8rem)/.95 var(--display); letter-spacing: -.04em; }
+[data-theme="brutalist"] .sm-stat-label { font: 700 12.5px/1.45 var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--fg); }
+[data-theme="brutalist"] .sm-stats .sm-caption { padding-top: 18px; }
+
+/* Sideways gallery: a messy pinboard */
+[data-theme="brutalist"] .sm-hg-intro h2 { font: 400 clamp(2.2rem, 5vw, 4.2rem)/.92 var(--display); text-transform: uppercase; letter-spacing: -.04em; }
+[data-theme="brutalist"] .sm-hg-intro p { color: var(--fg); font-weight: 700; }
+[data-theme="brutalist"] .sm-hg-item img { border-radius: 0; border: var(--edge); box-shadow: var(--shadow); }
+[data-theme="brutalist"] .sm-hg-item:nth-child(odd) { transform: rotate(-1.6deg) translateY(14px); }
+[data-theme="brutalist"] .sm-hg-item:nth-child(even) { transform: rotate(1.2deg) translateY(-10px); }
+[data-theme="brutalist"] .sm-hg-item figcaption { font: 700 11.5px var(--sans); text-transform: uppercase; letter-spacing: .08em; color: var(--fg); }
+
+/* Moving map cards, stop by stop, before & after */
+[data-theme="brutalist"] .sm-slide-card { border-radius: 0; border: var(--edge); box-shadow: var(--shadow); backdrop-filter: none; transition: opacity .4s steps(3, end), transform .4s steps(3, end); }
+[data-theme="brutalist"] .sm-scrollmap.layout-overlay .sm-slide-card { background: var(--card); backdrop-filter: none; }
+[data-theme="brutalist"] .sm-slide-card h2, [data-theme="brutalist"] .sm-slide-card h3 { font: 400 1.7rem/1 var(--display); text-transform: uppercase; letter-spacing: -.02em; }
+[data-theme="brutalist"] .sm-slide:nth-child(even) .sm-slide-card { transform: rotate(.8deg); }
+[data-theme="brutalist"] .sm-scrollmap-media { border-block: var(--edge); }
+[data-theme="brutalist"] .sm-slide-card a[href^="#action:"] { color: var(--fg); background: var(--acid); border: 2px solid var(--fg); padding: 0 .3em; }
+[data-theme="brutalist"] .sm-slide-card a.is-on { background: var(--accent); color: var(--accent-fg); border-color: var(--fg); border-radius: 0; }
+[data-theme="brutalist"] .sm-stops-grid { border-block: var(--edge); }
+[data-theme="brutalist"] .sm-stops-panel { border-right: var(--edge); }
+[data-theme="brutalist"] .sm-stops-panel img { border-bottom: var(--edge); filter: grayscale(.4) contrast(1.15); }
+[data-theme="brutalist"] .sm-stops-body h3 { font: 400 2rem/.95 var(--display); text-transform: uppercase; letter-spacing: -.03em; }
+[data-theme="brutalist"] .sm-stops-count { display: inline-block; background: var(--fg); color: var(--bg); padding: .25em .5em; }
+[data-theme="brutalist"] .sm-stops-nav button { border-radius: 0; border: var(--edge); background: var(--card); box-shadow: 4px 4px 0 var(--fg); transition: none; }
+[data-theme="brutalist"] .sm-stops-nav button:hover { background: var(--acid); color: #0b0b0b; border-color: var(--fg); }
+[data-theme="brutalist"] .sm-stops-nav button:active { transform: translate(4px, 4px); box-shadow: none; }
+[data-theme="brutalist"] .sm-compare { border-block: var(--edge); }
+[data-theme="brutalist"] .sm-compare-handle::before { width: 6px; margin-left: -3px; background: var(--acid); box-shadow: 0 0 0 2px #0b0b0b; }
+[data-theme="brutalist"] .sm-compare-handle::after { border-radius: 0; background: var(--acid); border: 3px solid #0b0b0b; box-shadow: 4px 4px 0 #0b0b0b; }
+[data-theme="brutalist"] .sm-compare-label { border-radius: 0; background: #0b0b0b; font-family: var(--sans); text-transform: uppercase; letter-spacing: .08em; }
+
+/* Maps: square markers, popups and legends to match */
+[data-theme="brutalist"] .sm-marker { border-radius: 0; border: 3px solid #0b0b0b; box-shadow: 3px 3px 0 #0b0b0b; font-family: var(--sans); }
+[data-theme="brutalist"] .maplibregl-popup-content { border-radius: 0; border: 3px solid #0b0b0b; box-shadow: 5px 5px 0 #0b0b0b; font-family: var(--sans); }
+[data-theme="brutalist"] .sm-legend { border-radius: 0; border: 2px solid #0b0b0b; box-shadow: 4px 4px 0 #0b0b0b; font-family: var(--sans); }
+[data-theme="brutalist"] .maplibregl-ctrl-group { border-radius: 0; border: 2px solid #0b0b0b; box-shadow: 3px 3px 0 #0b0b0b; }
+
+/* Credits */
+[data-theme="brutalist"] .sm-credits { max-width: none; margin-top: 6em; padding: 32px clamp(16px, 4vw, 56px) 64px; border-top: var(--edge); background: var(--fg); color: var(--bg); font-size: 13px; }
+[data-theme="brutalist"] .sm-credits a { color: var(--acid); }
+[data-theme="brutalist"] .sm-madewith { color: var(--bg); text-transform: uppercase; letter-spacing: .1em; }
+[data-theme="brutalist"] .sm-madewith::before { border-radius: 0; background: var(--acid); }
+[data-theme="brutalist"] .sm-madewith:hover { color: var(--acid); }
+[data-theme="brutalist"] .is-editing [data-block-index]::after { border-radius: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="brutalist"] .sm-topbar-title { animation: none; font-size: inherit; padding: 0 16px; }
+  [data-theme="brutalist"] .sm-topbar-title::before, [data-theme="brutalist"] .sm-topbar-title::after { content: none; }
+}
 
 /* Builder preview: click a block to edit it */
 .is-editing [data-block-index] { position: relative; cursor: pointer; }

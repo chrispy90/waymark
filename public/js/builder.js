@@ -454,7 +454,8 @@ function storyTab() {
     fields(story, [{ row: [{ k: 'author', label: 'Author' }, { k: 'date', label: 'Date' }] }]),
     h('div', { class: 'rail-section-title' }, 'Look & feel'),
     fields(story, [
-      { k: 'theme', t: 'seg', label: 'Theme', opts: [['light', 'Light'], ['dark', 'Dark']], dflt: 'light' },
+      { k: 'theme', t: 'seg', label: 'Theme', opts: [['light', 'Light'], ['dark', 'Dark'], ['brutalist', 'Brutalist']], dflt: 'light',
+        hint: 'Brutalist: raw type, hard edges and loud color.' },
       { k: 'motion', t: 'seg', label: 'Scroll animations', opts: [['none', 'Off'], ['subtle', 'Subtle'], ['expressive', 'Expressive']], dflt: 'subtle',
         hint: 'How blocks animate into view as readers scroll. Readers who turn on "reduce motion" always get a still page.' }]),
     h('div', { class: 'rail-section-title' }, 'Credits'),
@@ -473,7 +474,7 @@ function dataTab() {
     h('div', { class: 'data-actions' },
       h('button', { type: 'button', class: 'btn', onclick: openAddData }, icon('upload', { size: 16 }), 'Your data'),
       h('button', { type: 'button', class: 'btn', onclick: () => openAnalysis() }, icon('sparkle', { size: 16 }), 'Analyze'),
-      h('button', { type: 'button', class: 'btn', onclick: openDraw }, icon('pen', { size: 16 }), 'Draw'))];
+      h('button', { type: 'button', class: 'btn', onclick: () => openDraw() }, icon('pen', { size: 16 }), 'Draw'))];
   if (!lib.length) {
     return [actions, h('div', { class: 'data-empty' },
       h('span', { class: 'data-empty-art' }, icon('database', { size: 26 })),
@@ -858,6 +859,9 @@ function layerForm(layer) {
     a ? h('div', { class: 'provenance' }, icon('sparkle', { size: 15 }),
       h('span', {}, `${TOOLS[a.tool]?.name || 'Analysis'} of ${inputNames}`),
       h('button', { type: 'button', class: 'btn btn-sm', title: 'Run the analysis again with the latest data', onclick: () => rerunAnalysis(layer) }, icon('refresh', { size: 14 }), 'Re-run')) : null,
+    !a && layer.data?.features?.length <= 2000 ? h('div', { class: 'provenance' }, icon('pen', { size: 15 }),
+      h('span', {}, layer.drawn ? 'Drawn on the map' : 'Shapes stored in this story'),
+      h('button', { type: 'button', class: 'btn btn-sm', title: 'Draw, move, restyle or delete shapes in this layer', onclick: () => openDraw({ layer }) }, icon('pen', { size: 14 }), 'Edit shapes')) : null,
     field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
     a || layer.catalog ? null : h('div', { class: 'field' }, labelEl('Data'),
       h('div', { class: 'row' },
@@ -1052,7 +1056,7 @@ function commands() {
     ...Object.entries(CATALOG).map(([type, c]) => ({ label: `Add ${c.label.toLowerCase()}`, hint: c.desc, icon: c.icon, group: 'Add a block', run: () => addBlockAt(insertIndex(), { type, ...c.make() }) })),
     { label: 'Browse public data…', hint: 'NOAA, NASA, USGS, Census, parks, wildfires and more', icon: 'globe', group: 'Data', run: () => openPublicData({ onAdd: (l) => openLayer(l.id) }) },
     { label: 'Add your own data…', hint: 'Upload a file or paste a link', icon: 'database', group: 'Data', run: openAddData },
-    { label: 'Draw & measure on a map', hint: 'Sketch points, routes and areas', icon: 'pen', group: 'Data', run: openDraw },
+    { label: 'Draw & measure on a map', hint: 'Sketch and style points, lines, areas, circles and text', icon: 'pen', group: 'Data', run: () => openDraw() },
     ...Object.entries(TOOLS).map(([id, t]) => ({ label: `Analyze: ${t.name}`, hint: t.desc, icon: t.icon, group: 'Data', run: () => openAnalysis({ tool: id }) })),
     ...story.blocks.map((b, i) => ({ label: `${i + 1}. ${CATALOG[b.type]?.label || b.type}`, hint: peek(b), icon: CATALOG[b.type]?.icon || 'file', group: 'Go to block', run: () => { selected = null; select(i); } })),
     { label: 'Content', hint: 'Blocks in your story', icon: 'text', group: 'Go to', run: go('content') },

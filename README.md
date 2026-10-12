@@ -115,13 +115,25 @@ Live layers refresh every time someone opens the story, so a published map stays
   </tr>
 </table>
 
-You can also **draw and measure** routes and areas, and show points as a **heatmap** or **clusters**. Bring your own data too: GeoJSON, CSV, or any public ArcGIS layer.
+You can also show points as a **heatmap** or **clusters**. Bring your own data too: GeoJSON, CSV, or any public ArcGIS layer.
+
+### Draw right on the map
+
+Sketch points, lines, freehand routes, areas, boxes, circles and text labels. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing whenever you like.
+
+<p align="center"><img src="docs/media/draw.png" alt="The Draw workspace with a selected area, a dashed arrow and the style panel" width="100%"></p>
 
 ### An editor that gets out of the way
 
 Click anything in the live preview to edit it. You also get drag to reorder, undo and redo, a command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>), a phone preview and autosave. Drafts stay private until you publish again.
 
 <p align="center"><img src="docs/media/click-to-edit.gif" alt="Clicking a chapter in the preview to edit its title and color" width="100%"></p>
+
+### Make it loud: the brutalist theme
+
+Switch any story to **Brutalist** for raw monospace and heavy display type, hard black edges and offset shadows, acid-yellow stickers, a ticker headline, outlined words that fill in as you scroll, and numbered chapters. Or start from the *Brutalist zine* template.
+
+<p align="center"><img src="docs/media/brutalist.png" alt="A story in the brutalist theme on a laptop and two phones" width="100%"></p>
 
 ### Every story works on a phone
 
@@ -136,9 +148,10 @@ Click anything in the live preview to edit it. You also get drag to reorder, und
 | **Moving map story** | The map stays fixed and glides to a new place as each card scrolls by |
 | **Stop-by-stop walk** | Numbered places with photos. Readers step through them or tap a marker |
 | **Chaptered essay** | Chapters that recolor the page, text that lights up, numbers that count, photos that slide |
+| **Brutalist zine** | Raw type, hard edges, loud color, and a map you draw on |
 | **Blank story** | A title and an empty page |
 
-Any story can also use **Before & after**, a block with two maps in one view and a draggable divider.
+Any story can also use **Before & after**, a block with two maps in one view and a draggable divider. Every story can be **light**, **dark** or **brutalist**.
 
 <br>
 
@@ -264,7 +277,7 @@ public/                the web app (plain ES modules, no build step)
   js/ui.js             icons, logo, toasts, menus, dialogs
   js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
   js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)
-  js/workbench.js      Add data, Analyze and Draw & measure workspaces
+  js/workbench.js      Add data, Analyze and Draw workspaces
   js/catalog.js        public data catalog (government sources + ArcGIS Online search)
   js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
   js/export.js         the export dialog
