@@ -45,6 +45,8 @@ export function createMap(container, view = DEFAULT_VIEW, { interactive = true, 
   if (interactive) map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
   map.scrollZoom.disable(); // never hijack page scroll
   container._smMap = map; // handy for debugging from devtools
+  // Start the credits collapsed (one tap opens them) so long source lists don't cover the map.
+  map.once('load', () => container.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
   map._basemap = v.basemap;
   map._markers = [];
   map._library = library;
@@ -200,6 +202,7 @@ export function matchesFilter(props, { field, op, value }) {
   const empty = x == null || x === '';
   if (op === 'is empty') return empty;
   if (op === 'is not empty') return !empty;
+  if (v === '') return true; // a rule without a value yet doesn't filter anything
   if (op === 'in the last (days)') { const t = asTime(x); return Number.isFinite(t) && Date.now() - t <= Number(v) * 864e5; }
   if (op === 'contains') return String(x ?? '').toLowerCase().includes(String(v).toLowerCase());
   const nx = Number(x);
@@ -314,8 +317,13 @@ function rgba(hex, a) {
 }
 const heatStops = (color) => [[0, rgba(color, 0)], [0.15, rgba(color, 0.35)], [0.4, color], [0.7, mix(color, '#ffc64d', 0.6)], [1, '#fff4c2']];
 
+/** Adds any library layers that a live map doesn't have yet (e.g. just added from the catalog). */
+export function refreshLayers(map) {
+  if (map.isStyleLoaded()) installLayers(map);
+}
+
 function installLayers(map) {
-  map._legendInfo = {};
+  map._legendInfo ||= {};
   map._library.forEach((layer) => {
     const src = `dl-${layer.id}`;
     if (map.getSource(src)) return;

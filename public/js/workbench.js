@@ -1,6 +1,7 @@
 // Data workspaces for the editor: Add data, Analyze (with live map preview), and Draw & measure.
 import { h, icon, dialog, toast } from './ui.js';
-import { createMap, setVisibleLayers, loadLayerData, bbox, DEFAULT_VIEW } from './maps.js';
+import { createMap, setVisibleLayers, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
+import { openCatalog } from './catalog.js';
 import { TOOLS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 
@@ -44,6 +45,12 @@ export async function addFromFile(file) {
   }
 }
 
+/* ---------- Public data ---------- */
+
+export function openPublicData({ onAdd } = {}) {
+  openCatalog({ onAdd: (layer) => { addLayer(layer, { open: false }); onAdd?.(layer); } });
+}
+
 /* ---------- Add data ---------- */
 
 export function openAddData() {
@@ -73,6 +80,7 @@ export function openAddData() {
       drop, fileInput,
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Or add by link'), h('div', { class: 'row' }, url, h('button', { type: 'button', class: 'btn btn-primary', onclick: addUrl }, 'Add'))),
       h('div', { class: 'ad-opts' },
+        option('globe', 'Public data', 'NOAA, NASA, USGS, Census, NPS and thousands more', () => { dlg.close(); openPublicData(); }),
         option('pen', 'Draw on the map', 'Sketch points, routes or areas yourself', () => { dlg.close(); openDraw(); }),
         option('map', 'Try sample data', 'Landmarks along the Potomac River', () => {
           dlg.close();
@@ -116,7 +124,7 @@ export async function openAnalysis({ tool: startTool, layerId } = {}) {
   map.on('style.load', () => resultLayers(map, 'wm-result'));
 
   const data = {};
-  await Promise.all(lib.map(async (l) => { try { const d = await loadLayerData(l); data[l.id] = { data: d, kinds: kinds(d) }; } catch { /* unavailable layer */ } }));
+  await Promise.all(lib.filter((l) => l.type !== 'raster').map(async (l) => { try { const d = await layerFeatures(l); data[l.id] = { data: d, kinds: kinds(d), filtered: !!(l.filters || []).some((f) => f.field) }; } catch { /* unavailable layer */ } }));
   const usable = lib.filter((l) => data[l.id]);
   if (!usable.length) { side.replaceChildren(h('p', { class: 'form-error' }, "None of your layers could be loaded.")); return; }
 
@@ -180,7 +188,7 @@ export async function openAnalysis({ tool: startTool, layerId } = {}) {
       const fits = usable.filter((l) => !inp.kind || data[l.id].kinds.has(inp.kind));
       return h('label', { class: 'field' }, h('span', { class: 'field-label' }, inp.label),
         fits.length ? h('select', { onchange: (e) => { inputs[inp.k] = e.target.value; showInputs(); drawParams(); } },
-          fits.map((l) => h('option', { value: l.id, selected: inputs[inp.k] === l.id }, `${l.name} · ${data[l.id].data.features.length.toLocaleString()}`)))
+          fits.map((l) => h('option', { value: l.id, selected: inputs[inp.k] === l.id }, `${l.name} · ${data[l.id].data.features.length.toLocaleString()}${data[l.id].filtered ? ' (filtered)' : ''}`)))
           : h('p', { class: 'field-hint', style: 'margin:0' }, `You need a layer with ${inp.kind === 'point' ? 'points' : inp.kind === 'polygon' ? 'areas (polygons)' : 'features'} for this.`));
     });
 
@@ -244,7 +252,7 @@ export async function rerunAnalysis(layer) {
   for (const [k, id] of Object.entries(a.inputs)) {
     const src = lib.find((l) => l.id === id);
     if (!src) { toast('One of the layers this was made from has been deleted.', { tone: 'error' }); return; }
-    ins[k] = await loadLayerData(src);
+    ins[k] = await layerFeatures(src);
   }
   try {
     const r = tool.run(ins, a.params);

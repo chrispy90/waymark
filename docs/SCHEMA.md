@@ -51,9 +51,23 @@ The camera and markers used by maps.
     "display": "features",                    // points only: "features" | "heatmap" | "clusters"
     "weight": "visitors"                      // heatmap only: optional numeric field that weights each point
   },
+  "filters": [{ "field": "magnitude", "op": "≥", "value": "5" }, { "field": "time", "op": "in the last (days)", "value": "7" }],
+  "filterMatch": "all",                       // "all" | "any"
+  "query": { "where": "STATE='51'", "outFields": "NAME", "maxAllowableOffset": 0.002 },  // ArcGIS layers: passed to the server
+  "transform": "usgs-quakes",                 // converter for non-standard feeds: usgs-quakes | eonet | nws-alerts | coops-stations | usgs-water
+  "attribution": "USGS Earthquake Hazards Program",
+  "catalog": "usgs-quakes",                   // set on layers added from the public data catalog
   "analysis": { "tool": "buffer", "inputs": { "input": "trail" }, "params": { "distance": 1, "units": "kilometers" } },  // set on layers made by Analyze; lets the editor re-run them
   "popup": { "title": "{name}", "fields": ["category", "year"], "enabled": true }
 }
+```
+
+### Imagery layers
+
+```jsonc
+{ "id": "radar", "name": "Weather radar", "type": "raster",
+  "tiles": "https://…/{z}/{x}/{y}.png",     // {date} is replaced with yesterday (or "date") for daily imagery
+  "date": "2016-01-01", "maxzoom": 12, "attribution": "…", "style": { "opacity": 0.7 } }
 ```
 
 ## Blocks

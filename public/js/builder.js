@@ -1,10 +1,11 @@
 // Waymark editor: block outline + settings on the left, live preview on the right.
-import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp } from './maps.js';
+import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
+import { layerStats } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, setTitle } from './ui.js';
-import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile } from './workbench.js';
+import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile, openPublicData } from './workbench.js';
 import { TOOLS, kinds } from './analysis.js';
 import { openExport } from './export.js';
 
@@ -463,15 +464,20 @@ function storyTab() {
 function dataTab() {
   const lib = (story.layers ||= []);
   lib.forEach(inspectLayer);
-  const actions = h('div', { class: 'data-actions' },
-    h('button', { type: 'button', class: 'btn btn-primary', onclick: openAddData }, icon('plus', { size: 16 }), 'Add data'),
-    h('button', { type: 'button', class: 'btn', onclick: () => openAnalysis() }, icon('sparkle', { size: 16 }), 'Analyze'),
-    h('button', { type: 'button', class: 'btn', onclick: openDraw }, icon('pen', { size: 16 }), 'Draw'));
+  const actions = [
+    h('button', { type: 'button', class: 'public-cta', onclick: () => openPublicData({ onAdd: (l) => openLayer(l.id) }) },
+      h('span', { class: 'public-cta-art' }, icon('globe', { size: 20 })),
+      h('span', {}, h('strong', {}, 'Browse public data'), h('span', {}, 'NOAA, NASA, USGS, Census, parks, wildfires and thousands more')),
+      icon('back', { size: 16, cls: 'rot' })),
+    h('div', { class: 'data-actions' },
+      h('button', { type: 'button', class: 'btn', onclick: openAddData }, icon('upload', { size: 16 }), 'Your data'),
+      h('button', { type: 'button', class: 'btn', onclick: () => openAnalysis() }, icon('sparkle', { size: 16 }), 'Analyze'),
+      h('button', { type: 'button', class: 'btn', onclick: openDraw }, icon('pen', { size: 16 }), 'Draw'))];
   if (!lib.length) {
     return [actions, h('div', { class: 'data-empty' },
       h('span', { class: 'data-empty-art' }, icon('database', { size: 26 })),
-      h('strong', {}, 'Bring your data to the map'),
-      h('p', {}, 'Drop a GeoJSON or CSV file here, paste a link to an ArcGIS layer, or draw your own shapes. Then analyze it and turn it on in any map.'))];
+      h('strong', {}, 'Bring data to your maps'),
+      h('p', {}, 'Start with live public data, drop in a GeoJSON or CSV file, or draw your own shapes. Then filter it, analyze it, and turn it on in any map.'))];
   }
   return [
     actions,
@@ -486,6 +492,7 @@ function dataTab() {
 
 function openLayer(id) {
   const layer = (story.layers || []).find((l) => l.id === id);
+  (story.layers || []).forEach((l) => openSubs.delete(l)); // one layer open at a time
   if (layer) openSubs.add(layer);
   tab = 'data';
   syncTabs();
@@ -746,7 +753,9 @@ function placeForm(place) {
 
 const layerInfo = {};
 const layerStatus = (l) => {
+  if (l.type === 'raster') return 'Imagery';
   const i = layerInfo[l.id] || {};
+  if (i.count != null && activeFilters(l).length) return `${i.shown.toLocaleString()} of ${i.count.toLocaleString()} features`;
   return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${i.count.toLocaleString()} ${i.count === 1 ? 'feature' : 'features'}` : 'No data yet';
 };
 const sourceKey = (l) => (l.data ? `data:${l.data.features?.length}` : `url:${l.url || ''}`);
@@ -757,10 +766,63 @@ function inspectLayer(layer) {
   if (!layer.data && !layer.url) { layerInfo[layer.id] = { key }; return; }
   layerInfo[layer.id] = { key, loading: true };
   const done = (info) => { if (layerInfo[layer.id]?.key === key) { layerInfo[layer.id] = { key, ...info }; if (tab === 'data') renderRail(); } };
-  loadLayerData(layer).then((fc) => done({ count: fc.features.length, fields: fieldNames(fc), fc })).catch((err) => done({ error: err.message }));
+  loadLayerData(layer).then((fc) => done({ count: fc.features.length, shown: filterData(layer, fc).features.length, fields: fieldNames(fc), fc })).catch((err) => done({ error: err.message }));
+}
+
+function rasterForm(layer) {
+  layer.style ||= {};
+  return h('div', {},
+    field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
+    h('p', { class: 'field-hint' }, 'An imagery layer: a picture of the map rather than individual features, so it can be shown but not filtered or analyzed.'),
+    field(layer.style, { k: 'opacity', t: 'number', label: 'Opacity (0 to 1)', dflt: 0.85 }),
+    /\{date\}/.test(layer.tiles || '') ? h('label', { class: 'field' }, labelEl('Date of the imagery'),
+      h('input', { type: 'date', value: layer.date || '', max: new Date().toISOString().slice(0, 10), onchange: (e) => { layer.date = e.target.value || undefined; changed(); } }),
+      h('p', { class: 'field-hint' }, 'Leave blank to always show yesterday\'s image.')) : null,
+    layer.attribution ? h('p', { class: 'field-hint' }, `Source: ${layer.attribution}`) : null);
+}
+
+function filtersField(layer, info) {
+  const rules = (layer.filters ||= []);
+  const stats = info.fc ? layerStats(info.fc) : { fields: [] };
+  const statFor = (name) => stats.fields.find((f) => f.name === name);
+  const count = h('span', { class: 'pill no-dot' });
+  const update = () => {
+    if (!info.fc) return;
+    const shown = filterData(layer, info.fc).features.length;
+    info.shown = shown;
+    count.textContent = activeFilters(layer).length ? `Showing ${shown.toLocaleString()} of ${info.fc.features.length.toLocaleString()}` : `All ${info.fc.features.length.toLocaleString()} features`;
+    count.className = `pill no-dot ${activeFilters(layer).length ? 'is-live' : ''}`;
+  };
+  const rows = rules.map((r, i) => {
+    const st = statFor(r.field);
+    const listId = `vals-${layer.id}-${i}`;
+    const value = /empty/.test(r.op) ? null : h('input', { class: 'input', type: r.op === 'in the last (days)' ? 'number' : 'text', min: 0, value: r.value ?? '', list: st?.kind === 'text' ? listId : null,
+      placeholder: r.op === 'in the last (days)' ? 'days' : st?.kind === 'number' ? `${Math.round(st.min)} to ${Math.round(st.max)}` : 'value',
+      oninput: (e) => { r.value = e.target.value; update(); changed(); }, onchange: () => renderRail() });
+    return h('div', { class: 'filter-row' },
+      h('select', { 'aria-label': 'Field', onchange: (e) => { r.field = e.target.value; changed(); renderRail(); } },
+        h('option', { value: '' }, 'Field…'), (info.fields || []).map((f) => h('option', { value: f, selected: r.field === f }, f))),
+      h('select', { 'aria-label': 'Rule', onchange: (e) => { r.op = e.target.value; changed(); renderRail(); } },
+        FILTER_OPS.map((o) => h('option', { value: o, selected: (r.op || '=') === o }, o))),
+      value,
+      st?.kind === 'text' ? h('datalist', { id: listId }, st.top.map(([v]) => h('option', { value: v }))) : null,
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Remove filter', onclick: () => { rules.splice(i, 1); changed(); renderRail(); } }, icon('x', { size: 15 })));
+  });
+  const el = h('div', { class: 'filters' },
+    rules.length > 1 ? h('div', { class: 'row', style: 'margin-bottom:8px' }, h('span', { class: 'muted', style: 'font-size:12.5px' }, 'Show features that match'),
+      h('div', { class: 'seg' }, [['all', 'all rules'], ['any', 'any rule']].map(([v, l]) => h('button', { type: 'button', class: (layer.filterMatch || 'all') === v ? 'is-on' : '',
+        onclick: () => { layer.filterMatch = v; changed(); renderRail(); } }, l)))) : null,
+    rows,
+    h('div', { class: 'row', style: 'margin-top:8px' },
+      h('button', { type: 'button', class: 'btn btn-sm', disabled: !info.fields?.length, onclick: () => { rules.push({ field: '', op: '=', value: '' }); renderRail(); } }, icon('plus', { size: 14 }), 'Add filter'),
+      h('span', { class: 'spacer' }), count),
+    h('p', { class: 'field-hint' }, 'Filters change what every map, analysis and export uses. Try a rule like magnitude ≥ 5, or a date field "in the last (days)" 7.'));
+  update();
+  return el;
 }
 
 function layerForm(layer) {
+  if (layer.type === 'raster') return rasterForm(layer);
   layer.style ||= {};
   layer.popup ||= {};
   const st = layer.style;
@@ -796,14 +858,16 @@ function layerForm(layer) {
       h('span', {}, `${TOOLS[a.tool]?.name || 'Analysis'} of ${inputNames}`),
       h('button', { type: 'button', class: 'btn btn-sm', title: 'Run the analysis again with the latest data', onclick: () => rerunAnalysis(layer) }, icon('refresh', { size: 14 }), 'Re-run')) : null,
     field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
-    a ? null : h('div', { class: 'field' }, labelEl('Data'),
+    a || layer.catalog ? null : h('div', { class: 'field' }, labelEl('Data'),
       h('div', { class: 'row' },
         h('input', { class: 'input', type: 'text', value: layer.data ? '' : layer.url || '', placeholder: layer.data ? `Uploaded file (${layer.data.features.length} features)` : 'Paste a GeoJSON or ArcGIS layer link',
           onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; changed(); renderRail(); } }),
         h('button', { type: 'button', class: 'btn', title: 'Upload GeoJSON or CSV', onclick: () => fileInput.click() }, icon('upload', { size: 15 }), 'File'), fileInput),
       h('p', { class: 'field-hint' }, 'GeoJSON link, public ArcGIS FeatureServer layer, or a .geojson / .csv file (CSV needs lat and lon columns).'),
       status ? h('div', { style: 'margin-top:8px' }, status) : null),
-    info.fc ? [h('div', { class: 'rail-section-title' }, 'Insights'), insightsPanel(layer, info.fc)] : null,
+    layer.attribution ? h('p', { class: 'field-hint' }, `Source: ${layer.attribution}`) : null,
+    info.fc ? [h('div', { class: 'rail-section-title' }, 'Filters'), filtersField(layer, info)] : null,
+    info.fc ? [h('div', { class: 'rail-section-title' }, activeFilters(layer).length ? 'Insights (filtered)' : 'Insights'), insightsPanel(layer, filterData(layer, info.fc))] : null,
     h('div', { class: 'rail-section-title' }, 'Style'),
     isPoints ? field(st, { k: 'display', t: 'seg', label: 'Show points as', opts: [['features', 'Dots'], ['heatmap', 'Heatmap'], ['clusters', 'Clusters']], dflt: 'features' }) : null,
     isPoints && st.display === 'heatmap' ? fieldSelect(st, 'weight', 'Weight the heat by (optional)', 'Each point counts the same') : null,
@@ -845,6 +909,18 @@ function openPicker({ mode, value, noMarkers, noLayers }, done) {
     basemaps.querySelectorAll('.bm').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget));
   } }, h('span', { class: `bm-swatch-${k}` }), h('span', {}, l))));
 
+  const layersBox = h('div');
+  const drawLayers = () => layersBox.replaceChildren(...(lib.length ? lib.map((l) => h('div', { class: 'row' },
+    h('label', { class: 'check', style: 'flex:1' }, h('input', { type: 'checkbox', checked: visible.includes(l.id), onchange: (e) => {
+      const i = visible.indexOf(l.id);
+      if (e.target.checked && i < 0) visible.push(l.id);
+      if (!e.target.checked && i >= 0) visible.splice(i, 1);
+      setVisibleLayers(pickerMap, lib.filter((x) => visible.includes(x.id)).map((x) => x.id));
+    } }), h('span', { class: 'swatch', style: `background:${l.type === 'raster' ? 'linear-gradient(135deg,#1e3a5f,#7aa35a)' : l.style?.color || '#2563eb'}` }), l.name || l.id),
+    l.type === 'raster' ? null : h('button', { type: 'button', class: 'icon-btn', title: 'Zoom to layer', 'aria-label': `Zoom to ${l.name}`, onclick: () => fitToLayer(pickerMap, l.id) }, icon('search', { size: 15 }))))
+    : [h('p', { class: 'field-hint', style: 'margin:0' }, 'No data yet. Add live public data, or bring your own in the Data tab.')]));
+  drawLayers();
+
   const drawMarkers = () => {
     if (mode === 'point') { setMarkers(pickerMap, [{ lngLat: point }]); return; }
     setMarkers(pickerMap, markers);
@@ -859,15 +935,14 @@ function openPicker({ mode, value, noMarkers, noLayers }, done) {
     mode === 'point' ? h('p', { class: 'muted', style: 'margin:0' }, 'Click the map to place this stop, or search for it.') : [
       h('h4', {}, 'Basemap'), basemaps,
       noMarkers ? null : [h('h4', {}, 'Markers'), markerList],
-      noLayers || !lib.length ? null : [h('h4', {}, 'Data layers'), lib.map((l) => h('div', { class: 'row' },
-        h('label', { class: 'check', style: 'flex:1' }, h('input', { type: 'checkbox', checked: visible.includes(l.id), onchange: (e) => {
-          const i = visible.indexOf(l.id);
-          if (e.target.checked && i < 0) visible.push(l.id);
-          if (!e.target.checked && i >= 0) visible.splice(i, 1);
+      noLayers ? null : [h('h4', {}, 'Data layers'), layersBox,
+        h('button', { type: 'button', class: 'btn btn-sm', style: 'margin-top:8px', onclick: () => openPublicData({ onAdd: (l) => {
+          visible.push(l.id);
+          refreshLayers(pickerMap);
           setVisibleLayers(pickerMap, lib.filter((x) => visible.includes(x.id)).map((x) => x.id));
-        } }), h('span', { class: 'swatch', style: `background:${l.style?.color || '#2563eb'}` }), l.name || l.id),
-        h('button', { type: 'button', class: 'icon-btn', title: 'Zoom to layer', 'aria-label': `Zoom to ${l.name}`, onclick: () => fitToLayer(pickerMap, l.id) }, icon('search', { size: 15 })))),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: v.legend !== false, onchange: (e) => { pickerMap._legend.enabled = e.target.checked; pickerMap._legend.render(pickerMap); } }), 'Show legend')],
+          drawLayers();
+        } }) }, icon('globe', { size: 14 }), 'Add public data'),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: v.legend !== false, onchange: (e) => { pickerMap._legend.enabled = e.target.checked; pickerMap._legend.render(pickerMap); } }), 'Show legend')],
       h('h4', {}, 'Tips'),
       h('p', { class: 'field-hint', style: 'margin:0' }, 'Drag to move. Scroll to zoom. Right-drag to rotate, Ctrl-drag to tilt.')]);
 
@@ -974,7 +1049,8 @@ function commands() {
   const go = (t) => () => { tab = t; syncTabs(); renderRail(); };
   return [
     ...Object.entries(CATALOG).map(([type, c]) => ({ label: `Add ${c.label.toLowerCase()}`, hint: c.desc, icon: c.icon, group: 'Add a block', run: () => addBlockAt(insertIndex(), { type, ...c.make() }) })),
-    { label: 'Add data…', hint: 'Upload a file, paste a link, or use sample data', icon: 'database', group: 'Data', run: openAddData },
+    { label: 'Browse public data…', hint: 'NOAA, NASA, USGS, Census, parks, wildfires and more', icon: 'globe', group: 'Data', run: () => openPublicData({ onAdd: (l) => openLayer(l.id) }) },
+    { label: 'Add your own data…', hint: 'Upload a file or paste a link', icon: 'database', group: 'Data', run: openAddData },
     { label: 'Draw & measure on a map', hint: 'Sketch points, routes and areas', icon: 'pen', group: 'Data', run: openDraw },
     ...Object.entries(TOOLS).map(([id, t]) => ({ label: `Analyze: ${t.name}`, hint: t.desc, icon: t.icon, group: 'Data', run: () => openAnalysis({ tool: id }) })),
     ...story.blocks.map((b, i) => ({ label: `${i + 1}. ${CATALOG[b.type]?.label || b.type}`, hint: peek(b), icon: CATALOG[b.type]?.icon || 'file', group: 'Go to block', run: () => { selected = null; select(i); } })),

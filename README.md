@@ -4,6 +4,8 @@
 
 - **Write a story** from blocks: text, images, video, embeds, maps, scrolling map "sidecars", guided tours, and swipe comparisons.
 - **Bring your data**: GeoJSON, CSV, or public ArcGIS feature layers, styled by category or value, with popups and a legend.
+- **Use live public data**: one click adds layers from NOAA, NASA, USGS, the Census Bureau, the Park Service, EPA, wildfire agencies and more, or search thousands of public layers on ArcGIS Online.
+- **Filter it**: magnitude ≥ 5, "in the last 7 days", state = Texas. Filters apply to the map, the analysis and the export.
 - **Analyze it**: buffers, hex bins, counts per area, distance to nearest, heatmaps and clusters, plus drawing and measuring tools. Results become layers you can put in any map.
 - **Make it move**: chapters that recolor the page, statements that light up word by word, numbers that count up, galleries that slide sideways, and parallax photos.
 - **Publish it** to a public link. Draft edits stay private until you publish again.
@@ -101,6 +103,9 @@ Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--n
 | Scroll effects | **Chapter**: full-screen title that recolors the page from there on. **Statement**: huge text that lights up word by word. **Big numbers**: figures that count up. **Scroll gallery**: photos that slide sideways as you scroll down. **Image motion**: parallax, zoom or wipe-in reveal. **Cover motion**: parallax or zoom. A story-wide **scroll animation** setting (off, subtle or expressive) fades blocks in. Everything turns off for readers who ask their device to reduce motion |
 | Editor | Click anything in the live preview to edit it. Visual block picker, drag to reorder, full undo and redo, a command palette (Ctrl/Cmd+K), keyboard shortcuts (press ?), desktop/phone preview, autosave |
 | Geospatial analysis | In the Data tab, **Analyze** previews every result on a map before adding it. **Buffer**: zones around features, optionally merged. **Hex bins**: count, sum or average points per hexagon. **Count in areas**: a point-in-polygon spatial join. **Distance to nearest**: a field with the distance to the closest feature in another layer. **Within distance**: proximity filter. **Center points**, **outline** (convex hull) and **filter by attribute**. Results are saved as ordinary layers and remember how they were made, so you can re-run them on fresh data |
+| Public data catalog | **Browse public data** in the Data tab or in any map's editor. Featured sources, all keyless and browser-ready: **USGS** earthquakes (live) and stream gauges by state. **NOAA** weather warnings (live), radar (live), tide stations, historical tsunamis, significant earthquakes, volcanoes, eruptions and plate boundaries. **NASA** natural events (EONET), daily satellite imagery and Earth at night. **Census** states and counties. **NPS** park units, **USFS** national forests, **EPA** Superfund sites, **NIFC** active wildfires and perimeters, and **Natural Earth** countries, cities and rivers. **Search more** finds public layers on ArcGIS Online. Each layer comes styled, with popups and source credits |
+| Filters | Per-layer rules (`=`, `≠`, `>`, `≥`, `<`, `≤`, contains, in the last N days, empty or not empty), matching all or any. They apply to the map, insights, analysis and export, and show "X of Y features" |
+| Basemaps | Streets, bright, light, dark, **satellite** (Sentinel-2 cloudless, global), **USGS imagery** and **USGS topo** (US) |
 | Data tools | **Draw & measure**: sketch points, routes and areas with live distance and area, then save them as a layer. **Insights**: feature count, total area or length, field histograms and top values, with one click to turn them into a Big numbers block. **Heatmap** and **cluster** display for point layers. Add data by dropping files, pasting a link, or using sample data |
 | Sidecar | The map stays fixed while narrative cards scroll past and flies to each card's view. Cards can show an image, video or embed instead. Docked or floating layout |
 | Map actions | Links in sidecar text that send the map to a different view, and back on a second click |
@@ -130,6 +135,7 @@ public/                the web app (plain ES modules, no build step)
   js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
   js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)
   js/workbench.js      Add data, Analyze and Draw & measure workspaces
+  js/catalog.js        public data catalog (government sources + ArcGIS Online search)
   js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
   js/export.js         the export dialog
   js/zip.js            minimal zip writer
