@@ -1,6 +1,6 @@
 {
   "name": "waymark",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Waymark: self-hosted, scroll-driven map stories with a visual builder. No dependencies.",
   "private": true,
   "license": "MIT",

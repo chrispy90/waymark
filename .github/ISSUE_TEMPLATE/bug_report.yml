@@ -1,0 +1,54 @@
+name: Bug report
+description: Something doesn't work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **Security problems shouldn't go here.** See SECURITY.md instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. Opened a moving map story
+        2. Added the NOAA weather warnings layer
+        3. The legend stayed empty
+    validations:
+      required: true
+  - type: textarea
+    id: story
+    attributes:
+      label: A story that shows the problem (optional)
+      description: A link to a published story, or attach the story file (⋯ → Download story file in the editor).
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - In the editor
+        - In a published story
+        - In an exported website (.zip)
+        - In an exported Tomcat app (.war)
+        - Sign in, sign up or password reset
+        - Running or installing the server
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Waymark version or commit
+      placeholder: v1.0.0, or the output of git rev-parse --short HEAD
+  - type: input
+    id: env
+    attributes:
+      label: Browser, Node version and how you run it
+      placeholder: Chrome 140 on Windows, Node 22.13, npm start (or Docker)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors (optional)
+      description: Anything from the browser console or the server's terminal.
+      render: text

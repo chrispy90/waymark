@@ -2,13 +2,16 @@ services:
   waymark:
     build: .
     ports:
-      - "5180:5180"
+      # PORT in .env picks the port on this machine; inside the container Waymark always uses 5180
+      - "${PORT:-5180}:5180"
     env_file:
       - path: .env
         required: false
     environment:
       HOST: 0.0.0.0
+      PORT: 5180
       DATA_DIR: /data
+      APP_URL: ${APP_URL:-http://localhost:${PORT:-5180}}
     volumes:
       - waymark-data:/data
     restart: unless-stopped

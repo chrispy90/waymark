@@ -1,0 +1,27 @@
+name: Feature request
+description: An idea for something Waymark should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: What are you trying to make?
+      description: Describe the story or task, not just the feature. "I'm mapping bus routes and want readers to filter by line" is more useful than "add filters".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How do you picture it working?
+      description: Sketches, screenshots or links to sites that do something similar are welcome.
+  - type: textarea
+    id: now
+    attributes:
+      label: How do you handle it today?
+      description: A workaround, another tool, or not at all.
+  - type: checkboxes
+    id: data
+    attributes:
+      label: For new data sources
+      options:
+        - label: The source is free, needs no API key and allows cross-origin requests (CORS)
