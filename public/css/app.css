@@ -833,3 +833,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* Long one-line summaries must not widen the editor rail */
 .outline { grid-template-columns: minmax(0, 1fr); }
 .blk, .sub { min-width: 0; }
+
+.mapfield-btns { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.mapfield-btns .btn { justify-content: flex-start; }

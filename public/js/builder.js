@@ -725,11 +725,32 @@ function viewField(obj, spec) {
     wrap.replaceChildren(labelEl(spec.label || 'Map'), h('div', { class: 'mapfield' },
       h('span', { class: `mapfield-thumb bm-${v.basemap || 'streets'}` }, icon('map', { size: 20 })),
       h('span', { class: 'mapfield-text' }, h('strong', {}, BASEMAPS[v.basemap]?.label || 'Streets'), viewSummary(v)),
-      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openPicker({ mode: 'view', value: obj[spec.k], noMarkers: spec.noMarkers, noLayers: spec.noLayers },
-        (nv) => { obj[spec.k] = nv; changed(); draw(); }) }, icon('pin', { size: 14 }), 'Edit map')));
+      h('span', { class: 'mapfield-btns' },
+        h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openPicker({ mode: 'view', value: obj[spec.k], noMarkers: spec.noMarkers, noLayers: spec.noLayers },
+          (nv) => { obj[spec.k] = nv; changed(); draw(); }) }, icon('pin', { size: 14 }), 'Edit map'),
+        spec.noLayers ? null : h('button', { type: 'button', class: 'btn btn-sm', title: 'Draw shapes, routes and labels on this map', onclick: (e) => drawOnView(obj, spec.k, e.currentTarget) }, icon('pen', { size: 14 }), 'Draw'))));
   };
   draw();
   return wrap;
+}
+
+// Draw directly on one map: the drawing opens on its view and is switched on in it when saved.
+function drawOnView(obj, key, btn) {
+  const v = (obj[key] ||= view());
+  const lib = story.layers || [];
+  const drawn = (v.layers || []).map((id) => lib.find((l) => l.id === id)).filter((l) => l?.drawn && l.data);
+  const go = (layer) => openDraw({ layer, view: v, onSave: (l) => {
+    v.layers ||= [];
+    if (!v.layers.includes(l.id)) v.layers.push(l.id);
+    renderRail(); // the rail may have been rebuilt while drawing, so redraw it rather than this one field
+    pushPreview();
+  } });
+  if (!drawn.length) { go(); return; }
+  menu(btn, [
+    ...drawn.map((l) => ({ label: `Keep drawing on “${l.name || 'Drawing'}”`, icon: 'pen', onClick: () => go(l) })),
+    'sep',
+    { label: 'New drawing', icon: 'plus', onClick: () => go() },
+  ]);
 }
 
 const openSubs = new WeakSet();

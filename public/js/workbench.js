@@ -303,8 +303,11 @@ function styleOf(f, st) {
     fill: p.fill && p.fill !== p.stroke ? p.fill : '', fillOpacity: p['fill-opacity'] ?? st.fillOpacity };
 }
 
-/** The Draw & measure workspace. Pass `layer` to keep editing a layer drawn earlier. */
-export function openDraw({ layer: editing } = {}) {
+/**
+ * The Draw & measure workspace. Pass `layer` to keep editing a layer drawn earlier. Opened from a map in the editor,
+ * `view` is that map (the drawing starts there, over its layers) and `onSave(layer)` puts the drawing on it.
+ */
+export function openDraw({ layer: editing, view: here, onSave } = {}) {
   const t = window.turf;
   const story = ctx.story();
   let tool = editing ? 'select' : 'line';
@@ -356,7 +359,7 @@ export function openDraw({ layer: editing } = {}) {
   const listBox = h('div', { class: 'sub-list draw-list' });
   const nameInput = h('input', { class: 'input', type: 'text', value: editing?.name || 'My drawing', oninput: () => { draft.name = nameInput.value || 'Drawing'; map?._legend.render(map); } });
   let cornerBtns;
-  const saveBtn = h('button', { type: 'button', class: 'btn btn-brand btn-block', onclick: () => save() }, icon('plus', { size: 16 }), editing ? 'Save changes' : 'Save as a layer');
+  const saveBtn = h('button', { type: 'button', class: 'btn btn-brand btn-block', onclick: () => save() }, icon('plus', { size: 16 }), onSave ? (editing ? 'Save drawing' : 'Add to this map') : editing ? 'Save changes' : 'Save as a layer');
   const traceSelect = h('select', { onchange: (e) => { trace = e.target.value; setVisibleLayers(map, [trace, draft.id].filter(Boolean)); } },
     h('option', { value: '' }, 'Nothing'), (story.layers || []).filter((l) => l.id !== editing?.id).map((l) => h('option', { value: l.id }, l.name || 'Layer')));
 
@@ -511,13 +514,15 @@ export function openDraw({ layer: editing } = {}) {
     if (editing) {
       Object.assign(editing, { name, data });
       editing.style = { ...(editing.style || {}), label: showNames ? 'name' : undefined };
+      if (onSave) onSave(editing);
+      else ctx.openLayer(editing.id);
       ctx.changed();
-      ctx.openLayer(editing.id);
       toast('Drawing updated', { tone: 'ok' });
       return;
     }
-    addLayer({ id: uid('l'), name, drawn: true, data, style: { color: st.color, opacity: 0.25, width: 3, radius: 7, label: showNames ? 'name' : undefined }, popup: { title: '{name}' } });
-    toast('Drawing saved as a layer. Turn it on in any map.', { tone: 'ok' });
+    const layer = addLayer({ id: uid('l'), name, drawn: true, data, style: { color: st.color, opacity: 0.25, width: 3, radius: 7, label: showNames ? 'name' : undefined }, popup: { title: '{name}' } }, { open: !onSave });
+    if (onSave) { onSave(layer); ctx.changed(); toast('Drawing added to this map', { tone: 'ok' }); }
+    else toast('Drawing saved as a layer. Turn it on in any map.', { tone: 'ok' });
   };
 
   const side = h('div', { class: 'wb-side' },
@@ -536,13 +541,15 @@ export function openDraw({ layer: editing } = {}) {
     (story.layers || []).length ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Show another layer to trace over'), traceSelect) : null,
     h('div', { style: 'margin-top:12px' }, saveBtn));
 
-  const { dlg, mapEl } = workspace({ title: editing ? `Edit drawing · ${editing.name}` : 'Draw & measure', side, onClose: () => { map?.remove(); removeEventListener('keydown', onKey, true); removeEventListener('mouseup', onUp); } });
-  const first = (story.blocks || []).map((b) => b.view || b.slides?.[0]?.media?.view).find(Boolean) || DEFAULT_VIEW;
+  const { dlg, mapEl } = workspace({ title: here ? (editing ? `Draw on this map · ${editing.name}` : 'Draw on this map') : editing ? `Edit drawing · ${editing.name}` : 'Draw & measure', side, onClose: () => { map?.remove(); removeEventListener('keydown', onKey, true); removeEventListener('mouseup', onUp); } });
+  const first = here || (story.blocks || []).map((b) => b.view || b.slides?.[0]?.media?.view).find(Boolean) || DEFAULT_VIEW;
   const others = (story.layers || []).filter((l) => l.id !== editing?.id);
-  map = createMap(mapEl, { ...first, markers: [], layers: [draft.id] }, { library: [...others, draft] });
+  // Drawing on a particular map shows that map's other layers underneath, so shapes line up with them.
+  const context = here ? (here.layers || []).filter((id) => id !== editing?.id && others.some((l) => l.id === id)) : [];
+  map = createMap(mapEl, { ...first, markers: here?.markers || [], layers: [...context, draft.id] }, { library: [...others, draft] });
   map.scrollZoom.enable();
   map.doubleClickZoom.disable();
-  if (editing && shapes.length && t) map.once('load', () => {
+  if (editing && shapes.length && t && !here) map.once('load', () => {
     const b = t.bbox({ type: 'FeatureCollection', features: shapes });
     map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, maxZoom: 15, duration: 0 });
   });

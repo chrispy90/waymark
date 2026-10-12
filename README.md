@@ -119,7 +119,7 @@ You can also show points as a **heatmap** or **clusters**. Bring your own data t
 
 ### Draw right on the map
 
-Sketch points, lines, freehand routes, areas, boxes, circles and text labels. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing whenever you like.
+Press **Draw** on any map in the editor and sketch points, lines, freehand routes, areas, boxes, circles and text labels right on it. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing whenever you like.
 
 <p align="center"><img src="docs/media/draw.png" alt="The Draw workspace with a selected area, a dashed arrow and the style panel" width="100%"></p>
 
