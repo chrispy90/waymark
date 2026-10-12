@@ -129,7 +129,7 @@ Click anything in the live preview to edit it. You also get drag to reorder, und
 
 <p align="center"><img src="docs/media/click-to-edit.gif" alt="Clicking a chapter in the preview to edit its title and color" width="100%"></p>
 
-### Make it loud: the brutalist theme
+### Make it loud: the Brutalist look
 
 Switch any story to **Brutalist** for raw monospace and heavy display type, hard black edges and offset shadows, acid-yellow stickers, a ticker headline, outlined words that fill in as you scroll, and numbered chapters. Or start from the *Brutalist zine* template.
 
@@ -153,7 +153,17 @@ Switch any story to **Brutalist** for raw monospace and heavy display type, hard
 | **A data story** | One big map ready for live or uploaded data, with numbers and context |
 | **Start from scratch** | A title and an empty page |
 
-Every kind comes in three **looks**: **Classic** (the original), **Night** and **Brutalist**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
+Every kind comes in five **looks**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
+
+<p align="center"><img src="docs/media/looks.png" alt="The same statement block in the Classic, Night, Brutalist, Atlas and Aurora looks" width="100%"></p>
+
+| Look | Style |
+|---|---|
+| **Classic** | Warm paper and serif type. The original Waymark look |
+| **Night** | Dark and cinematic, so photos and maps glow |
+| **Brutalist** | Raw type, hard edges, loud color and a ticker headline |
+| **Atlas** | An old atlas: parchment, engraved type and small caps, sepia maps in a double frame with a compass rose, and chapters numbered as plates |
+| **Aurora** | Dark glass and drifting light, glowing gradient type, frosted cards and bento-style numbers. Points and lines on its maps glow like fireflies |
 
 Prefer to learn from something finished? **Explore an example** opens a complete story to take apart: the moving map, walk, essay, *Brutalist zine* and *Down the Potomac* samples. Any story can also use **Before & after**, a block with two maps in one view and a draggable divider.
 

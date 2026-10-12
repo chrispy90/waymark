@@ -12,12 +12,22 @@ export const LOOKS = {
   night: {
     name: 'Night', desc: 'Dark and cinematic, so photos and maps glow.',
     theme: 'dark', motion: 'subtle', basemap: 'dark', cover: 'zoom',
-    chapters: [['#0e2233', '#e6f0f7'], ['#2b1630', '#f6e9f2'], ['#1c2a1f', '#e9f3ea']],
+    chapters: [['#1d1533', '#ece6ff'], ['#0d2b2e', '#e2f5f2'], ['#2e1a12', '#f6e6da']],
   },
   brutalist: {
     name: 'Brutalist', desc: 'Raw type, hard edges and loud color.',
     theme: 'brutalist', motion: 'expressive', basemap: 'light', cover: 'zoom',
     chapters: [['#dcff1e', '#0b0b0b'], ['#0b0b0b', '#efede6'], ['#2121ff', '#ffffff']],
+  },
+  atlas: {
+    name: 'Atlas', desc: 'An old atlas: parchment, engraved type, sepia maps and a compass rose.',
+    theme: 'atlas', motion: 'subtle', basemap: 'light', cover: 'parallax',
+    chapters: [['#e6d6b5', '#33261a'], ['#2f4a40', '#f1e8d4'], ['#6e2a20', '#f3e6cc']],
+  },
+  aurora: {
+    name: 'Aurora', desc: 'Dark glass and drifting light. Map data glows like fireflies.',
+    theme: 'aurora', motion: 'expressive', basemap: 'dark', cover: 'zoom',
+    chapters: [['#0d0b1f', '#eceaff'], ['#071a1c', '#e6fffb'], ['#1a0b1d', '#ffeaf5']],
   },
 };
 

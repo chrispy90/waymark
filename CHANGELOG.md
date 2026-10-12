@@ -4,10 +4,16 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+### Changed
+- Data labels and text on dark and satellite basemaps are now light with a dark outline, instead of dark text with a white halo.
+- Night's chapter colors are now plum, teal and ember, so it no longer looks like Classic.
+
 ### Added
 - **New story wizard.** Pick the kind of story (journey, walking tour, illustrated essay, data story or blank), a look, a title and cover photo, then your places (search or click the map) or chapter titles and any extras. Waymark builds the story from your answers, with short prompts where your words go, so there's no demo content to delete. The finished examples are still there under **Explore an example**.
-- **Looks:** Classic, Night and Brutalist, each with matching type, colors, chapter colors, map style and scroll animation. Pick one in the wizard or under Story → Look & feel, and restyle existing chapters and maps to match in one click.
+- **Looks:** Classic, Night, Brutalist, Atlas and Aurora, each with matching type, colors, chapter colors, map style and scroll animation. Pick one in the wizard or under Story → Look & feel, and restyle existing chapters and maps to match in one click.
 - **"Finish your story" checklist** in the editor for stories made with the wizard: cover photo, replacing the prompts (with a live count), photos, data, map views, a phone check and publishing. Click a step to jump straight there.
+- **Atlas look:** parchment and paper grain, engraved serif type with small caps and old-style figures, sepia-toned maps in a double neatline with a compass rose and vignette, chapters numbered as plates, and ornamental dividers.
+- **Aurora look:** dark glass, slowly drifting aurora light and film grain, gradient display type, frosted cards, bento-style big numbers, and "firefly" maps where points and lines glow.
 - Photo blocks and galleries without photos show a placeholder in the editor's preview and stay hidden from readers.
 
 ## 1.1.0 (2026-10-12)

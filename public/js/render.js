@@ -25,7 +25,7 @@ const h = (tag, attrs = {}, ...kids) => {
  * Renders `story` into `root`. Returns a destroy() function.
  * opts.instant: show everything immediately (used when the builder re-renders the preview).
  */
-export const THEMES = ['light', 'dark', 'brutalist'];
+export const THEMES = ['light', 'dark', 'brutalist', 'atlas', 'aurora'];
 
 export function renderStory(story, root, { instant = false, homeHref = '/' } = {}) {
   normalizeStory(story);

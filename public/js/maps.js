@@ -305,7 +305,7 @@ const POLY = ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]]
 const LINE = ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
 const POINT = ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]];
 // Each data layer is drawn with several MapLibre layers; which ones exist depends on style.display.
-const SUBS = ['raster', 'fill', 'line', 'dash', 'dot', 'circle', 'arrow', 'note', 'label', 'heat', 'cluster', 'count'];
+const SUBS = ['raster', 'fill', 'lineglow', 'line', 'dash', 'dot', 'glow', 'circle', 'arrow', 'note', 'label', 'heat', 'cluster', 'count'];
 const subIds = (id) => SUBS.map((k) => `dl-${id}-${k}`);
 const hitIds = (map) => map._library.flatMap((l) => ['fill', 'line', 'dash', 'dot', 'circle', 'note', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
 
@@ -319,6 +319,10 @@ const DASH = ['coalesce', ['get', 'stroke-dash'], 'solid'];
 const NOTE = ['has', 'text'];
 const ARROWHEAD = ['has', '__arrow'];
 const PLAIN_POINT = ['all', POINT, ['!', NOTE], ['!', ARROWHEAD]];
+// Themes whose maps draw data with a soft glow ("firefly" cartography).
+// Labels and text notes switch to light text on dark and imagery basemaps.
+const darkBase = (map) => ['dark', 'satellite', 'usgs-imagery'].includes(map._basemap);
+const glowing = () => typeof document !== 'undefined' && document.documentElement.dataset.theme === 'aurora';
 
 // Arrowheads are extra points at the end of each line marked `arrow`, rotated to the last segment.
 function withArrows(fc) {
@@ -388,6 +392,10 @@ function installLayers(map) {
     const lineOpacity = num('stroke-opacity', 1);
     map.addLayer({ id: `${src}-fill`, type: 'fill', source: src, filter: POLY, layout: { visibility: vis },
       paint: { 'fill-color': color, 'fill-opacity': num('fill-opacity', s.opacity ?? 0.45) } });
+    if (glowing()) {
+      map.addLayer({ id: `${src}-lineglow`, type: 'line', source: src, filter: LINE, layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': color, 'line-width': ['*', width, 5], 'line-blur': ['*', width, 3.5], 'line-opacity': 0.4 } });
+    }
     // Dashes can't vary per feature in MapLibre, so dashed and dotted outlines get layers of their own.
     map.addLayer({ id: `${src}-line`, type: 'line', source: src, filter: ['all', ['any', POLY, LINE], ['==', DASH, 'solid']], layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': color, 'line-width': width, 'line-opacity': lineOpacity } });
@@ -414,9 +422,14 @@ function installLayers(map) {
         visibility: vis, 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true },
       paint: { 'text-color': '#ffffff' } });
     }
+    const pointSize = ['match', ['get', 'marker-size'], 'small', radius * 0.7, 'large', radius * 1.7, radius];
+    if (glowing() && display !== 'heatmap') {
+      map.addLayer({ id: `${src}-glow`, type: 'circle', source: src, filter: display === 'clusters' ? ['all', PLAIN_POINT, NOT_CLUSTER] : PLAIN_POINT, layout: { visibility: vis },
+        paint: { 'circle-color': color, 'circle-radius': ['*', pointSize, 3], 'circle-blur': 1, 'circle-opacity': 0.55 } });
+    }
     map.addLayer({ id: `${src}-circle`, type: 'circle', source: src, filter: display === 'clusters' ? ['all', PLAIN_POINT, NOT_CLUSTER] : PLAIN_POINT, layout: { visibility: vis },
-      paint: { 'circle-color': color, 'circle-radius': ['match', ['get', 'marker-size'], 'small', radius * 0.7, 'large', radius * 1.7, radius],
-        'circle-stroke-color': '#ffffff', 'circle-stroke-width': ['match', ['get', 'marker-size'], 'large', 2.5, 1.5],
+      paint: { 'circle-color': color, 'circle-radius': pointSize,
+        'circle-stroke-color': glowing() ? 'rgba(255,255,255,0.85)' : '#ffffff', 'circle-stroke-width': glowing() ? 0.8 : ['match', ['get', 'marker-size'], 'large', 2.5, 1.5],
         'circle-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 0.92] : 0.92,
         'circle-stroke-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 1] : 1 } });
     map.addLayer({ id: `${src}-arrow`, type: 'symbol', source: src, filter: ['all', POINT, ARROWHEAD], layout: {
@@ -426,11 +439,11 @@ function installLayers(map) {
     map.addLayer({ id: `${src}-note`, type: 'symbol', source: src, filter: ['all', POINT, NOTE], layout: {
       visibility: vis, 'text-field': ['to-string', ['get', 'text']], 'text-font': ['Noto Sans Bold'], 'text-size': num('text-size', 18),
       'text-max-width': 14, 'text-allow-overlap': true, 'text-ignore-placement': true },
-    paint: { 'text-color': color, 'text-halo-color': '#ffffff', 'text-halo-width': 2, 'text-opacity': lineOpacity } });
+    paint: { 'text-color': color, 'text-halo-color': darkBase(map) ? 'rgba(8,8,16,0.85)' : '#ffffff', 'text-halo-width': 2, 'text-opacity': lineOpacity } });
     map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, filter: display === 'clusters' ? NOT_CLUSTER : ['all', ['!', NOTE], ['!', ARROWHEAD]], layout: {
       visibility: s.label ? vis : 'none', 'text-field': s.label ? ['to-string', ['get', s.label]] : '', 'text-font': ['Noto Sans Regular'],
       'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
-    paint: { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
+    paint: darkBase(map) ? { 'text-color': '#f3f2fb', 'text-halo-color': 'rgba(8,8,16,0.85)', 'text-halo-width': 1.5 } : { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
 
     if (vis === 'visible') loadInto(map, layer);
   });
@@ -455,8 +468,10 @@ function loadInto(map, layer) {
     map.setPaintProperty(`${src}-fill`, 'fill-color', own ? ['to-color', ['get', 'fill'], ['get', 'stroke'], expr] : expr);
     ['line', 'dash', 'dot'].forEach((k) => map.setPaintProperty(`${src}-${k}`, 'line-color', line));
     map.setPaintProperty(`${src}-arrow`, 'icon-color', line);
-    map.setPaintProperty(`${src}-note`, 'text-color', own ? ['to-color', ['get', 'stroke'], '#1f2937'] : expr);
+    map.setPaintProperty(`${src}-note`, 'text-color', own ? ['to-color', ['get', 'stroke'], darkBase(map) ? '#f3f2fb' : '#1f2937'] : expr);
     map.setPaintProperty(`${src}-circle`, 'circle-color', own ? ['to-color', ['get', 'marker-color'], expr] : expr);
+    if (map.getLayer(`${src}-glow`)) map.setPaintProperty(`${src}-glow`, 'circle-color', own ? ['to-color', ['get', 'marker-color'], expr] : expr);
+    if (map.getLayer(`${src}-lineglow`)) map.setPaintProperty(`${src}-lineglow`, 'line-color', line);
     let info = drawnLegend(layer, fc) || legend;
     if (display === 'heatmap') {
       const color = /^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : PALETTE[0];
