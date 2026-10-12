@@ -87,6 +87,8 @@ Every block has a `type`. Rich-text fields (`html`) are sanitized at render time
 | `video` | `url` (YouTube, Vimeo or a video file), `caption?`, `size?` |
 | `embed` | `url`, `caption?`, `size?` |
 | `map` | `view`, `caption?`, `size?` |
-| `sidecar` | `layout` (`docked` \| `floating`), `slides: [{ html, media, actions? }]`. `media` is `{ type: "map", view }` or `{ type: "image" \| "video" \| "embed", url, alt }`. `actions: [{ id, label, view }]` are triggered by `<a href="#action:<id>">` links in `html` |
-| `tour` | `basemap`, `zoom`, `layers?`, `places: [{ title, lngLat, image?, html? }]` |
-| `swipe` | `left`, `right` (basemap keys), `leftLayers?`, `rightLayers?`, `leftLabel?`, `rightLabel?`, `view`, `caption?` |
+| `scrollmap` | Moving map. `layout` (`overlay` \| `split`), `slides: [{ html, media, actions? }]`. `media` is `{ type: "map", view }` or `{ type: "image" \| "video" \| "embed", url, alt }`. `actions: [{ id, label, view }]` are map links, triggered by `<a href="#action:<id>">` links in `html` |
+| `stops` | Stop by stop. `basemap`, `zoom`, `layers?`, `places: [{ title, lngLat, image?, html? }]` |
+| `compare` | Before & after. `left`, `right` (basemap keys), `leftLayers?`, `rightLayers?`, `leftLabel?`, `rightLabel?`, `view`, `caption?` |
+
+Stories saved by earlier versions used the block types `sidecar`, `tour` and `swipe` and the layouts `docked` and `floating`. They are converted automatically when a story is opened, displayed or exported (see `public/js/story-format.js`).

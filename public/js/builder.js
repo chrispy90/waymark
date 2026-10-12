@@ -1,6 +1,7 @@
 // Waymark editor: block outline + settings on the left, live preview on the right.
 import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
 import { layerStats } from './analysis.js';
+import { normalizeStory } from './story-format.js';
 import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
 import { api, requireUser, uploadImage } from './api.js';
@@ -42,7 +43,7 @@ const CATALOG = {
   stats: { label: 'Big numbers', icon: 'sliders', group: 'Scroll effects', desc: 'Figures that count up when they appear', isNew: true,
     make: () => ({ items: [{ value: '120', label: 'What this number means' }, { value: '3.4M', label: 'Another fact' }, { value: '98%', label: 'And one more' }], caption: '' }),
     fields: [{ k: 'items', t: 'stats' }, { k: 'caption', label: 'Caption (optional)' }] },
-  gallery: { label: 'Scroll gallery', icon: 'swipe', group: 'Scroll effects', desc: 'A row of photos that slides sideways as you scroll down', isNew: true,
+  gallery: { label: 'Scroll gallery', icon: 'compare', group: 'Scroll effects', desc: 'A row of photos that slides sideways as you scroll down', isNew: true,
     make: () => ({ title: 'Gallery title', text: '', images: [{ url: '', caption: '' }, { url: '', caption: '' }, { url: '', caption: '' }] }),
     fields: [{ k: 'title', label: 'Title' }, { k: 'text', label: 'Short intro (optional)' }, { k: 'images', t: 'gallery' }] },
   image: { label: 'Image', icon: 'image', group: 'Media', desc: 'A photo with caption and optional scroll motion',
@@ -57,16 +58,16 @@ const CATALOG = {
     make: () => ({ url: '', caption: '', size: 'wide' }),
     fields: [{ k: 'url', label: 'Page link', placeholder: 'https://…' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'seg', label: 'Width', opts: SIZE_OPTS }] },
   separator: { label: 'Divider', icon: 'separator', group: 'Write', desc: 'A quiet break between sections', make: () => ({}), fields: [] },
-  sidecar: { label: 'Scrolling map', icon: 'sidecar', group: 'Maps', desc: 'Cards scroll by while the map flies to each place',
-    make: () => ({ layout: 'floating', slides: [makeSlide(), makeSlide()] }),
-    fields: [{ k: 'layout', t: 'seg', label: 'Layout', opts: [['floating', 'Cards over map'], ['docked', 'Text beside map']] }, { k: 'slides', t: 'slides' }] },
+  scrollmap: { label: 'Moving map', icon: 'scrollmap', group: 'Maps', desc: 'Story cards scroll past while the map glides to each place',
+    make: () => ({ layout: 'overlay', slides: [makeSlide(), makeSlide()] }),
+    fields: [{ k: 'layout', t: 'seg', label: 'Layout', opts: [['overlay', 'Cards over the map'], ['split', 'Side by side']] }, { k: 'slides', t: 'slides' }] },
   map: { label: 'Map', icon: 'map', group: 'Maps', desc: 'An interactive map with markers and data',
     make: () => ({ view: view(), caption: '', size: 'full' }),
     fields: [{ k: 'view', t: 'view', label: 'Map' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'seg', label: 'Width', opts: SIZE_OPTS }] },
-  tour: { label: 'Guided tour', icon: 'tour', group: 'Maps', desc: 'Step through numbered places with photos',
+  stops: { label: 'Stop by stop', icon: 'route', group: 'Maps', desc: 'Readers step through numbered places with photos',
     make: () => ({ basemap: 'streets', zoom: 14, places: [makePlace()] }),
     fields: [{ k: 'places', t: 'places' }, { k: 'basemap', t: 'select', label: 'Basemap', opts: BASEMAP_OPTS }, { k: 'zoom', t: 'number', label: 'Zoom level at each place' }, { k: 'layers', t: 'layerset', label: 'Data layers' }] },
-  swipe: { label: 'Swipe compare', icon: 'swipe', group: 'Maps', desc: 'Before and after, with a draggable divider',
+  compare: { label: 'Before & after', icon: 'compare', group: 'Maps', desc: 'Two maps, one view: drag the divider to compare',
     make: () => ({ left: 'streets', right: 'dark', leftLabel: 'Before', rightLabel: 'After', view: view(), caption: '' }),
     fields: [{ k: 'view', t: 'view', label: 'Map', noMarkers: true, noLayers: true },
       { row: [{ k: 'leftLabel', label: 'Left label' }, { k: 'rightLabel', label: 'Right label' }] },
@@ -94,7 +95,7 @@ async function load() {
   if (!id) { location.replace('/'); return; }
   try {
     const r = await api('GET', `/api/stories/${encodeURIComponent(id)}`);
-    story = r.story;
+    story = normalizeStory(r.story);
     setMeta(r);
   } catch (e) {
     document.body.replaceChildren(h('main', { class: 'auth-main', style: 'min-height:100vh' }, h('div', { class: 'auth-card' },
@@ -691,7 +692,7 @@ function slideForm(slide) {
     actionsField(slide, rich.querySelector('.rich-area')));
 }
 
-// Map actions: alternate views triggered by #action:<id> links in the card text.
+// Map links: alternate views triggered by #action:<id> links in the card text.
 function actionsField(slide, editor) {
   const actions = (slide.actions ||= []);
   const insertLink = (a) => (e) => {
@@ -709,7 +710,7 @@ function actionsField(slide, editor) {
     toast('Link added to the card text', { tone: 'ok', duration: 1800 });
   };
   return h('div', { class: 'field' },
-    labelEl('Map actions', h('span', { class: 'muted', style: 'font-weight:400' }, 'optional')),
+    labelEl('Map links', h('span', { class: 'muted', style: 'font-weight:400' }, 'optional')),
     h('p', { class: 'field-hint', style: 'margin:0 0 8px' }, 'Links in the text that move the map somewhere else. Select some words in the text, then press "Link selected words".'),
     h('div', { class: 'sub-list', style: 'margin-top:0' }, actions.map((a, i) => subItem(actions, i, {
       title: a.label || `Action ${i + 1}`, summary: viewSummary(a.view), noun: 'Action',
@@ -721,7 +722,7 @@ function actionsField(slide, editor) {
     h('button', { type: 'button', class: 'btn btn-sm sub-add', onclick: () => {
       const a = { id: uid('a'), label: 'see on map', view: clone(slide.media?.view || view()) };
       actions.push(a); openSubs.add(a); changed(); renderRail();
-    } }, icon('plus', { size: 14 }), 'Add map action')));
+    } }, icon('plus', { size: 14 }), 'Add map link')));
 }
 
 function layerSet(obj, spec) {

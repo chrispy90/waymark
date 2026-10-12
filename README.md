@@ -2,7 +2,7 @@
 
 **Stories with a sense of place.** Self-hosted, scroll-driven map stories with a visual editor.
 
-- **Write a story** from blocks: text, images, video, embeds, maps, scrolling map "sidecars", guided tours, and swipe comparisons.
+- **Write a story** from blocks: text, images, video, embeds, maps, moving maps that glide from place to place as you scroll, stop-by-stop walks, and before & after comparisons.
 - **Bring your data**: GeoJSON, CSV, or public ArcGIS feature layers, styled by category or value, with popups and a legend.
 - **Use live public data**: one click adds layers from NOAA, NASA, USGS, the Census Bureau, the Park Service, EPA, wildfire agencies and more, or search thousands of public layers on ArcGIS Online.
 - **Filter it**: magnitude ≥ 5, "in the last 7 days", state = Texas. Filters apply to the map, the analysis and the export.
@@ -22,7 +22,7 @@ cd waymark
 npm start
 ```
 
-Open **http://localhost:5180**. The first visit asks you to create the owner account. Then pick a template. **Immersive essay** shows off every scroll effect, and **Sample: Down the Potomac** shows the map features.
+Open **http://localhost:5180**. The first visit asks you to create the owner account. Then pick a template. **Chaptered essay** shows off every scroll effect, and **Sample: Down the Potomac** shows the map features.
 
 `npm install` isn't needed, because there are no dependencies. Everything you create lives in the `data/` folder.
 
@@ -107,10 +107,10 @@ Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--n
 | Filters | Per-layer rules (`=`, `≠`, `>`, `≥`, `<`, `≤`, contains, in the last N days, empty or not empty), matching all or any. They apply to the map, insights, analysis and export, and show "X of Y features" |
 | Basemaps | Streets, bright, light, dark, **satellite** (Sentinel-2 cloudless, global), **USGS imagery** and **USGS topo** (US) |
 | Data tools | **Draw & measure**: sketch points, routes and areas with live distance and area, then save them as a layer. **Insights**: feature count, total area or length, field histograms and top values, with one click to turn them into a Big numbers block. **Heatmap** and **cluster** display for point layers. Add data by dropping files, pasting a link, or using sample data |
-| Sidecar | The map stays fixed while narrative cards scroll past and flies to each card's view. Cards can show an image, video or embed instead. Docked or floating layout |
-| Map actions | Links in sidecar text that send the map to a different view, and back on a second click |
-| Guided tour | Numbered places. Step through them or click a marker |
-| Swipe | Compare two basemaps or two sets of layers with a draggable divider |
+| Moving map | The map stays fixed while story cards scroll past and glides to each card's view. Cards can show an image, video or embed instead. Cards over the map, or side by side |
+| Map links | Links in a moving map card that send the map to a different view, and back on a second click |
+| Stop by stop | Numbered places with photos. Readers step through them or click a marker |
+| Before & after | Two basemaps or two sets of layers in one view, with a draggable divider |
 | Data layers | GeoJSON URL, uploaded GeoJSON or CSV, or a public ArcGIS FeatureServer/MapServer layer. Single color, color by category, or a color ramp, with labels, popups and a legend |
 | Images | Upload or drag and drop. Resized in the browser to at most 2400px and saved as WebP, which also strips location metadata. Reusable "My images" library |
 | Accounts | Sign up, sign in, change password, password reset by email or CLI |

@@ -10,9 +10,10 @@
 //   remote(url)       -> Promise<string>       e.g. the MapLibre library from unpkg
 // }
 import { zip } from './zip.js';
+import { normalizeStory } from './story-format.js';
 
 export const MAPLIBRE = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl';
-const READER_MODULES = ['brand.js', 'sanitize.js', 'effects.js', 'maps.js', 'render.js']; // dependency order
+const READER_MODULES = ['brand.js', 'sanitize.js', 'effects.js', 'maps.js', 'story-format.js', 'render.js']; // dependency order
 export const slugify = (s) => String(s || 'story').toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-').slice(0, 48).replace(/^-|-$/g, '') || 'story';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -55,8 +56,8 @@ function imageRefs(story) {
     if (b.type === 'image') at(b, 'url');
     if (b.type === 'chapter') at(b, 'image');
     if (b.type === 'gallery') (b.images || []).forEach((im) => at(im, 'url'));
-    if (b.type === 'tour') (b.places || []).forEach((p) => at(p, 'image'));
-    if (b.type === 'sidecar') (b.slides || []).forEach((s) => s.media?.type === 'image' && at(s.media, 'url'));
+    if (b.type === 'stops') (b.places || []).forEach((p) => at(p, 'image'));
+    if (b.type === 'scrollmap') (b.slides || []).forEach((s) => s.media?.type === 'image' && at(s.media, 'url'));
   });
   return refs;
 }
@@ -65,7 +66,7 @@ const EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 
 const hostOf = (url) => { try { return new URL(url).host; } catch { return url; } };
 
 async function collect(story, opts, io, step) {
-  const s = JSON.parse(JSON.stringify(story));
+  const s = normalizeStory(JSON.parse(JSON.stringify(story)));
   const files = [];
   const warnings = [];
   const done = new Map();

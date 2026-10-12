@@ -15,17 +15,17 @@ export const TEMPLATES = [
     }),
   },
   {
-    id: 'scrolly',
-    name: 'Scrolling map story',
+    id: 'movingmap',
+    name: 'Moving map story',
     description: 'The map stays put and flies to a new place as each card scrolls by.',
-    icon: 'sidecar',
+    icon: 'scrollmap',
     art: 'linear-gradient(135deg, #2f855a, #1a4d6b)',
     make: (author) => ({
       title: 'A journey in three stops', subtitle: 'Replace this with a one-line summary of your story.', author, theme: 'light', motion: 'subtle',
       cover: { image: pic('waymark-journey', 1920, 1080), effect: 'parallax' }, layers: [],
       blocks: [
         { type: 'text', style: 'large', html: '<p>Introduce your story here. Then scroll down: the map moves with each card. Click a card in the editor to change its text and where the map goes.</p>' },
-        { type: 'sidecar', layout: 'floating', slides: [
+        { type: 'scrollmap', layout: 'overlay', slides: [
           { html: '<h3>Start wide</h3><p>Open with the big picture so readers know where they are.</p>', media: { type: 'map', view: v([10, 30], 1.6, { basemap: 'light' }) } },
           { html: '<h3>First stop</h3><p>Zoom in on a place. Use "Set map view" to choose it and drop a marker.</p>', media: { type: 'map', view: v([2.3488, 48.8534], 12.5, { pitch: 40, markers: [{ lngLat: [2.2945, 48.8584], title: 'Eiffel Tower' }] }) } },
           { html: '<h3>Next stop</h3><p>The map flies here as this card scrolls into view.</p>', media: { type: 'map', view: v([139.7671, 35.6812], 11.5, { pitch: 45, bearing: -20 }) } },
@@ -35,17 +35,17 @@ export const TEMPLATES = [
     }),
   },
   {
-    id: 'tour',
-    name: 'Guided tour',
+    id: 'walk',
+    name: 'Stop-by-stop walk',
     description: 'Numbered places with photos. Readers step through them in order.',
-    icon: 'tour',
+    icon: 'route',
     art: 'linear-gradient(135deg, #e4572e, #b8336a)',
     make: (author) => ({
       title: 'A walk through Rome', subtitle: 'Swap these places for your own.', author, theme: 'light', motion: 'subtle',
       cover: { image: pic('waymark-tour', 1920, 1080), effect: 'zoom' }, layers: [],
       blocks: [
         { type: 'text', html: '<p>A short introduction to the tour. Each stop below has a photo, a short description, and a spot on the map.</p>' },
-        { type: 'tour', basemap: 'streets', zoom: 15.5, places: [
+        { type: 'stops', basemap: 'streets', zoom: 15.5, places: [
           { title: 'The Colosseum', lngLat: [12.4922, 41.8902], image: pic('waymark-stop1', 900, 600), html: '<p>Describe the first stop.</p>' },
           { title: 'The Pantheon', lngLat: [12.4768, 41.8986], image: pic('waymark-stop2', 900, 600), html: '<p>Describe the second stop.</p>' },
           { title: 'Trevi Fountain', lngLat: [12.4833, 41.9009], image: pic('waymark-stop3', 900, 600), html: '<p>Describe the third stop.</p>' },
@@ -54,8 +54,8 @@ export const TEMPLATES = [
     }),
   },
   {
-    id: 'immersive',
-    name: 'Immersive essay',
+    id: 'essay',
+    name: 'Chaptered essay',
     description: 'Chapters that recolor the page, words that light up, numbers that count.',
     icon: 'sparkle',
     art: 'linear-gradient(135deg, #1b1a17, #6b3fa0 60%, #e4572e)',
@@ -79,7 +79,7 @@ export const TEMPLATES = [
   {
     id: 'sample',
     name: 'Sample: Down the Potomac',
-    description: 'A finished story with data layers, map actions and every map block.',
+    description: 'A finished story with data layers, map links and every map block.',
     icon: 'map',
     art: 'linear-gradient(135deg, #0e7490, #84a98c)',
     make: async (author) => {

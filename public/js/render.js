@@ -3,9 +3,10 @@ import { createMap, applyView, DEFAULT_VIEW } from './maps.js';
 import { sanitize, safeUrl } from './sanitize.js';
 import { track, reveal, countUp, viewProgress, pinProgress, exitProgress, reducedMotion } from './effects.js';
 import { BRAND } from './brand.js';
+import { normalizeStory } from './story-format.js';
 
 const COLOR = /^#[0-9a-f]{3,8}$/i;
-const NO_REVEAL = new Set(['sidecar', 'statement', 'gallery', 'chapter']);
+const NO_REVEAL = new Set(['scrollmap', 'statement', 'gallery', 'chapter']);
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -25,6 +26,7 @@ const h = (tag, attrs = {}, ...kids) => {
  * opts.instant: show everything immediately (used when the builder re-renders the preview).
  */
 export function renderStory(story, root, { instant = false, homeHref = '/' } = {}) {
+  normalizeStory(story);
   const ctx = { maps: [], observers: [], cleanups: [], library: story.layers || [], instant };
   const motion = ['none', 'subtle', 'expressive'].includes(story.motion) ? story.motion : 'subtle';
   root.innerHTML = '';
@@ -267,17 +269,17 @@ const BLOCKS = {
     return h('figure', { class: `sm-figure size-${b.size || 'full'} sm-map-figure` }, el, caption(b.caption));
   },
 
-  // Scroll-driven "sidecar": a sticky media panel that changes as narrative slides scroll past.
-  sidecar: (b, ctx) => {
+  // Moving map: a sticky media panel that changes as story cards scroll past.
+  scrollmap: (b, ctx) => {
     const slides = b.slides || [];
     const mapEl = h('div', { class: 'sm-map' });
     const stage = h('div', { class: 'sm-stage' });
-    const mediaPane = h('div', { class: 'sm-sidecar-media' }, mapEl, stage);
+    const mediaPane = h('div', { class: 'sm-scrollmap-media' }, mapEl, stage);
     const slideEls = slides.map((s, i) =>
       h('div', { class: 'sm-slide', 'data-i': i },
         h('div', { class: 'sm-slide-card', html: s.html, onclick: (e) => runAction(e, i) })));
-    const section = h('section', { class: `sm-sidecar layout-${b.layout || 'docked'}` },
-      mediaPane, h('div', { class: 'sm-sidecar-slides' }, slideEls));
+    const section = h('section', { class: `sm-scrollmap layout-${b.layout || 'split'}` },
+      mediaPane, h('div', { class: 'sm-scrollmap-slides' }, slideEls));
 
     const firstMap = slides.find((s) => (s.media?.type || 'map') === 'map');
     let map = null;
@@ -289,7 +291,7 @@ const BLOCKS = {
       else pending = v;
     };
 
-    // Map actions: links of the form #action:<id> swap the slide's map view until clicked again.
+    // Map links: links of the form #action:<id> swap the card's map view until clicked again.
     const runAction = (e, i) => {
       const link = e.target.closest('a[href^="#action:"]');
       if (!link) return;
@@ -338,12 +340,12 @@ const BLOCKS = {
     return section;
   },
 
-  // Guided tour: numbered places on a map, with a panel to step through them.
-  tour: (b, ctx) => {
+  // Stop by stop: numbered places on a map, with a panel to step through them.
+  stops: (b, ctx) => {
     const places = b.places || [];
     let i = 0;
     let map = null;
-    const panel = h('div', { class: 'sm-tour-panel', 'aria-live': 'polite' });
+    const panel = h('div', { class: 'sm-stops-panel', 'aria-live': 'polite' });
     const mapEl = h('div', { class: 'sm-map' });
     const markers = places.map((p, n) => ({ lngLat: p.lngLat, label: String(n + 1) }));
 
@@ -352,11 +354,11 @@ const BLOCKS = {
       const p = places[i];
       panel.replaceChildren(
         p.image ? h('img', { src: safeUrl(p.image), alt: p.alt || p.title || '', loading: 'lazy' }) : null,
-        h('div', { class: 'sm-tour-body' },
-          h('p', { class: 'sm-tour-count' }, `${i + 1} / ${places.length}`),
+        h('div', { class: 'sm-stops-body' },
+          h('p', { class: 'sm-stops-count' }, `${i + 1} / ${places.length}`),
           h('h3', {}, p.title || ''),
           h('div', { html: p.html || '' }),
-          h('div', { class: 'sm-tour-nav' },
+          h('div', { class: 'sm-stops-nav' },
             h('button', { type: 'button', onclick: () => show(i - 1), 'aria-label': 'Previous place' }, '←'),
             h('button', { type: 'button', onclick: () => show(i + 1), 'aria-label': 'Next place' }, '→'))));
       if (map) {
@@ -375,17 +377,17 @@ const BLOCKS = {
       });
       show(0, false);
     }
-    return h('section', { class: 'sm-tour size-full' }, h('div', { class: 'sm-tour-grid' }, panel, mapEl), caption(b.caption));
+    return h('section', { class: 'sm-stops size-full' }, h('div', { class: 'sm-stops-grid' }, panel, mapEl), caption(b.caption));
   },
 
-  // Swipe: compare two basemaps / views with a draggable divider.
-  swipe: (b, ctx) => {
+  // Before & after: compare two basemaps or layer sets with a draggable divider.
+  compare: (b, ctx) => {
     const leftEl = h('div', { class: 'sm-map' });
-    const rightEl = h('div', { class: 'sm-map sm-swipe-top' });
-    const handle = h('div', { class: 'sm-swipe-handle', role: 'slider', tabindex: 0, 'aria-label': 'Swipe position', 'aria-valuemin': 0, 'aria-valuemax': 100 });
-    const wrap = h('div', { class: 'sm-swipe' }, leftEl, rightEl, handle,
-      h('span', { class: 'sm-swipe-label left' }, b.leftLabel || ''),
-      h('span', { class: 'sm-swipe-label right' }, b.rightLabel || ''));
+    const rightEl = h('div', { class: 'sm-map sm-compare-top' });
+    const handle = h('div', { class: 'sm-compare-handle', role: 'slider', tabindex: 0, 'aria-label': 'Divider position', 'aria-valuemin': 0, 'aria-valuemax': 100 });
+    const wrap = h('div', { class: 'sm-compare' }, leftEl, rightEl, handle,
+      h('span', { class: 'sm-compare-label left' }, b.leftLabel || ''),
+      h('span', { class: 'sm-compare-label right' }, b.rightLabel || ''));
     let pos = 50;
     const setPos = (p) => {
       pos = Math.max(0, Math.min(100, p));

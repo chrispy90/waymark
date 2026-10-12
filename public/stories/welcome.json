@@ -25,8 +25,8 @@
       "align": "center"
     },
     {
-      "type": "sidecar",
-      "layout": "floating",
+      "type": "scrollmap",
+      "layout": "overlay",
       "slides": [
         {
           "html": "<h3>Start with the whole world</h3><p>Every card sets where the map should be. Readers just scroll.</p>",
@@ -106,7 +106,7 @@
       "items": [
         {
           "value": "14",
-          "label": "kinds of blocks, from plain text to guided tours"
+          "label": "kinds of blocks, from plain text to stop-by-stop walks"
         },
         {
           "value": "0",
@@ -133,11 +133,11 @@
         },
         {
           "url": "https://picsum.photos/seed/waymark-wg3/1500/1000",
-          "caption": "Guided tours with numbered stops"
+          "caption": "Stop-by-stop walks with numbered places"
         },
         {
           "url": "https://picsum.photos/seed/waymark-wg4/1500/1000",
-          "caption": "Before-and-after swipe maps"
+          "caption": "Before & after maps with a draggable divider"
         }
       ]
     },

@@ -19,8 +19,8 @@
       "html": "<h2>The fall line</h2><p>Scroll to follow the river downstream. The map on the right moves with the story.</p>"
     },
     {
-      "type": "sidecar",
-      "layout": "docked",
+      "type": "scrollmap",
+      "layout": "split",
       "slides": [
         {
           "html": "<h3>Great Falls</h3><p>The river falls 76 feet in under a mile, through the narrow Mather Gorge. Boats could not get past it, so cargo had to stop here.</p>",
@@ -200,10 +200,10 @@
     },
     {
       "type": "text",
-      "html": "<h2>A guided tour</h2><p>Step through the places below, or click a numbered marker.</p>"
+      "html": "<h2>Stop by stop</h2><p>Step through the places below, or click a numbered marker.</p>"
     },
     {
-      "type": "tour",
+      "type": "stops",
       "basemap": "streets",
       "zoom": 14,
       "places": [
@@ -259,10 +259,10 @@
     },
     {
       "type": "text",
-      "html": "<h2>Compare basemaps</h2><p>Drag the handle to swipe between two views of the same place.</p>"
+      "html": "<h2>Compare basemaps</h2><p>Drag the divider to compare two views of the same place.</p>"
     },
     {
-      "type": "swipe",
+      "type": "compare",
       "left": "light",
       "right": "light",
       "leftLabel": "Basemap only",
@@ -274,7 +274,7 @@
         ],
         "zoom": 12.5
       },
-      "caption": "Swipe to reveal DC's National Park Service land, loaded live from the DC GIS ArcGIS REST service.",
+      "caption": "Drag the divider to reveal DC's National Park Service land, loaded live from the DC GIS ArcGIS REST service.",
       "leftLayers": [],
       "rightLayers": [
         "parks"

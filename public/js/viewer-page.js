@@ -52,7 +52,7 @@ if (slug) {
   });
   root.addEventListener('click', (e) => {
     const blockEl = e.target.closest('[data-block-index]');
-    if (!blockEl || e.target.closest('a, button, .maplibregl-canvas, .sm-swipe-handle, iframe, video')) return;
+    if (!blockEl || e.target.closest('a, button, .maplibregl-canvas, .sm-compare-handle, iframe, video')) return;
     parent.postMessage({ type: 'select', index: +blockEl.dataset.blockIndex }, location.origin);
   });
   parent.postMessage({ type: 'preview-ready' }, location.origin);
