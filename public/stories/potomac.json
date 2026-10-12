@@ -6,7 +6,7 @@
   "date": "October 2026",
   "theme": "light",
   "cover": {
-    "image": "https://picsum.photos/seed/potomac-river/1920/1080"
+    "image": "https://picsum.photos/id/1015/1920/1080"
   },
   "blocks": [
     {
@@ -77,8 +77,8 @@
           "html": "<h3>An image slide</h3><p>A slide can show an image, video or embedded page instead of the map. The map comes back on the next slide.</p>",
           "media": {
             "type": "image",
-            "url": "https://picsum.photos/seed/georgetown/1600/1000",
-            "alt": "Placeholder photo"
+            "url": "https://picsum.photos/id/1044/1600/1000",
+            "alt": "A river running through a forested valley"
           }
         },
         {
@@ -213,7 +213,7 @@
             -77.2539,
             38.9985
           ],
-          "image": "https://picsum.photos/seed/falls/900/600",
+          "image": "https://picsum.photos/id/1039/900/600",
           "html": "<p>Overlooks above Mather Gorge.</p>"
         },
         {
@@ -222,7 +222,7 @@
             -77.061,
             38.9025
           ],
-          "image": "https://picsum.photos/seed/gtown/900/600",
+          "image": "https://picsum.photos/id/164/900/600",
           "html": "<p>The old port, now a riverside park.</p>"
         },
         {
@@ -231,7 +231,7 @@
             -77.0393,
             38.8048
           ],
-          "image": "https://picsum.photos/seed/oldtown/900/600",
+          "image": "https://picsum.photos/id/195/900/600",
           "html": "<p>Brick streets down to the water.</p>"
         },
         {
@@ -240,7 +240,7 @@
             -77.048,
             38.718
           ],
-          "image": "https://picsum.photos/seed/forthunt/900/600",
+          "image": "https://picsum.photos/id/190/900/600",
           "html": "<p>A former coastal battery on the river bluffs.</p>"
         },
         {
@@ -249,7 +249,7 @@
             -77.0861,
             38.7083
           ],
-          "image": "https://picsum.photos/seed/vernon/900/600",
+          "image": "https://picsum.photos/id/142/900/600",
           "html": "<p>Washington's estate above the river.</p>"
         }
       ],

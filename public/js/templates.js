@@ -1,6 +1,7 @@
 // Starting points for new stories. Placeholder text tells people what to do next.
 const v = (center, zoom, extra = {}) => ({ center, zoom, bearing: 0, pitch: 0, basemap: 'streets', markers: [], layers: [], ...extra });
-const pic = (seed, w = 1600, h = 1000) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
+// Hand-picked placeholder photos (fixed picsum.photos IDs, so every install gets the same pictures).
+const pic = (id, w = 1600, h = 1000) => `https://picsum.photos/id/${id}/${w}/${h}`;
 
 export const TEMPLATES = [
   {
@@ -22,7 +23,7 @@ export const TEMPLATES = [
     art: 'linear-gradient(135deg, #2f855a, #1a4d6b)',
     make: (author) => ({
       title: 'A journey in three stops', subtitle: 'Replace this with a one-line summary of your story.', author, theme: 'light', motion: 'subtle',
-      cover: { image: pic('waymark-journey', 1920, 1080), effect: 'parallax' }, layers: [],
+      cover: { image: pic(1016, 1920, 1080), effect: 'parallax' }, layers: [],
       blocks: [
         { type: 'text', style: 'large', html: '<p>Introduce your story here. Then scroll down: the map moves with each card. Click a card in the editor to change its text and where the map goes.</p>' },
         { type: 'scrollmap', layout: 'overlay', slides: [
@@ -42,13 +43,13 @@ export const TEMPLATES = [
     art: 'linear-gradient(135deg, #e4572e, #b8336a)',
     make: (author) => ({
       title: 'A walk through Rome', subtitle: 'Swap these places for your own.', author, theme: 'light', motion: 'subtle',
-      cover: { image: pic('waymark-tour', 1920, 1080), effect: 'zoom' }, layers: [],
+      cover: { image: pic(195, 1920, 1080), effect: 'zoom' }, layers: [],
       blocks: [
         { type: 'text', html: '<p>A short introduction to the tour. Each stop below has a photo, a short description, and a spot on the map.</p>' },
         { type: 'stops', basemap: 'streets', zoom: 15.5, places: [
-          { title: 'The Colosseum', lngLat: [12.4922, 41.8902], image: pic('waymark-stop1', 900, 600), html: '<p>Describe the first stop.</p>' },
-          { title: 'The Pantheon', lngLat: [12.4768, 41.8986], image: pic('waymark-stop2', 900, 600), html: '<p>Describe the second stop.</p>' },
-          { title: 'Trevi Fountain', lngLat: [12.4833, 41.9009], image: pic('waymark-stop3', 900, 600), html: '<p>Describe the third stop.</p>' },
+          { title: 'The Colosseum', lngLat: [12.4922, 41.8902], image: pic(142, 900, 600), html: '<p>Describe the first stop.</p>' },
+          { title: 'The Pantheon', lngLat: [12.4768, 41.8986], image: pic(164, 900, 600), html: '<p>Describe the second stop.</p>' },
+          { title: 'Trevi Fountain', lngLat: [12.4833, 41.9009], image: pic(1047, 900, 600), html: '<p>Describe the third stop.</p>' },
         ] },
       ],
     }),
@@ -61,7 +62,7 @@ export const TEMPLATES = [
     art: 'linear-gradient(135deg, #1b1a17, #6b3fa0 60%, #e4572e)',
     make: (author) => ({
       title: 'The shape of a river', subtitle: 'An essay in chapters. Every effect here is a block you can edit.', author, theme: 'light', motion: 'expressive',
-      cover: { image: pic('waymark-essay', 1920, 1200), effect: 'zoom', kicker: 'A Waymark story' }, layers: [],
+      cover: { image: pic(1050, 1920, 1200), effect: 'zoom', kicker: 'A Waymark story' }, layers: [],
       blocks: [
         { type: 'text', style: 'large', html: '<p>Open with a paragraph that sets the scene. As readers scroll, blocks rise into view. Change that under Story → Scroll effects.</p>' },
         { type: 'chapter', kicker: 'Chapter one', title: 'Where it begins', text: 'Chapters fill the screen and change the colors of everything after them.', bg: '#13233a', fg: '#f3efe6', align: 'center' },
@@ -69,9 +70,9 @@ export const TEMPLATES = [
         { type: 'stats', items: [{ value: '405', label: 'miles from source to sea' }, { value: '14,670', label: 'square miles of watershed' }, { value: '6.1M', label: 'people living alongside it' }], caption: 'Numbers count up when they scroll into view.' },
         { type: 'chapter', kicker: 'Chapter two', title: 'A gallery that moves sideways', bg: '#f1e7d6', fg: '#2a1d10', align: 'left' },
         { type: 'gallery', title: 'Scroll down to move sideways', text: 'Vertical scrolling drives this row of photos.', images: [
-          { url: pic('waymark-g1', 1400, 950), caption: 'First photo' }, { url: pic('waymark-g2', 1400, 950), caption: 'Second photo' },
-          { url: pic('waymark-g3', 1400, 950), caption: 'Third photo' }, { url: pic('waymark-g4', 1400, 950), caption: 'Fourth photo' } ] },
-        { type: 'image', url: pic('waymark-parallax', 1800, 1100), caption: 'Images can drift (parallax), slowly zoom, or wipe into view.', size: 'full', effect: 'parallax' },
+          { url: pic(1043, 1400, 950), caption: 'First photo' }, { url: pic(1044, 1400, 950), caption: 'Second photo' },
+          { url: pic(11, 1400, 950), caption: 'Third photo' }, { url: pic(1051, 1400, 950), caption: 'Fourth photo' } ] },
+        { type: 'image', url: pic(1019, 1800, 1100), caption: 'Images can drift (parallax), slowly zoom, or wipe into view.', size: 'full', effect: 'parallax' },
         { type: 'text', html: '<h2>The end</h2><p>Close the essay here.</p>' },
       ],
     }),

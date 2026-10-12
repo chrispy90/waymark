@@ -419,8 +419,13 @@ export function insightsPanel(layer, data) {
   };
   return h('div', { class: 'insights' },
     h('div', { class: 'ins-tiles' }, tiles.map(([k, v]) => h('div', { class: 'ins-tile' }, h('span', {}, k), h('strong', {}, v)))),
-    numeric.map((f) => { const fmt = /year|yr$|date/i.test(f.name) ? (v) => String(Math.round(v)) : fmtNum; return h('div', { class: 'ins-field' },
-      h('div', { class: 'ins-field-head' }, h('strong', {}, f.name), h('span', { class: 'muted' }, `avg ${fmt(f.mean)}`)),
+    numeric.map((f) => {
+      // Epoch-millisecond timestamps (e.g. earthquake times) read better as dates.
+      const epoch = f.min > 1e11 && f.max < 4e12;
+      const fmt = epoch ? (v) => new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: f.max - f.min > 3e10 ? 'numeric' : undefined })
+        : /year|yr$|date/i.test(f.name) ? (v) => String(Math.round(v)) : fmtNum;
+      return h('div', { class: 'ins-field' },
+      h('div', { class: 'ins-field-head' }, h('strong', {}, f.name), h('span', { class: 'muted' }, epoch ? `${fmt(f.min)} – ${fmt(f.max)}` : `avg ${fmt(f.mean)}`)),
       bars(f.values),
       h('div', { class: 'ins-range' }, h('span', {}, fmt(f.min)), h('span', {}, fmt(f.max)))); }),
     text.map((f) => h('div', { class: 'ins-field' },

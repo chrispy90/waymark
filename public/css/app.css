@@ -627,3 +627,4 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .cat-main { padding: 12px; }
   .dlg-catalog .dlg-foot > .muted { display: none; }
 }
+.cat-side .seg button { white-space: nowrap; padding: 0 8px; }

@@ -101,30 +101,40 @@ export const TOOLS = {
       const areaKm2 = t.area(t.bboxPolygon(box)) / 1e6;
       let side = Number(p.size) > 0 ? Number(p.size) : Math.max(0.05, Math.sqrt(areaKm2 / 350 / 2.598));
       while (areaKm2 / (2.598 * side * side) > 6000) side *= 1.25; // keep the grid manageable
-      const pad = side / 111;
-      const grid = t.hexGrid([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad], side, { units: 'kilometers' });
-      const cells = grid.features.map((h) => ({ h, b: t.bbox(h), n: 0, sum: 0 }));
-      // bucket hexagons on a coarse grid so each point only tests a few candidates
-      const cw = cells[0] ? cells[0].b[2] - cells[0].b[0] : 1;
-      const ch = cells[0] ? cells[0].b[3] - cells[0].b[1] : 1;
-      const buckets = new Map();
-      const key = (x, y) => `${Math.floor(x / cw)}:${Math.floor(y / ch)}`;
-      cells.forEach((c) => {
-        for (let x = Math.floor(c.b[0] / cw); x <= Math.floor(c.b[2] / cw); x++) for (let y = Math.floor(c.b[1] / ch); y <= Math.floor(c.b[3] / ch); y++) {
-          const k = `${x}:${y}`;
-          (buckets.get(k) || buckets.set(k, []).get(k)).push(c);
-        }
-      });
+      // Flat-topped hexagons laid out in degrees, scaled for the middle latitude. Built here rather than with
+      // turf.hexGrid, which returns nothing once the data spans more than half the globe.
+      const rx = side / (111.32 * Math.max(0.2, Math.cos(((box[1] + box[3]) / 2) * Math.PI / 180)));
+      const ry = side / 110.57;
+      const dx = 1.5 * rx, dy = Math.sqrt(3) * ry;
+      const center = (i, j) => [box[0] + i * dx, box[1] + j * dy + (i & 1 ? dy / 2 : 0)];
+      const cells = new Map();
+      const cellOf = (i, j) => { const k = `${i}:${j}`; return cells.get(k) || cells.set(k, { i, j, n: 0, sum: 0 }).get(k); };
+      if (p.keepEmpty) {
+        for (let i = 0; i <= Math.ceil((box[2] - box[0]) / dx); i++) for (let j = -1; j <= Math.ceil((box[3] - box[1]) / dy); j++) cellOf(i, j);
+      }
       pts.forEach((pt) => {
         const [x, y] = pt.geometry.coordinates;
-        const cell = (buckets.get(key(x, y)) || []).find((c) => t.booleanPointInPolygon(pt, c.h));
-        if (!cell) return;
+        // a regular hex tiling is the Voronoi diagram of its centers, so the nearest center wins
+        let best = null, bestD = Infinity;
+        const i0 = Math.round((x - box[0]) / dx);
+        for (let i = i0 - 1; i <= i0 + 1; i++) {
+          const j = Math.round((y - box[1] - (i & 1 ? dy / 2 : 0)) / dy);
+          const [cx, cy] = center(i, j);
+          const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+          if (d < bestD) { bestD = d; best = [i, j]; }
+        }
+        const cell = cellOf(best[0], best[1]);
         cell.n++;
         if (p.field) cell.sum += Number(pt.properties?.[p.field]) || 0;
       });
+      const hexagon = ({ i, j }) => {
+        const [cx, cy] = center(i, j);
+        const ring = [0, 1, 2, 3, 4, 5, 0].map((k) => [round(cx + rx * Math.cos(k * Math.PI / 3), 6), round(cy + ry * Math.sin(k * Math.PI / 3), 6)]);
+        return { type: 'Polygon', coordinates: [ring] };
+      };
       const statName = p.stat === 'count' ? 'count' : p.stat === 'sum' ? `sum_${p.field}` : `mean_${p.field}`;
-      const out = cells.filter((c) => p.keepEmpty || c.n > 0).map((c) => ({
-        type: 'Feature', geometry: c.h.geometry,
+      const out = [...cells.values()].filter((c) => p.keepEmpty || c.n > 0).map((c) => ({
+        type: 'Feature', geometry: hexagon(c),
         properties: { count: c.n, ...(p.stat === 'sum' ? { [statName]: round(c.sum, 2) } : {}), ...(p.stat === 'mean' ? { [statName]: c.n ? round(c.sum / c.n, 2) : 0 } : {}) },
       }));
       return { data: fc(out), field: statName, note: `${out.length.toLocaleString()} hexagons, about ${round(side, 2)} km across` };

@@ -124,26 +124,26 @@
       "text": "Keep scrolling down. The photos move across.",
       "images": [
         {
-          "url": "https://picsum.photos/seed/waymark-wg1/1500/1000",
+          "url": "https://picsum.photos/id/1015/1500/1000",
           "caption": "Scroll galleries"
         },
         {
-          "url": "https://picsum.photos/seed/waymark-wg2/1500/1000",
+          "url": "https://picsum.photos/id/1039/1500/1000",
           "caption": "Parallax and zoom on any image"
         },
         {
-          "url": "https://picsum.photos/seed/waymark-wg3/1500/1000",
+          "url": "https://picsum.photos/id/1022/1500/1000",
           "caption": "Stop-by-stop walks with numbered places"
         },
         {
-          "url": "https://picsum.photos/seed/waymark-wg4/1500/1000",
+          "url": "https://picsum.photos/id/1043/1500/1000",
           "caption": "Before & after maps with a draggable divider"
         }
       ]
     },
     {
       "type": "image",
-      "url": "https://picsum.photos/seed/waymark-wparallax/2000/1200",
+      "url": "https://picsum.photos/id/1019/2000/1200",
       "size": "full",
       "effect": "parallax",
       "caption": ""
