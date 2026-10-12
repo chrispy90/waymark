@@ -195,6 +195,8 @@ const BLOCKS = {
   separator: () => h('hr', { class: 'sm-separator' }),
 
   image: (b, ctx) => {
+    // No photo yet: a placeholder that only shows in the editor's preview, never to readers.
+    if (!b.url) return h('figure', { class: `sm-figure size-${b.size || 'wide'} sm-empty-media` }, h('div', { class: 'sm-empty-box' }, 'Click to add a photo'), caption(b.caption));
     const img = mediaElement({ ...b, type: 'image' });
     const wrap = h('div', { class: 'sm-img-wrap' }, img);
     imageEffect(wrap, img, b.effect, ctx);
@@ -251,8 +253,8 @@ const BLOCKS = {
       im.caption ? h('figcaption', {}, im.caption) : null));
     const trackEl = h('div', { class: 'sm-hg-track' },
       b.title || b.text ? h('div', { class: 'sm-hg-intro' }, b.title ? h('h2', {}, b.title) : null, b.text ? h('p', {}, b.text) : null) : null,
-      items);
-    const el = h('section', { class: 'sm-hgallery', style: `--n:${items.length}` }, h('div', { class: 'sm-hg-sticky' }, trackEl));
+      items.length ? items : [1, 2, 3].map(() => h('figure', { class: 'sm-hg-item sm-empty-media' }, h('div', { class: 'sm-empty-box' }, 'Click to add photos'))));
+    const el = h('section', { class: `sm-hgallery${items.length ? '' : ' sm-empty-media'}`, style: `--n:${items.length}` }, h('div', { class: 'sm-hg-sticky' }, trackEl));
     if (reducedMotion() || !items.length) { el.classList.add('is-static'); return el; }
     ctx.cleanups.push(track(el, (r, vh) => {
       const dist = Math.max(0, trackEl.scrollWidth - innerWidth);

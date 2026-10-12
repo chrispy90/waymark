@@ -369,6 +369,11 @@ img, video, iframe { display: block; max-width: 100%; }
 }
 
 /* Builder preview: click a block to edit it */
+.sm-empty-media { display: none; }
+.is-editing .sm-empty-media { display: block; }
+.sm-empty-box { display: grid; place-items: center; aspect-ratio: 16 / 9; border: 2px dashed color-mix(in srgb, var(--fg) 25%, transparent); border-radius: 10px;
+  color: var(--muted); font: 600 15px var(--sans); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.sm-hg-item.sm-empty-media .sm-empty-box { aspect-ratio: auto; height: calc(100% - 34px); }
 .is-editing [data-block-index] { position: relative; cursor: pointer; }
 .is-editing [data-block-index]::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 6px; outline: 2px solid transparent; outline-offset: 4px; transition: outline-color .15s; z-index: 5; }
 .is-editing [data-block-index]:hover::after { outline-color: color-mix(in srgb, var(--accent) 45%, transparent); }

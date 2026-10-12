@@ -144,14 +144,14 @@ export function menu(anchor, items, { align = 'end' } = {}) {
 
 /* ---------- Dialogs ---------- */
 
-export function dialog({ title, body, actions = [], cls = '', onClose } = {}) {
+export function dialog({ title, body, actions = [], cls = '', onClose, backdropCloses = true } = {}) {
   const dlg = h('dialog', { class: `dlg ${cls}` },
     h('div', { class: 'dlg-head' }, h('h2', { class: 'dlg-title' }, title),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close', onclick: () => dlg.close() }, icon('x'))),
     h('div', { class: 'dlg-body' }, body),
     actions.length ? h('div', { class: 'dlg-foot' }, actions) : null);
   dlg.addEventListener('close', () => { onClose?.(); dlg.remove(); });
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // backdrop click
+  if (backdropCloses) dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // backdrop click
   document.body.append(dlg);
   dlg.showModal();
   return dlg;

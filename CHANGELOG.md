@@ -4,7 +4,11 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **New story wizard.** Pick the kind of story (journey, walking tour, illustrated essay, data story or blank), a look, a title and cover photo, then your places (search or click the map) or chapter titles and any extras. Waymark builds the story from your answers, with short prompts where your words go, so there's no demo content to delete. The finished examples are still there under **Explore an example**.
+- **Looks:** Classic, Night and Brutalist, each with matching type, colors, chapter colors, map style and scroll animation. Pick one in the wizard or under Story → Look & feel, and restyle existing chapters and maps to match in one click.
+- **"Finish your story" checklist** in the editor for stories made with the wizard: cover photo, replacing the prompts (with a live count), photos, data, map views, a phone check and publishing. Click a step to jump straight there.
+- Photo blocks and galleries without photos show a placeholder in the editor's preview and stay hidden from readers.
 
 ## 1.1.0 (2026-10-12)
 

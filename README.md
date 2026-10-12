@@ -45,7 +45,7 @@ npm start
 Then open **http://localhost:5180**.
 
 1. **Create your account.** The first visit makes you the owner.
-2. **Pick a template.** *Chaptered essay* shows every scroll effect, and *Sample: Down the Potomac* shows the map features.
+2. **Answer a few questions.** Pick what you're making and a look, add a title and your places, and Waymark sets up the story for you.
 3. **Click anything to edit it.** When you're happy with it, press **Publish**.
 
 > [!TIP]
@@ -139,19 +139,23 @@ Switch any story to **Brutalist** for raw monospace and heavy display type, hard
 
 <p align="center"><img src="docs/media/phones.png" alt="Three stories on phones: a satellite map, a statement block, and a stop-by-stop walk" width="100%"></p>
 
-### Start from a template
+### Start with a few questions, not a demo to delete
 
-<p align="center"><img src="docs/media/templates.png" alt="The new story dialog with templates" width="100%"></p>
+**New story** asks what you're making, how it should look, its title and cover, and where it goes. Then it builds the story around *your* places and chapters, with short prompts where your words go. A checklist in the editor walks you through the rest: cover photo, your own text, photos, a phone check and publishing.
 
-| Template | What it is |
+<p align="center"><img src="docs/media/wizard.png" alt="The New story wizard: story type, look, places, and the editor checklist" width="100%"></p>
+
+| Kind of story | What you get |
 |---|---|
-| **Moving map story** | The map stays fixed and glides to a new place as each card scrolls by |
-| **Stop-by-stop walk** | Numbered places with photos. Readers step through them or tap a marker |
-| **Chaptered essay** | Chapters that recolor the page, text that lights up, numbers that count, photos that slide |
-| **Brutalist zine** | Raw type, hard edges, loud color, and a map you draw on |
-| **Blank story** | A title and an empty page |
+| **A journey** | A moving map with one card per place, plus an overview of the whole route |
+| **A walking tour** | Numbered stops with room for a photo and a description each |
+| **An illustrated essay** | Your chapters as full-screen titles, with space to write and a photo |
+| **A data story** | One big map ready for live or uploaded data, with numbers and context |
+| **Start from scratch** | A title and an empty page |
 
-Any story can also use **Before & after**, a block with two maps in one view and a draggable divider. Every story can be **light**, **dark** or **brutalist**.
+Every kind comes in three **looks**: **Classic** (the original), **Night** and **Brutalist**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
+
+Prefer to learn from something finished? **Explore an example** opens a complete story to take apart: the moving map, walk, essay, *Brutalist zine* and *Down the Potomac* samples. Any story can also use **Before & after**, a block with two maps in one view and a draggable divider.
 
 <br>
 

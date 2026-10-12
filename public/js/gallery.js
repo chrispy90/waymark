@@ -2,7 +2,7 @@
 import { api, signOut } from './api.js';
 import { listLocalStories, deleteLocalStory } from './store.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, coverGradient, setTitle } from './ui.js';
-import { TEMPLATES } from './templates.js';
+import { openWizard } from './wizard.js';
 import { openExport } from './export.js';
 
 const { user, firstRun } = await api('GET', '/api/me');
@@ -53,8 +53,9 @@ async function load() {
     main.replaceChildren(...[importBanner(), h('section', { class: 'empty' },
       logo({ size: 56, withName: false }),
       h('h2', {}, firstName ? `Welcome, ${firstName}. Let's make your first story.` : "Let's make your first story."),
-      h('p', {}, 'Pick a starting point. Everything in it can be changed, and nothing is public until you publish.'),
-      templateGrid())].filter(Boolean));
+      h('p', {}, 'A few quick questions and your story is ready to fill in. Everything can be changed, and nothing is public until you publish.'),
+      h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: newStoryDialog }, icon('sparkle'), 'Create your first story'))].filter(Boolean));
+    newStoryDialog();
     return;
   }
   const grid = h('div', { class: 'cards' });
@@ -131,24 +132,8 @@ async function remove(s) {
   load();
 }
 
-function templateGrid(onPick) {
-  return h('div', { class: 'templates' }, TEMPLATES.map((t) => h('button', { type: 'button', class: 'tpl', onclick: async (e) => {
-    e.currentTarget.disabled = true;
-    onPick?.();
-    try {
-      const story = await t.make(user.name || '');
-      const created = await api('POST', '/api/stories', { story });
-      location.href = `/builder.html?id=${created.id}&new=1`;
-    } catch (err) { toast(err.message, { tone: 'error' }); e.currentTarget.disabled = false; }
-  } },
-  h('span', { class: 'tpl-art', style: `background:${t.art}` }, icon(t.icon, { size: 34 })),
-  h('strong', {}, t.name),
-  h('span', {}, t.description))));
-}
-
 function newStoryDialog() {
-  const dlg = dialog({ title: 'Start a new story', cls: 'dlg-lg', body: templateGrid(() => {}) });
-  return dlg;
+  return openWizard({ user });
 }
 
 function changePassword() {

@@ -9,6 +9,8 @@ import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime
 import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile, openPublicData } from './workbench.js';
 import { TOOLS, kinds } from './analysis.js';
 import { openExport } from './export.js';
+import { LOOKS, openPrompts, applyLook, lookOf } from './story-kit.js';
+import { lookMock } from './wizard.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const view = (v = {}) => ({ ...clone(DEFAULT_VIEW), ...v });
@@ -126,6 +128,7 @@ function setMeta(m) {
   btn.classList.toggle('is-pending', !!meta.url && meta.hasUnpublishedChanges);
   btn.classList.toggle('btn-primary', !meta.url || meta.hasUnpublishedChanges);
   btn.replaceChildren(...(!meta.url ? [icon('globe', { size: 16 }), 'Publish'] : meta.hasUnpublishedChanges ? [icon('upload', { size: 16 }), 'Publish changes'] : [icon('check', { size: 16 }), 'Published']));
+  refreshGuide();
 }
 
 function setSave(state, text) {
@@ -193,6 +196,7 @@ let saving = false;
 let queued = false;
 
 function changed() {
+  refreshGuide();
   recordHistory();
   dirty = true;
   setSave('dirty');
@@ -324,11 +328,59 @@ function contentTab() {
     rows.push(blockRow(b, i));
   });
   return [
-    tipCard(),
+    story.guide ? guideCard() : tipCard(),
     h('div', { class: 'rail-section-title' }, `Blocks · ${blocks.length}`),
     blocks.length ? h('div', { class: 'outline' }, rows) : h('p', { class: 'muted', style: 'margin:8px 2px 0' }, 'Your story is empty. Add a first block to get going.'),
     h('button', { type: 'button', class: 'add-block', onclick: () => openBlockPicker(blocks.length) }, icon('plus'), 'Add block'),
   ];
+}
+
+/* ---------- "Finish your story" checklist (stories made with the wizard) ---------- */
+
+const blockWith = (test) => story.blocks.findIndex(test);
+function guideSteps() {
+  const g = story.guide || {};
+  const left = openPrompts(story);
+  const promptAt = blockWith((b) => left.some((p) => JSON.stringify(b).includes(JSON.stringify(p).slice(1, -1)) || JSON.stringify(b).includes(p.replace(/"/g, '&quot;'))));
+  const emptyPhoto = blockWith((b) => (b.type === 'image' && !b.url) || (b.type === 'gallery' && !(b.images || []).some((im) => im.url)) || (b.type === 'stops' && (b.places || []).some((pl) => !pl.image)));
+  const steps = [
+    { label: 'Add a cover photo', done: !!story.cover?.image, run: () => { tab = 'story'; syncTabs(); renderRail(); } },
+    { label: left.length ? `Replace the placeholder text (${left.length} left)` : 'Replace the placeholder text', done: !left.length, run: () => promptAt >= 0 && select(promptAt) },
+  ];
+  if (story.blocks.some((b) => ['image', 'gallery', 'stops'].includes(b.type))) steps.push({ label: 'Add your photos', done: emptyPhoto < 0, run: () => emptyPhoto >= 0 && select(emptyPhoto) });
+  if (g.kind === 'data') steps.push({ label: 'Put data on the map', done: (story.layers || []).length > 0, run: () => { tab = 'data'; syncTabs(); renderRail(); openPublicData({ onAdd: (l) => openLayer(l.id) }); } });
+  if (g.kind === 'journey' || g.kind === 'tour') steps.push({ label: 'Check where the map goes on each card', done: !!g.viewsChecked, run: () => { g.viewsChecked = true; changed(); const i = blockWith((b) => b.type === 'scrollmap' || b.type === 'stops'); if (i >= 0) select(i); } });
+  steps.push({ label: 'Preview it on a phone', done: !!g.phoneChecked, run: () => { g.phoneChecked = true; changed(); $('#device [data-device="phone"]').click(); } });
+  steps.push({ label: 'Publish', done: !!meta.url, run: () => $('#btn-publish').click() });
+  return steps;
+}
+
+function guideCard() {
+  const card = h('section', { class: 'guide', id: 'guide', 'aria-label': 'Finish your story' });
+  fillGuide(card);
+  return card;
+}
+function fillGuide(card) {
+  const steps = guideSteps();
+  const done = steps.filter((x) => x.done).length;
+  const all = done === steps.length;
+  card.replaceChildren(
+    h('div', { class: 'guide-head' },
+      h('strong', {}, all ? 'Your story is ready' : 'Finish your story'),
+      h('span', { class: 'muted' }, `${done} of ${steps.length}`),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Hide checklist', title: 'Hide checklist', onclick: () => { delete story.guide; changed(); renderRail(); } }, icon('x', { size: 15 }))),
+    h('div', { class: 'guide-bar' }, h('span', { style: `width:${(done / steps.length) * 100}%` })),
+    all ? h('p', { class: 'guide-note' }, 'Nice work. Hide this checklist whenever you like.')
+      : h('p', { class: 'guide-note' }, 'Click a step to jump there. Click anything in the preview to edit it.'),
+    h('ol', { class: 'guide-steps' }, steps.map((x) => h('li', { class: x.done ? 'is-done' : '' },
+      h('button', { type: 'button', onclick: x.run, disabled: x.done && x.label === 'Publish' },
+        h('span', { class: 'guide-check' }, x.done ? icon('check', { size: 12 }) : null), h('span', {}, x.label),
+        x.done ? null : icon('back', { size: 14, cls: 'rot' }))))));
+}
+let guideRaf = 0;
+function refreshGuide() {
+  if (guideRaf) return;
+  guideRaf = requestAnimationFrame(() => { guideRaf = 0; const el = document.getElementById('guide'); if (el && story?.guide) fillGuide(el); });
 }
 
 function tipCard() {
@@ -453,14 +505,40 @@ function storyTab() {
       { k: 'effect', t: 'seg', label: 'Cover motion', opts: [['none', 'Still'], ['parallax', 'Parallax'], ['zoom', 'Zoom']], dflt: 'parallax' }]),
     fields(story, [{ row: [{ k: 'author', label: 'Author' }, { k: 'date', label: 'Date' }] }]),
     h('div', { class: 'rail-section-title' }, 'Look & feel'),
+    lookPicker(),
     fields(story, [
-      { k: 'theme', t: 'seg', label: 'Theme', opts: [['light', 'Light'], ['dark', 'Dark'], ['brutalist', 'Brutalist']], dflt: 'light',
-        hint: 'Brutalist: raw type, hard edges and loud color.' },
       { k: 'motion', t: 'seg', label: 'Scroll animations', opts: [['none', 'Off'], ['subtle', 'Subtle'], ['expressive', 'Expressive']], dflt: 'subtle',
         hint: 'How blocks animate into view as readers scroll. Readers who turn on "reduce motion" always get a still page.' }]),
     h('div', { class: 'rail-section-title' }, 'Credits'),
     fields(story, [{ k: 'credits', t: 'textarea', label: 'Sources and credits (shown at the end)' }]),
   ];
+}
+
+function lookPicker() {
+  const current = Object.keys(LOOKS).find((k) => LOOKS[k].theme === story.theme) ? lookOf(story) : 'classic';
+  const pick = (key) => {
+    const look = LOOKS[key];
+    story.theme = look.theme;
+    story.motion = look.motion;
+    if (story.guide) story.guide.look = key;
+    changed();
+    renderRail();
+    // Offer to restyle chapters and maps too, but only if the story has some.
+    const chapters = story.blocks.filter((b) => b.type === 'chapter').length;
+    const maps = story.blocks.some((b) => b.view || b.slides?.some((sl) => sl.media?.view) || b.type === 'stops');
+    if (chapters || maps) {
+      toast(`Switched to ${look.name}.`, { duration: 9000, action: { label: `Match ${chapters ? 'chapter colors' : ''}${chapters && maps ? ' and ' : ''}${maps ? 'maps' : ''}`, onClick: () => {
+        const r = applyLook(story, key);
+        changed();
+        renderRail();
+        toast(`Restyled ${r.chapters} chapter${r.chapters === 1 ? '' : 's'} and ${r.maps} map${r.maps === 1 ? '' : 's'}`, { tone: 'ok' });
+      } } });
+    }
+  };
+  return h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Look'),
+    h('div', { class: 'look-pick' }, Object.entries(LOOKS).map(([k, v]) => h('button', { type: 'button', class: `look-opt${current === k ? ' is-on' : ''}`,
+      'aria-pressed': current === k ? 'true' : 'false', title: v.desc, onclick: () => current !== k && pick(k) }, lookMock(k, story.title || 'Title'), h('span', {}, v.name)))),
+    h('p', { class: 'field-hint' }, 'Sets the type, colors and scroll animation. You can also restyle chapters and maps to match.'));
 }
 
 function dataTab() {
