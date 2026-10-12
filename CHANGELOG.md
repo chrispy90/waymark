@@ -4,6 +4,10 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+Nothing yet.
+
+## 1.2.0 (2026-10-12)
+
 ### Changed
 - Data labels and text on dark and satellite basemaps are now light with a dark outline, instead of dark text with a white halo.
 - Night's chapter colors are now plum, teal and ember, so it no longer looks like Classic.
