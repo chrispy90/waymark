@@ -17,7 +17,7 @@ There's nothing to install beyond Node.js, and no API keys or accounts with anyo
 You need [Node.js](https://nodejs.org) **22.13 or newer**. Check with `node --version`.
 
 ```bash
-git clone <this-repo-url> waymark
+git clone https://github.com/chrispy90/waymark.git
 cd waymark
 npm start
 ```
