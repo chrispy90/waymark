@@ -148,7 +148,7 @@ Switch any story to **Brutalist** for raw monospace and heavy display type, hard
 | Kind of story | What you get |
 |---|---|
 | **A journey** | A moving map with one card per place, plus an overview of the whole route |
-| **A walking tour** | Numbered stops with room for a photo and a description each |
+| **A walking tour** | Numbered stops with room for a photo and a description each. Build it in the tour builder: drop your phone photos and each one lands on the map where it was taken |
 | **An illustrated essay** | Your chapters as full-screen titles, with space to write and a photo |
 | **A data story** | One big map ready for live or uploaded data, with numbers and context |
 | **Start from scratch** | A title and an empty page |

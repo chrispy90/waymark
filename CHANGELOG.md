@@ -4,7 +4,11 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- **Tour builder for Stop by stop.** Stops are edited in one workspace: every stop numbered on a big map, a list with photo thumbnails, and the selected stop's photo, name and text side by side.
+  - **Add photos:** drop a batch of photos and each becomes a stop where it was taken (from the photo's GPS data), in the order it was taken, named after the file. Photos without a location are flagged, and one click on the map places each.
+  - Add stops by searching for a place or by pressing **Add stop** and clicking the map. Drag a marker to move a stop, drag the list to reorder, and set a zoom per stop.
+  - A new Stop by stop block opens the tour builder straight away, and the editor panel shows the tour at a glance with **Edit stops** and **Add photos** buttons.
 
 ## 1.2.2 (2026-10-12)
 

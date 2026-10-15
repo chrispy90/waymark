@@ -11,6 +11,7 @@ import { TOOLS, kinds } from './analysis.js';
 import { openExport } from './export.js';
 import { LOOKS, openPrompts, applyLook, lookOf } from './story-kit.js';
 import { lookMock } from './wizard.js';
+import { openTour } from './tour.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const view = (v = {}) => ({ ...clone(DEFAULT_VIEW), ...v });
@@ -67,8 +68,8 @@ const CATALOG = {
     make: () => ({ view: view(), caption: '', size: 'full' }),
     fields: [{ k: 'view', t: 'view', label: 'Map' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'seg', label: 'Width', opts: SIZE_OPTS }] },
   stops: { label: 'Stop by stop', icon: 'route', group: 'Maps', desc: 'Readers step through numbered places with photos',
-    make: () => ({ basemap: 'streets', zoom: 14, places: [makePlace()] }),
-    fields: [{ k: 'places', t: 'places' }, { k: 'basemap', t: 'select', label: 'Basemap', opts: BASEMAP_OPTS }, { k: 'zoom', t: 'number', label: 'Zoom level at each place' }, { k: 'layers', t: 'layerset', label: 'Data layers' }] },
+    make: () => ({ basemap: 'streets', zoom: 14, places: [] }),
+    fields: [{ k: 'places', t: 'tour' }, { k: 'basemap', t: 'select', label: 'Basemap', opts: BASEMAP_OPTS }, { k: 'zoom', t: 'number', label: 'Zoom level at each place' }, { k: 'layers', t: 'layerset', label: 'Data layers' }] },
   compare: { label: 'Before & after', icon: 'compare', group: 'Maps', desc: 'Two maps, one view: drag the divider to compare',
     make: () => ({ left: 'streets', right: 'dark', leftLabel: 'Before', rightLabel: 'After', view: view(), caption: '' }),
     fields: [{ k: 'view', t: 'view', label: 'Map', noMarkers: true, noLayers: true },
@@ -468,6 +469,7 @@ function peek(b) {
 
 function addBlockAt(index, block) {
   story.blocks.splice(index, 0, block);
+  if (block.type === 'stops' && !block.places?.length) setTimeout(() => editStops(block), 350); // a new tour starts in the tour builder
   selected = index;
   tab = 'content';
   syncTabs();
@@ -622,6 +624,7 @@ function field(obj, spec) {
     case 'layerset': return layerSet(obj, spec);
     case 'slides': return listField(obj, 'slides', { noun: 'Card', make: makeSlide, form: slideForm, summary: (s) => peek(s) });
     case 'places': return listField(obj, 'places', { noun: 'Place', make: makePlace, form: placeForm, summary: (p) => p.title });
+    case 'tour': return tourSummary(obj);
     case 'stats': return listField(obj, 'items', { noun: 'Number', make: () => ({ value: '100', label: '' }), summary: (it) => `${it.value} ${it.label || ''}`,
       form: (it) => fields(it, [{ row: [{ k: 'value', label: 'Number', placeholder: '1,200 or 98% or $3.4M' }, { k: 'label', label: 'What it means' }] }]) });
     case 'gallery': return listField(obj, 'images', { noun: 'Photo', make: () => ({ url: '', caption: '' }), summary: (im) => im.caption || (im.url ? 'Photo' : 'No image yet'),
@@ -931,6 +934,30 @@ function layerSet(obj, spec) {
         changed();
       } }), h('span', { class: 'swatch', style: `background:${l.style?.color || '#2563eb'}` }), l.name || l.id)))
       : h('p', { class: 'field-hint', style: 'margin:0' }, 'No data yet. Add layers in the Data tab.'));
+}
+
+// Stops are edited in the tour builder; the rail shows them at a glance.
+function editStops(block, opts) {
+  openTour(block, { story, changed: () => { changed(); scheduleRail(); }, richEditor, onClose: () => renderRail() }, opts);
+}
+let railTimer;
+const scheduleRail = () => { clearTimeout(railTimer); railTimer = setTimeout(() => { if (!document.querySelector('dialog.dlg-tour')) renderRail(); }, 200); };
+function tourSummary(block) {
+  const places = block.places || [];
+  const unplaced = places.filter((p) => p.needsLocation).length;
+  const noPhoto = places.filter((p) => !p.image).length;
+  return h('div', { class: 'field' },
+    h('div', { class: 'tour-summary', role: 'button', tabindex: 0, title: 'Edit stops', onclick: () => editStops(block), onkeydown: (e) => { if (e.key === 'Enter') editStops(block); } },
+      places.length ? h('div', { class: 'tour-strip' }, places.slice(0, 7).map((p, i) => h('span', { class: 'tour-chip', title: p.title || '' },
+        p.image ? h('img', { src: p.image, alt: '' }) : icon('image', { size: 14 }), h('b', {}, String(i + 1)))),
+      places.length > 7 ? h('span', { class: 'tour-chip more' }, `+${places.length - 7}`) : null)
+        : h('div', { class: 'tour-strip-empty' }, icon('route', { size: 20 }), h('span', {}, 'No stops yet')),
+      h('div', { class: 'tour-summary-text' },
+        h('strong', {}, places.length ? `${places.length} ${places.length === 1 ? 'stop' : 'stops'}` : 'Start your tour'),
+        h('span', { class: unplaced ? 'tour-warn' : 'muted' }, unplaced ? `${unplaced} not placed on the map yet` : noPhoto ? `${noPhoto} without a photo` : places.length ? 'All placed, all with photos' : 'Add photos or click the map'))),
+    h('div', { class: 'row', style: 'margin-top:8px' },
+      h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => editStops(block) }, icon('route', { size: 14 }), 'Edit stops'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => editStops(block, { addPhotos: true }) }, icon('image', { size: 14 }), 'Add photos')));
 }
 
 function placeForm(place) {

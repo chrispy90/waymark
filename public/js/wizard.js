@@ -22,7 +22,7 @@ function loadMapLib() {
 }
 
 // Place search uses OpenStreetMap's Nominatim, one request per search (no search-as-you-type, per its usage policy).
-async function findPlaces(q) {
+export async function findPlaces(q) {
   const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
   if (!r.ok) throw new Error('Search is not available right now. Click the map to add places instead.');
   return (await r.json()).map((p) => ({ name: p.name || p.display_name.split(',')[0], detail: p.display_name, lngLat: [+(+p.lon).toFixed(5), +(+p.lat).toFixed(5)] }));

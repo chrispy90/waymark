@@ -383,6 +383,7 @@ const BLOCKS = {
       });
       show(0, false);
     }
+    if (!places.length) return h('section', { class: 'sm-stops size-full sm-empty-media' }, h('div', { class: 'sm-empty-box' }, 'Click to add stops'));
     return h('section', { class: 'sm-stops size-full' }, h('div', { class: 'sm-stops-grid' }, panel, mapEl), caption(b.caption));
   },
 
