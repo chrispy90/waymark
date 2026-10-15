@@ -106,6 +106,27 @@ function validateStory(story) {
   return String(story.title || 'Untitled story').slice(0, 300);
 }
 
+function validateMap(map) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) throw new HttpError(400, 'Map must be an object');
+  if (!Array.isArray(map.layers)) throw new HttpError(400, 'Map needs a layers array');
+  if (map.bookmarks != null && !Array.isArray(map.bookmarks)) throw new HttpError(400, 'bookmarks must be an array');
+  return String(map.title || 'Untitled map').slice(0, 300);
+}
+
+function ownMap(user, id) {
+  const row = db.prepare('SELECT * FROM maps WHERE id = ?').get(id);
+  if (!row || row.owner_id !== user.id) throw new HttpError(404, 'Map not found');
+  return row;
+}
+
+const mapSummary = (r) => ({
+  id: r.id, title: r.title, version: r.version, updatedAt: r.updated_at, createdAt: r.created_at, shared: !!r.shared,
+  ...(r.layers !== undefined ? { layers: r.layers ?? 0, bookmarks: r.bookmarks ?? 0, thumbnail: r.thumbnail || null } : {}),
+});
+
+// Saved maps a story uses: views reference them as "map": "<id>".
+const mapIdsIn = (json) => [...new Set([...String(json).matchAll(/"map":"([\w-]{4,40})"/g)].map((m) => m[1]))];
+
 const summary = (r) => ({
   id: r.id, title: r.title, version: r.version, updatedAt: r.updated_at, createdAt: r.created_at,
   slug: r.slug, publishedAt: r.published_at, url: r.slug && r.published ? `/s/${r.slug}` : null,
@@ -252,6 +273,9 @@ route('POST', '/api/stories/:id/publish', async (req, p) => {
   if (db.prepare('SELECT id FROM stories WHERE slug = ? AND id != ?').get(slug, row.id)) throw new HttpError(409, 'That link is already taken');
   const now = Math.max(Date.now(), row.updated_at);
   db.prepare('UPDATE stories SET published = draft, slug = ?, published_at = ? WHERE id = ?').run(slug, now, row.id);
+  // Readers need to load the saved maps this story uses.
+  const share = db.prepare('UPDATE maps SET shared = 1 WHERE id = ? AND owner_id = ?');
+  mapIdsIn(row.draft).forEach((id) => share.run(id, row.owner_id));
   return [200, summary(db.prepare('SELECT * FROM stories WHERE id = ?').get(row.id))];
 });
 
@@ -265,6 +289,62 @@ route('GET', '/api/public/:slug', async (req, p) => {
   const row = db.prepare('SELECT published FROM stories WHERE slug = ? AND published IS NOT NULL').get(p.slug);
   if (!row) throw new HttpError(404, 'Story not found');
   return [200, JSON.parse(row.published), { 'Cache-Control': 'public, max-age=60' }];
+});
+
+/* ---------------- Saved maps ---------------- */
+
+route('GET', '/api/maps', async (req) => {
+  const user = requireUser(req);
+  const rows = db.prepare(`SELECT id, title, version, shared, created_at, updated_at, json_array_length(data, '$.layers') AS layers,
+    json_array_length(data, '$.bookmarks') AS bookmarks, json_extract(data, '$.thumbnail') AS thumbnail FROM maps WHERE owner_id = ? ORDER BY updated_at DESC`).all(user.id);
+  return [200, { maps: rows.map(mapSummary) }];
+});
+
+route('POST', '/api/maps', async (req) => {
+  const user = requireUser(req);
+  const { map } = await readJson(req, MAX_STORY);
+  const title = validateMap(map);
+  const id = auth.newId();
+  const now = Date.now();
+  db.prepare('INSERT INTO maps (id, owner_id, title, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, user.id, title, JSON.stringify({ ...map, id }), now, now);
+  return [201, mapSummary(db.prepare('SELECT * FROM maps WHERE id = ?').get(id))];
+});
+
+route('GET', '/api/maps/:id', async (req, p) => {
+  const row = ownMap(requireUser(req), p.id);
+  return [200, { ...mapSummary(row), map: JSON.parse(row.data) }];
+});
+
+route('PUT', '/api/maps/:id', async (req, p) => {
+  const user = requireUser(req);
+  const row = ownMap(user, p.id);
+  const { map, version } = await readJson(req, MAX_STORY);
+  if (version !== row.version) throw new HttpError(409, 'This map was changed somewhere else', { version: row.version, updatedAt: row.updated_at });
+  const title = validateMap(map);
+  const now = Math.max(Date.now(), row.updated_at + 1);
+  db.prepare('UPDATE maps SET title = ?, data = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?').run(title, JSON.stringify({ ...map, id: row.id }), now, row.id, version);
+  return [200, mapSummary(db.prepare('SELECT * FROM maps WHERE id = ?').get(row.id))];
+});
+
+route('DELETE', '/api/maps/:id', async (req, p) => {
+  const row = ownMap(requireUser(req), p.id);
+  db.prepare('DELETE FROM maps WHERE id = ?').run(row.id);
+  return [200, { ok: true }];
+});
+
+// Which of your stories use this map, so you know what an edit (or a delete) affects.
+route('GET', '/api/maps/:id/usage', async (req, p) => {
+  const user = requireUser(req);
+  const row = ownMap(user, p.id);
+  const stories = db.prepare('SELECT id, title, slug, published FROM stories WHERE owner_id = ? AND instr(draft, ?) > 0 ORDER BY updated_at DESC')
+    .all(user.id, `"map":"${row.id}"`).map((s) => ({ id: s.id, title: s.title, url: s.slug && s.published ? `/s/${s.slug}` : null }));
+  return [200, { stories }];
+});
+
+route('GET', '/api/public/maps/:id', async (req, p) => {
+  const row = db.prepare('SELECT data FROM maps WHERE id = ? AND shared = 1').get(p.id);
+  if (!row) throw new HttpError(404, 'Map not found');
+  return [200, JSON.parse(row.data), { 'Cache-Control': 'public, max-age=15' }]; // short, so map edits reach readers quickly
 });
 
 route('POST', '/api/uploads', async (req) => {

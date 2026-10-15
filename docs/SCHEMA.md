@@ -88,6 +88,33 @@ Anything a feature doesn't set falls back to the layer's `style`. Draw saves sha
   "date": "2016-01-01", "maxzoom": 12, "attribution": "…", "style": { "opacity": 0.7 } }
 ```
 
+## Saved maps
+
+A saved map is its own document, made in the map editor (`/map.html?id=…`) and stored apart from stories:
+
+```jsonc
+{
+  "title": "Earthquake watch", "summary": "…", "thumbnail": "/uploads/….png",
+  "layers": [ /* Layer[], exactly as in a story */ ],
+  "view": { "center": [150, 20], "zoom": 1.6, "bearing": 0, "pitch": 0, "basemap": "dark", "layers": ["quakes"], "legend": true },  // starting view and visible layers
+  "bookmarks": [{ "id": "b1", "name": "Where they cluster", "note": "…", "view": { "center": [138, 36], "zoom": 4.2 }, "layers": ["quakes", "hex"] }]
+}
+```
+
+Any view in a story can use a saved map instead of listing layers itself:
+
+```jsonc
+{ "map": "<map id>", "bookmark": "b1",            // show a bookmark: its camera and its layers
+  "center": [138, 36], "zoom": 4.2,               // or, with no bookmark, this camera with the map's visible layers
+  "mapLayers": ["quakes"],                        // optional: which of the map's layers to show instead
+  "layers": ["mine"], "markers": [] }             // the story's own layers and markers still work on top
+```
+
+The story keeps only the reference. Before a story is shown, previewed or exported, the map is loaded and built in: its
+layers are copied into `layers` with ids `<map id>~<layer id>`, and the view becomes an ordinary one. Published stories load
+their maps live from `GET /api/public/maps/:id`, so edits to a map reach readers without republishing. A map becomes readable
+there once a published story of the same owner uses it. Exported websites get a copy and don't depend on the server.
+
 ## Blocks
 
 Every block has a `type`. Rich-text fields (`html`) are sanitized at render time. The allowed tags are p, br, b/strong, i/em, u, a, ul/ol/li, h2–h4, blockquote, code, span and small.

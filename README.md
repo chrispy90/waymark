@@ -117,6 +117,19 @@ Live layers refresh every time someone opens the story, so a published map stays
 
 You can also show points as a **heatmap** or **clusters**. Bring your own data too: GeoJSON, CSV, or any public ArcGIS layer.
 
+### Make a map once, use it in every story
+
+**Maps** on the home screen are maps you build on their own, in a full-screen map editor, and then use in as many stories as you like. Edit the map once and every story that uses it updates, published stories included.
+
+- **Layers:** live public data, your files, or links. Reorder them by dragging, switch them on and off, and zoom to each.
+- **Per-layer settings:** style, labels, popups, filters, visible zoom range and insights, plus an **attribute table** you can sort and search. Click a row to zoom to that feature.
+- **Tools:** analysis (buffer, hex bins, counts, nearest, and more), drawing, measuring, place search, a basemap gallery and the legend.
+- **Bookmarks:** named views that also remember which layers are on, with a note for each.
+
+Then **walk readers through it**: one click turns the bookmarks into moving-map cards, so a story can show the raw data, then the analysis, then the result, one card at a time. Any map in a story can also **use a saved map**, showing one of its bookmarks or a view you frame.
+
+<p align="center"><img src="docs/media/map-editor.png" alt="The map editor with layers, two bookmarks and layer settings" width="100%"></p>
+
 ### Draw right on the map
 
 Press **Draw** on any map in the editor and sketch points, lines, freehand routes, areas, boxes, circles and text labels right on it. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing whenever you like.
@@ -292,6 +305,9 @@ public/                the web app (plain ES modules, no build step)
   js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
   js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)
   js/workbench.js      Add data, Analyze and Draw workspaces
+  js/mapeditor.js      the saved-map editor (map.html)
+  js/webmap.js         saved maps in stories: builds them into a story before it's shown or exported
+  js/layer-form.js     layer settings, shared by the story editor and the map editor
   js/catalog.js        public data catalog (government sources + ArcGIS Online search)
   js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
   js/export.js         the export dialog
@@ -321,6 +337,7 @@ Every request that changes data must send the header `X-Waymark: 1`. This guards
 | `GET /api/stories/:id` · `PUT /api/stories/:id {story, version}` · `DELETE /api/stories/:id` | Read, save and delete a draft. A save with an outdated `version` returns `409` |
 | `POST /api/stories/:id/publish {slug?}` · `POST /api/stories/:id/unpublish` | Publish copies the draft to the public copy |
 | `GET /api/public/:slug` | A published story's JSON |
+| `GET /api/maps` · `POST /api/maps {map}` · `GET` `PUT {map, version}` `DELETE /api/maps/:id` · `GET /api/maps/:id/usage` · `GET /api/public/maps/:id` | Saved maps: list, create, read, save, delete, which stories use one, and the copy readers load once a published story uses it |
 | `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
 
 </details>

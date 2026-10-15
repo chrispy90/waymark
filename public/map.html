@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Map · Waymark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/css/map.css">
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@turf/turf@7.1.0/turf.min.js"></script>
+</head>
+<body>
+  <div class="me">
+    <header class="bld-top">
+      <a href="/?tab=maps" class="icon-btn" data-icon="back" title="All maps" aria-label="All maps"></a>
+      <span id="logo-slot"></span>
+      <span class="bld-sep" aria-hidden="true"></span>
+      <input id="title-input" class="bld-title" aria-label="Map title" placeholder="Untitled map" autocomplete="off">
+      <span id="save-state" class="save-state" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <span id="usage" class="muted me-usage"></span>
+      <button type="button" id="btn-story" class="btn btn-primary"></button>
+    </header>
+    <nav class="me-tools" id="tools" aria-label="Map tools"></nav>
+    <aside class="me-panel" id="panel" aria-live="polite"></aside>
+    <main class="me-main">
+      <div class="me-map" id="map"></div>
+      <div class="me-search" id="search"></div>
+      <section class="me-table" id="table" hidden></section>
+    </main>
+    <aside class="me-props" id="props" hidden></aside>
+  </div>
+  <script type="module" src="/js/mapeditor.js"></script>
+</body>
+</html>

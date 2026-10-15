@@ -117,10 +117,15 @@ const commands = {
       if (!f.draft) console.log('This story is not published, so exporting the current draft.');
       json = row.draft;
     }
-    const story = JSON.parse(json);
     const format = f.war ? 'war' : 'zip';
     const pub = (m) => pathToFileURL(path.join(PUBLIC, 'js', m)).href;
-    const [{ buildExport }, { loadLayerData }] = await Promise.all([import(pub('export-core.js')), import(pub('maps.js'))]);
+    const [{ buildExport }, { loadLayerData }, { withMaps }] = await Promise.all([import(pub('export-core.js')), import(pub('maps.js')), import(pub('webmap.js'))]);
+    // saved maps the story uses are copied in, so the exported site stands alone
+    const story = await withMaps(JSON.parse(json), async (id) => {
+      const m = db.prepare('SELECT data FROM maps WHERE id = ? AND owner_id = ?').get(id, row.owner_id);
+      if (!m) throw new Error('missing map');
+      return JSON.parse(m.data);
+    });
     const out = await buildExport(story, { format, images: !f['no-images'], data: !f['no-data'], vendor: !f['no-vendor'] }, serverIO(loadLayerData), brand,
       (s) => console.log(`  ${s}…`));
     const file = path.resolve(f.out || out.filename);

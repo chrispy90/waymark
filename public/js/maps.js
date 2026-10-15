@@ -445,9 +445,26 @@ function installLayers(map) {
       'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
     paint: darkBase(map) ? { 'text-color': '#f3f2fb', 'text-halo-color': 'rgba(8,8,16,0.85)', 'text-halo-width': 1.5 } : { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
 
+    // optional visible range, e.g. hide street-level detail when zoomed out
+    if (s.minzoom != null || s.maxzoom != null) subIds(layer.id).forEach((lid) => map.getLayer(lid) && map.setLayerZoomRange(lid, +(s.minzoom ?? 0), +(s.maxzoom ?? 24)));
     if (vis === 'visible') loadInto(map, layer);
   });
   map._legend.render(map);
+}
+
+/** Removes a layer from a live map and adds it back, picking up any change to its style or data. */
+export function rebuildLayer(map, layer) {
+  if (!map.isStyleLoaded()) return;
+  subIds(layer.id).forEach((lid) => map.getLayer(lid) && map.removeLayer(lid));
+  if (map.getSource(`dl-${layer.id}`)) map.removeSource(`dl-${layer.id}`);
+  delete map._legendInfo?.[layer.id];
+  installLayers(map);
+}
+
+/** Puts the library's layers in drawing order on a live map (later layers draw on top). */
+export function orderLayers(map) {
+  if (!map.isStyleLoaded()) return;
+  map._library.forEach((l) => subIds(l.id).forEach((lid) => map.getLayer(lid) && map.moveLayer(lid)));
 }
 
 // Fetch a layer's data the first time it becomes visible on this style.

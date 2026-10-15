@@ -4,6 +4,15 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+### Added
+- **Saved maps.** Build a map once in a full-screen map editor and use it in any number of stories; edit it and every story updates, published ones included (readers load maps live; exports get a copy).
+  - **Layers:** add from the public data catalog, files, links or drawing; reorder by dragging; show/hide; zoom to; duplicate; remove.
+  - **Layer settings:** style, labels, popups, filters, insights and a new visible zoom range, plus an **attribute table** (sort, search, click a row to zoom to the feature).
+  - **Tools:** analysis, drawing, measuring (distance and area), place search, a basemap gallery and the legend. **Map details** has the title, summary, thumbnail, starting view, the stories that use the map, save a copy and delete.
+  - **Bookmarks:** named views that remember which layers are on, with a note each.
+- **Walk readers through a map.** "Add cards from a saved map's bookmarks" turns each bookmark into a moving-map card, and "Use in a new story" starts a story that way. Any map in a story can **use a saved map** and show a bookmark or a custom view and set of layers.
+- **Maps** tab on the home screen, with new, duplicate, delete (warning when stories use the map) and "New story with this map".
+
 ### Changed
 - **Tour builder for Stop by stop.** Stops are edited in one workspace: every stop numbered on a big map, a list with photo thumbnails, and the selected stop's photo, name and text side by side.
   - **Add photos:** drop a batch of photos and each becomes a stop where it was taken (from the photo's GPS data), in the order it was taken, named after the file. Photos without a location are flagged, and one click on the map places each.

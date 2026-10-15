@@ -3,8 +3,11 @@ import { api, signOut } from './api.js';
 import { listLocalStories, deleteLocalStory } from './store.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, coverGradient, setTitle } from './ui.js';
 import { openWizard } from './wizard.js';
+import { newMap, storyFromMap } from './webmap.js';
 import { openExport } from './export.js';
 
+// "Your stories" and "Your maps" share the home screen. (Declared before start() runs, which uses it.)
+let tab = new URLSearchParams(location.search).get('tab') === 'maps' ? 'maps' : 'stories';
 const { user, firstRun } = await api('GET', '/api/me');
 if (!user) location.replace(firstRun ? '/login.html' : '/welcome.html');
 else start();
@@ -28,6 +31,8 @@ function start() {
 
 const SAFE_IMG = /^(\/uploads\/|https?:\/\/)[^"'()\\\s]+$/;
 let query = '';
+const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
+  class: tab === k ? 'is-on' : '', 'aria-selected': tab === k ? 'true' : 'false', onclick: () => { tab = k; history.replaceState(null, '', k === 'maps' ? '?tab=maps' : '/'); skeleton(); load(); } }, l)));
 let sort = (() => { try { return localStorage.getItem('wm.sort') || 'edited'; } catch { return 'edited'; } })();
 
 function skeleton() {
@@ -45,17 +50,18 @@ const sorters = {
 };
 
 async function load() {
+  if (tab === 'maps') return loadMaps();
   const { stories } = await api('GET', '/api/stories');
   const main = $('#gallery');
   main.removeAttribute('aria-busy');
   const firstName = (user.name || '').split(' ')[0];
   if (!stories.length) {
-    main.replaceChildren(...[importBanner(), h('section', { class: 'empty' },
+    main.replaceChildren(...[tabs(), importBanner(), h('section', { class: 'empty' },
       logo({ size: 56, withName: false }),
       h('h2', {}, firstName ? `Welcome, ${firstName}. Let's make your first story.` : "Let's make your first story."),
       h('p', {}, 'A few quick questions and your story is ready to fill in. Everything can be changed, and nothing is public until you publish.'),
       h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: newStoryDialog }, icon('sparkle'), 'Create your first story'))].filter(Boolean));
-    newStoryDialog();
+    if (!sessionStorage.getItem('wm.wizardShown')) { sessionStorage.setItem('wm.wizardShown', '1'); newStoryDialog(); }
     return;
   }
   const grid = h('div', { class: 'cards' });
@@ -70,6 +76,7 @@ async function load() {
     [['edited', 'Last edited'], ['title', 'Title A–Z'], ['live', 'Published first']].map(([v, l]) => h('option', { value: v, selected: sort === v }, l)));
   const live = stories.filter((s) => s.url).length;
   main.replaceChildren(...[
+    tabs(),
     h('div', { class: 'gallery-head' },
       h('div', {}, h('h1', {}, 'Your stories'), h('p', {}, `${stories.length} ${stories.length === 1 ? 'story' : 'stories'} · ${live} published`)),
       h('span', { class: 'spacer' }),
@@ -130,6 +137,68 @@ async function remove(s) {
   await api('DELETE', `/api/stories/${s.id}`);
   toast('Story deleted');
   load();
+}
+
+/* ---------- Saved maps ---------- */
+
+async function loadMaps() {
+  const { maps } = await api('GET', '/api/maps');
+  const main = $('#gallery');
+  main.removeAttribute('aria-busy');
+  const create = h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: createMap }, icon('plus'), 'New map');
+  main.replaceChildren(
+    tabs(),
+    h('div', { class: 'gallery-head' },
+      h('div', {}, h('h1', {}, 'Your maps'), h('p', {}, maps.length ? `${maps.length} ${maps.length === 1 ? 'map' : 'maps'} · make a map once, use it in any number of stories` : 'Make a map once, use it in any number of stories.')),
+      h('span', { class: 'spacer' }), create),
+    maps.length ? h('div', { class: 'cards' }, maps.map((m, i) => mapCard(m, i)),
+      h('button', { type: 'button', class: 'card card-new', style: `--i:${maps.length}`, onclick: createMap }, h('span', { class: 'plus' }, icon('plus')), 'New map'))
+      : h('section', { class: 'empty' }, icon('layers', { size: 40 }), h('h2', {}, 'Build a map you can reuse'),
+        h('p', {}, 'Add live public data or your own, style it, run analysis, and save bookmarks. Then use the map in any story; edit it once and every story updates.'),
+        h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: createMap }, icon('plus'), 'New map')));
+}
+
+async function createMap() {
+  const r = await api('POST', '/api/maps', { map: newMap() });
+  location.href = `/map.html?id=${r.id}&new=1`;
+}
+
+function mapCard(m, i) {
+  const more = h('button', { type: 'button', class: 'icon-btn card-more', 'aria-label': `Options for ${m.title}`, onclick: (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu(e.currentTarget, [
+      { label: 'Edit map', icon: 'map', onClick: () => { location.href = `/map.html?id=${m.id}`; } },
+      { label: 'New story with this map', icon: 'scrollmap', onClick: async () => {
+        const { map } = await api('GET', `/api/maps/${m.id}`);
+        const s = await api('POST', '/api/stories', { story: storyFromMap(map, m.id) });
+        location.href = `/builder.html?id=${s.id}&new=1`;
+      } },
+      { label: 'Duplicate', icon: 'copy', onClick: async () => {
+        const { map } = await api('GET', `/api/maps/${m.id}`);
+        const { id, ...copy } = map;
+        await api('POST', '/api/maps', { map: { ...copy, title: `${map.title || 'Untitled map'} (copy)` } });
+        toast('Map duplicated', { tone: 'ok' });
+        load();
+      } },
+      'sep',
+      { label: 'Delete', icon: 'trash', danger: true, onClick: async () => {
+        const { stories } = await api('GET', `/api/maps/${m.id}/usage`);
+        const ok = await confirmDialog({ title: `Delete "${m.title || 'Untitled map'}"?`, danger: true, confirmLabel: 'Delete map',
+          message: stories.length ? `${stories.length} ${stories.length === 1 ? 'story uses' : 'stories use'} it (${stories.map((s) => s.title).join(', ')}). Those maps will go blank. This can't be undone.` : "This can't be undone." });
+        if (!ok) return;
+        await api('DELETE', `/api/maps/${m.id}`);
+        toast('Map deleted');
+        load();
+      } },
+    ]);
+  } }, icon('more'));
+  return h('a', { class: 'card', href: `/map.html?id=${m.id}`, style: `--i:${i}` },
+    h('div', { class: 'card-cover', style: `background-image:${m.thumbnail && SAFE_IMG.test(m.thumbnail) ? `url("${m.thumbnail}")` : coverGradient(m.id + m.title)}` }, h('span', { class: 'card-cover-title' }, m.title || 'Untitled map')),
+    more,
+    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
+      m.shared ? h('span', { class: 'pill is-live' }, 'In a live story') : h('span', { class: 'pill no-dot' }, 'Map'),
+      h('span', { class: 'muted' }, `${m.layers} ${m.layers === 1 ? 'layer' : 'layers'} · ${m.bookmarks} ${m.bookmarks === 1 ? 'bookmark' : 'bookmarks'} · edited ${relTime(m.updatedAt)}`))));
 }
 
 function newStoryDialog() {

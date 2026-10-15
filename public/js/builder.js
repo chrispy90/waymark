@@ -1,5 +1,5 @@
 // Waymark editor: block outline + settings on the left, live preview on the right.
-import { BASEMAPS, DEFAULT_VIEW, createMap, readView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
+import { BASEMAPS, DEFAULT_VIEW, createMap, readView, applyView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
 import { layerStats } from './analysis.js';
 import { normalizeStory } from './story-format.js';
 import { csvToGeoJSON } from './csv.js';
@@ -12,6 +12,8 @@ import { openExport } from './export.js';
 import { LOOKS, openPrompts, applyLook, lookOf } from './story-kit.js';
 import { lookMock } from './wizard.js';
 import { openTour } from './tour.js';
+import { layerEditor } from './layer-form.js';
+import { bakeMaps, mapIdsIn, concreteView, layerKey, cardsFromBookmarks } from './webmap.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const view = (v = {}) => ({ ...clone(DEFAULT_VIEW), ...v });
@@ -63,7 +65,7 @@ const CATALOG = {
   separator: { label: 'Divider', icon: 'separator', group: 'Write', desc: 'A quiet break between sections', make: () => ({}), fields: [] },
   scrollmap: { label: 'Moving map', icon: 'scrollmap', group: 'Maps', desc: 'Story cards scroll past while the map glides to each place',
     make: () => ({ layout: 'overlay', slides: [makeSlide(), makeSlide()] }),
-    fields: [{ k: 'layout', t: 'seg', label: 'Layout', opts: [['overlay', 'Cards over the map'], ['split', 'Side by side']] }, { k: 'slides', t: 'slides' }] },
+    fields: [{ k: 'layout', t: 'seg', label: 'Layout', opts: [['overlay', 'Cards over the map'], ['split', 'Side by side']] }, { k: 'slides', t: 'slides' }, { t: 'bookmarkCards' }] },
   map: { label: 'Map', icon: 'map', group: 'Maps', desc: 'An interactive map with markers and data',
     make: () => ({ view: view(), caption: '', size: 'full' }),
     fields: [{ k: 'view', t: 'view', label: 'Map' }, { k: 'caption', label: 'Caption' }, { k: 'size', t: 'seg', label: 'Width', opts: SIZE_OPTS }] },
@@ -110,6 +112,7 @@ async function load() {
   setTitle(story.title || 'Editor');
   renderRail();
   pushPreview();
+  loadSavedMaps();
   setSave('saved');
   hist.last = snapshot();
   syncUndo();
@@ -275,9 +278,20 @@ addEventListener('keydown', (e) => {
 /* ---------- Preview ---------- */
 
 const post = (msg) => previewReady && frame.contentWindow.postMessage(msg, location.origin);
+// Saved maps this story uses, loaded once and built into the preview (the story itself only keeps references).
+const savedMaps = {};
+async function loadSavedMaps(ids = mapIdsIn(story)) {
+  const missing = ids.filter((mid) => !(mid in savedMaps));
+  if (!missing.length) return;
+  await Promise.all(missing.map(async (mid) => { try { savedMaps[mid] = (await api('GET', `/api/maps/${encodeURIComponent(mid)}`)).map; } catch { savedMaps[mid] = null; } }));
+  pushPreview();
+  renderRail();
+}
+// Coming back from editing a saved map in another tab: pick up its changes.
+addEventListener('focus', () => { const ids = Object.keys(savedMaps); ids.forEach((mid) => delete savedMaps[mid]); if (ids.length) loadSavedMaps(ids); });
 function pushPreview() {
   if (!story) return;
-  post({ type: 'story', story });
+  post({ type: 'story', story: bakeMaps(story, savedMaps) });
   post({ type: 'select', index: selected, scroll: false });
 }
 frame.addEventListener('load', () => { previewReady = true; pushPreview(); });
@@ -625,6 +639,7 @@ function field(obj, spec) {
     case 'slides': return listField(obj, 'slides', { noun: 'Card', make: makeSlide, form: slideForm, summary: (s) => peek(s) });
     case 'places': return listField(obj, 'places', { noun: 'Place', make: makePlace, form: placeForm, summary: (p) => p.title });
     case 'tour': return tourSummary(obj);
+    case 'bookmarkCards': return bookmarkCardsField(obj);
     case 'stats': return listField(obj, 'items', { noun: 'Number', make: () => ({ value: '100', label: '' }), summary: (it) => `${it.value} ${it.label || ''}`,
       form: (it) => fields(it, [{ row: [{ k: 'value', label: 'Number', placeholder: '1,200 or 98% or $3.4M' }, { k: 'label', label: 'What it means' }] }]) });
     case 'gallery': return listField(obj, 'images', { noun: 'Photo', make: () => ({ url: '', caption: '' }), summary: (im) => im.caption || (im.url ? 'Photo' : 'No image yet'),
@@ -725,7 +740,11 @@ function viewField(obj, spec) {
   const wrap = h('div', { class: 'field' });
   const draw = () => {
     const v = obj[spec.k] || {};
-    wrap.replaceChildren(labelEl(spec.label || 'Map'), h('div', { class: 'mapfield' },
+    if (v.map) { wrap.replaceChildren(labelEl(spec.label || 'Map'), savedMapField(obj, spec.k, draw)); return; }
+    wrap.replaceChildren(labelEl(spec.label || 'Map', spec.noLayers ? null : h('button', { type: 'button', class: 'link-btn field-link', onclick: () => chooseSavedMap((mid, m) => {
+      obj[spec.k] = { map: mid, ...pickCamera(m.view), markers: v.markers || [], layers: [] };
+      changed(); renderRail();
+    }) }, icon('layers', { size: 13 }), 'Use a saved map')), h('div', { class: 'mapfield' },
       h('span', { class: `mapfield-thumb bm-${v.basemap || 'streets'}` }, icon('map', { size: 20 })),
       h('span', { class: 'mapfield-text' }, h('strong', {}, BASEMAPS[v.basemap]?.label || 'Streets'), viewSummary(v)),
       h('span', { class: 'mapfield-btns' },
@@ -735,6 +754,120 @@ function viewField(obj, spec) {
   };
   draw();
   return wrap;
+}
+
+/* ---------- Saved maps in stories ---------- */
+
+const pickCamera = (v = {}) => ({ center: v.center, zoom: v.zoom, bearing: v.bearing || 0, pitch: v.pitch || 0 });
+
+async function chooseSavedMap(done) {
+  const body = h('div', { class: 'mapchoose' }, h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Loading your maps…'));
+  const dlg = dialog({ title: 'Use a saved map', cls: 'dlg-lg', body });
+  let maps = [];
+  try { ({ maps } = await api('GET', '/api/maps')); } catch (e) { body.replaceChildren(h('p', { class: 'form-error' }, e.message)); return; }
+  body.replaceChildren(
+    h('p', { class: 'muted', style: 'margin:0 0 14px' }, 'A saved map keeps its layers, styles, analysis and bookmarks in one place. Edit it once and every story that uses it updates.'),
+    maps.length ? h('div', { class: 'cards mapchoose-cards' }, maps.map((m) => h('button', { type: 'button', class: 'card', onclick: async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        const full = (await api('GET', `/api/maps/${m.id}`)).map;
+        savedMaps[m.id] = full;
+        dlg.close();
+        done(m.id, full);
+      } catch (err) { toast(err.message, { tone: 'error' }); }
+    } },
+    h('div', { class: 'card-cover', style: `background-image:${m.thumbnail ? `url("${m.thumbnail}")` : 'linear-gradient(135deg,#cfd8dc,#90a4ae)'}` }, h('span', { class: 'card-cover-title' }, m.title || 'Untitled map')),
+    h('div', { class: 'card-body' }, h('span', { class: 'muted' }, `${m.layers} ${m.layers === 1 ? 'layer' : 'layers'} · ${m.bookmarks} ${m.bookmarks === 1 ? 'bookmark' : 'bookmarks'}`)))))
+      : h('div', { class: 'data-empty' }, h('strong', {}, 'No saved maps yet'), h('p', {}, 'Make one under Maps on the home screen, then come back here.')),
+    h('p', { style: 'margin:14px 0 0' }, h('a', { href: '/?tab=maps', target: '_blank', rel: 'noopener' }, 'Open your maps in a new tab'), h('span', { class: 'muted' }, ' to make or change one.')));
+}
+
+function savedMapField(obj, key, redraw) {
+  const v = obj[key];
+  const m = savedMaps[v.map];
+  if (m === undefined) { loadSavedMaps([v.map]); return h('div', { class: 'mapfield' }, h('span', { class: 'spinner' }), h('span', { class: 'muted' }, 'Loading saved map…')); }
+  if (m === null) {
+    return h('div', { class: 'mapfield is-missing' }, h('span', { class: 'mapfield-text' }, h('strong', {}, 'Saved map not found'), 'It may have been deleted.'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { const { map: _m, bookmark: _b, mapLayers: _l, ...rest } = v; obj[key] = rest; changed(); redraw(); } }, 'Use a plain map'));
+  }
+  const bm = (m.bookmarks || []).find((b) => b.id === v.bookmark);
+  return h('div', { class: 'mapfield' },
+    h('span', { class: 'mapfield-thumb', style: m.thumbnail ? `background:url("${m.thumbnail}") center/cover` : '' }, m.thumbnail ? null : icon('layers', { size: 20 })),
+    h('span', { class: 'mapfield-text' }, h('strong', {}, m.title || 'Untitled map'), bm ? `Bookmark: ${bm.name}` : v.mapLayers ? 'Custom view and layers' : 'Custom view'),
+    h('span', { class: 'mapfield-btns' },
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: () => editSavedMapView(obj, key, redraw) }, icon('target', { size: 14 }), 'Choose view'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: (e) => menu(e.currentTarget, [
+        { label: 'Open the map to edit it', icon: 'external', onClick: () => window.open(`/map.html?id=${v.map}`, '_blank', 'noopener') },
+        { label: 'Use a different saved map', icon: 'layers', onClick: () => chooseSavedMap((mid, nm) => { obj[key] = { map: mid, ...pickCamera(nm.view), markers: v.markers || [], layers: [] }; changed(); redraw(); }) },
+        'sep',
+        { label: 'Stop using the saved map (removes its layers here)', icon: 'x', onClick: () => { const { map: _m, bookmark: _b, mapLayers: _l, ...rest } = concreteView(v, {}); obj[key] = { ...rest, ...pickCamera(concreteView(v, savedMaps)), basemap: m.view?.basemap || 'streets', layers: [] }; changed(); redraw(); } },
+      ]) }, icon('more', { size: 14 }), 'More')));
+}
+
+// Pick a bookmark (or frame a custom view) of the saved map and which of its layers show.
+function editSavedMapView(obj, key, redraw) {
+  const v = structuredClone(obj[key]);
+  const mid = v.map;
+  const m = savedMaps[mid];
+  const maps = { [mid]: m };
+  const lib = m.layers.map((l) => { const { analysis, ...rest } = l; return { ...rest, id: layerKey(mid, l.id) }; });
+  const mapEl = h('div', { class: 'map' });
+  const side = h('div', { class: 'wb-side' });
+  const choose = (bookmark) => {
+    v.bookmark = bookmark || undefined;
+    delete v.mapLayers;
+    if (bookmark) Object.assign(v, (m.bookmarks.find((b) => b.id === bookmark) || {}).view);
+    else if (bookmark === null) Object.assign(v, pickCamera(m.view));
+    applyView(pm, concreteView(v, maps));
+    draw();
+  };
+  const visible = () => concreteView(v, maps).layers.filter((x) => x.startsWith(`${mid}~`)).map((x) => x.slice(mid.length + 1));
+  const draw = () => {
+    const on = visible();
+    side.replaceChildren(
+      h('p', { class: 'wb-intro' }, 'Show a bookmark from the map, or frame your own view. Readers see the map exactly like this.'),
+      h('div', { class: 'mapviews' },
+        h('button', { type: 'button', class: `mapview${!v.bookmark && !v.mapLayers && JSON.stringify(v.center) === JSON.stringify(m.view?.center) ? ' is-on' : ''}`, onclick: () => choose(null) }, icon('map', { size: 15 }), h('span', {}, h('strong', {}, 'The map\'s starting view'))),
+        (m.bookmarks || []).map((b) => h('button', { type: 'button', class: `mapview${v.bookmark === b.id ? ' is-on' : ''}`, onclick: () => choose(b.id) }, icon('target', { size: 15 }),
+          h('span', {}, h('strong', {}, b.name), b.note ? h('span', { class: 'muted' }, b.note.slice(0, 80)) : null)))),
+      h('p', { class: 'field-hint' }, 'Or pan and zoom the map to frame a custom view.'),
+      h('div', { class: 'rail-section-title' }, 'Layers to show'),
+      h('div', {}, m.layers.map((l) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: on.includes(l.id), onchange: (e) => {
+        v.mapLayers = e.target.checked ? [...new Set([...visible(), l.id])] : visible().filter((x) => x !== l.id);
+        applyView(pm, concreteView(v, maps));
+        draw();
+      } }), h('span', { class: 'swatch', style: `background:${l.style?.color || '#2563eb'}` }), l.name || l.id))));
+  };
+  const dlg = dialog({ title: `View of “${m.title || 'saved map'}”`, cls: 'dlg-xl', body: h('div', { class: 'wb' }, side, h('div', { class: 'wb-map' }, mapEl)),
+    onClose: () => pm?.remove(),
+    actions: [h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel'),
+      h('button', { type: 'button', class: 'btn btn-primary', onclick: () => {
+        const cam = readView(pm);
+        const moved = ['center', 'zoom', 'bearing', 'pitch'].some((k) => JSON.stringify(cam[k]) !== JSON.stringify(concreteView(v, maps)[k]));
+        if (moved) { delete v.bookmark; Object.assign(v, pickCamera(cam)); if (!v.mapLayers) v.mapLayers = visible(); }
+        obj[key] = v;
+        changed(); redraw(); dlg.close();
+      } }, icon('check', { size: 16 }), 'Use this view')] });
+  dlg.querySelector('.dlg-body').style.padding = '0';
+  const pm = createMap(mapEl, concreteView(v, maps), { library: lib });
+  pm.scrollZoom.enable();
+  draw();
+}
+
+// Moving map cards from a saved map's bookmarks: the way to walk readers through an analysis step by step.
+function bookmarkCardsField(block) {
+  return h('div', { class: 'field' }, h('button', { type: 'button', class: 'btn btn-sm', onclick: () => chooseSavedMap((mid, m) => {
+    if (!(m.bookmarks || []).length) {
+      toast('That map has no bookmarks yet. Add some in the map editor, then try again.', { duration: 6000, action: { label: 'Open map', onClick: () => window.open(`/map.html?id=${mid}`, '_blank', 'noopener') } });
+      return;
+    }
+    const cards = cardsFromBookmarks(m, mid);
+    const blank = (block.slides || []).every((s) => /Start wide|First stop|Next stop|Write something/.test(s.html || '') || !s.html);
+    block.slides = blank ? cards : [...(block.slides || []), ...cards];
+    changed(); renderRail();
+    toast(`Added ${cards.length} cards, one for each bookmark of “${m.title || 'the map'}”.`, { tone: 'ok' });
+  }) }, icon('layers', { size: 14 }), 'Add cards from a saved map\'s bookmarks'),
+  h('p', { class: 'field-hint' }, 'One card per bookmark, in order, each showing that bookmark\'s view and layers. Great for walking readers through an analysis.'));
 }
 
 // Draw directly on one map: the drawing opens on its view and is switched on in it when saved.
@@ -973,146 +1106,7 @@ function placeForm(place) {
 
 /* ---------- Data layers ---------- */
 
-const layerInfo = {};
-const layerStatus = (l) => {
-  if (l.type === 'raster') return 'Imagery';
-  const i = layerInfo[l.id] || {};
-  if (i.count != null && activeFilters(l).length) return `${i.shown.toLocaleString()} of ${i.count.toLocaleString()} features`;
-  return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${i.count.toLocaleString()} ${i.count === 1 ? 'feature' : 'features'}` : 'No data yet';
-};
-const sourceKey = (l) => (l.data ? `data:${l.data.features?.length}` : `url:${l.url || ''}`);
-
-function inspectLayer(layer) {
-  const key = sourceKey(layer);
-  if (layerInfo[layer.id]?.key === key) return;
-  if (!layer.data && !layer.url) { layerInfo[layer.id] = { key }; return; }
-  layerInfo[layer.id] = { key, loading: true };
-  const done = (info) => { if (layerInfo[layer.id]?.key === key) { layerInfo[layer.id] = { key, ...info }; if (tab === 'data') renderRail(); } };
-  loadLayerData(layer).then((fc) => done({ count: fc.features.length, shown: filterData(layer, fc).features.length, fields: fieldNames(fc), fc })).catch((err) => done({ error: err.message }));
-}
-
-function rasterForm(layer) {
-  layer.style ||= {};
-  return h('div', {},
-    field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
-    h('p', { class: 'field-hint' }, 'An imagery layer: a picture of the map rather than individual features, so it can be shown but not filtered or analyzed.'),
-    field(layer.style, { k: 'opacity', t: 'number', label: 'Opacity (0 to 1)', dflt: 0.85 }),
-    /\{date\}/.test(layer.tiles || '') ? h('label', { class: 'field' }, labelEl('Date of the imagery'),
-      h('input', { type: 'date', value: layer.date || '', max: new Date().toISOString().slice(0, 10), onchange: (e) => { layer.date = e.target.value || undefined; changed(); } }),
-      h('p', { class: 'field-hint' }, 'Leave blank to always show yesterday\'s image.')) : null,
-    layer.attribution ? h('p', { class: 'field-hint' }, `Source: ${layer.attribution}`) : null);
-}
-
-function filtersField(layer, info) {
-  const rules = (layer.filters ||= []);
-  const stats = info.fc ? layerStats(info.fc) : { fields: [] };
-  const statFor = (name) => stats.fields.find((f) => f.name === name);
-  const count = h('span', { class: 'pill no-dot' });
-  const update = () => {
-    if (!info.fc) return;
-    const shown = filterData(layer, info.fc).features.length;
-    info.shown = shown;
-    count.textContent = activeFilters(layer).length ? `Showing ${shown.toLocaleString()} of ${info.fc.features.length.toLocaleString()}` : `All ${info.fc.features.length.toLocaleString()} features`;
-    count.className = `pill no-dot ${activeFilters(layer).length ? 'is-live' : ''}`;
-  };
-  const rows = rules.map((r, i) => {
-    const st = statFor(r.field);
-    const listId = `vals-${layer.id}-${i}`;
-    const value = /empty/.test(r.op) ? null : h('input', { class: 'input', type: r.op === 'in the last (days)' ? 'number' : 'text', min: 0, value: r.value ?? '', list: st?.kind === 'text' ? listId : null,
-      placeholder: r.op === 'in the last (days)' ? 'days' : st?.kind === 'number' ? `${Math.round(st.min)} to ${Math.round(st.max)}` : 'value',
-      oninput: (e) => { r.value = e.target.value; update(); changed(); }, onchange: () => renderRail() });
-    return h('div', { class: 'filter-row' },
-      h('select', { 'aria-label': 'Field', onchange: (e) => { r.field = e.target.value; changed(); renderRail(); } },
-        h('option', { value: '' }, 'Field…'), (info.fields || []).map((f) => h('option', { value: f, selected: r.field === f }, f))),
-      h('select', { 'aria-label': 'Rule', onchange: (e) => { r.op = e.target.value; changed(); renderRail(); } },
-        FILTER_OPS.map((o) => h('option', { value: o, selected: (r.op || '=') === o }, o))),
-      value,
-      st?.kind === 'text' ? h('datalist', { id: listId }, st.top.map(([v]) => h('option', { value: v }))) : null,
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Remove filter', onclick: () => { rules.splice(i, 1); changed(); renderRail(); } }, icon('x', { size: 15 })));
-  });
-  const el = h('div', { class: 'filters' },
-    rules.length > 1 ? h('div', { class: 'row', style: 'margin-bottom:8px' }, h('span', { class: 'muted', style: 'font-size:12.5px' }, 'Show features that match'),
-      h('div', { class: 'seg' }, [['all', 'all rules'], ['any', 'any rule']].map(([v, l]) => h('button', { type: 'button', class: (layer.filterMatch || 'all') === v ? 'is-on' : '',
-        onclick: () => { layer.filterMatch = v; changed(); renderRail(); } }, l)))) : null,
-    rows,
-    h('div', { class: 'row', style: 'margin-top:8px' },
-      h('button', { type: 'button', class: 'btn btn-sm', disabled: !info.fields?.length, onclick: () => { rules.push({ field: '', op: '=', value: '' }); renderRail(); } }, icon('plus', { size: 14 }), 'Add filter'),
-      h('span', { class: 'spacer' }), count),
-    h('p', { class: 'field-hint' }, 'Filters change what every map, analysis and export uses. Try a rule like magnitude ≥ 5, or a date field "in the last (days)" 7.'));
-  update();
-  return el;
-}
-
-function layerForm(layer) {
-  if (layer.type === 'raster') return rasterForm(layer);
-  layer.style ||= {};
-  layer.popup ||= {};
-  const st = layer.style;
-  const info = layerInfo[layer.id] || {};
-  const flds = info.fields || [];
-  const fieldSelect = (obj, k, label, empty = 'None') => h('label', { class: 'field' }, labelEl(label),
-    h('select', { onchange: (e) => { obj[k] = e.target.value || undefined; changed(); renderRail(); } },
-      h('option', { value: '' }, empty), flds.map((f) => h('option', { value: f, selected: obj[k] === f }, f))));
-  const fileInput = h('input', { type: 'file', accept: '.geojson,.json,.csv,application/json,text/csv', hidden: true, onchange: async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const fc = /\.csv$/i.test(file.name) ? csvToGeoJSON(text) : JSON.parse(text);
-      if (fc.type !== 'FeatureCollection') throw new Error('Expected a GeoJSON FeatureCollection');
-      layer.data = fc;
-      delete layer.url;
-      if (layer.name === 'New layer') layer.name = file.name.replace(/\.\w+$/, '');
-      const kb = Math.round(JSON.stringify(fc).length / 1024);
-      if (kb > 3000) toast(`That file is ${kb.toLocaleString()} KB. Large files make stories slow; hosting it and using a link is better.`, { duration: 7000 });
-      changed(); renderRail();
-    } catch (err) { toast(`Could not read file: ${err.message}`, { tone: 'error' }); }
-  } });
-  const cats = st.mode === 'categorical' && st.field && info.fc ? colorRamp(layer, info.fc).legend.entries.filter(([v]) => v !== 'Other') : [];
-  const status = info.loading ? h('span', { class: 'pill' }, 'Loading…') : info.error ? h('span', { class: 'pill is-error' }, info.error)
-    : info.count != null ? h('span', { class: 'pill is-live' }, `${info.count.toLocaleString()} features · ${flds.length} fields`) : null;
-
-  const isPoints = info.fc ? kinds(info.fc).has('point') : false;
-  const a = layer.analysis;
-  const inputNames = a ? Object.values(a.inputs).map((id) => (story.layers || []).find((l) => l.id === id)?.name || 'a deleted layer').join(' and ') : '';
-  return h('div', {},
-    a ? h('div', { class: 'provenance' }, icon('sparkle', { size: 15 }),
-      h('span', {}, `${TOOLS[a.tool]?.name || 'Analysis'} of ${inputNames}`),
-      h('button', { type: 'button', class: 'btn btn-sm', title: 'Run the analysis again with the latest data', onclick: () => rerunAnalysis(layer) }, icon('refresh', { size: 14 }), 'Re-run')) : null,
-    !a && layer.data?.features?.length <= 2000 ? h('div', { class: 'provenance' }, icon('pen', { size: 15 }),
-      h('span', {}, layer.drawn ? 'Drawn on the map' : 'Shapes stored in this story'),
-      h('button', { type: 'button', class: 'btn btn-sm', title: 'Draw, move, restyle or delete shapes in this layer', onclick: () => openDraw({ layer }) }, icon('pen', { size: 14 }), 'Edit shapes')) : null,
-    field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
-    a || layer.catalog ? null : h('div', { class: 'field' }, labelEl('Data'),
-      h('div', { class: 'row' },
-        h('input', { class: 'input', type: 'text', value: layer.data ? '' : layer.url || '', placeholder: layer.data ? `Uploaded file (${layer.data.features.length} features)` : 'Paste a GeoJSON or ArcGIS layer link',
-          onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; changed(); renderRail(); } }),
-        h('button', { type: 'button', class: 'btn', title: 'Upload GeoJSON or CSV', onclick: () => fileInput.click() }, icon('upload', { size: 15 }), 'File'), fileInput),
-      h('p', { class: 'field-hint' }, 'GeoJSON link, public ArcGIS FeatureServer layer, or a .geojson / .csv file (CSV needs lat and lon columns).'),
-      status ? h('div', { style: 'margin-top:8px' }, status) : null),
-    layer.attribution ? h('p', { class: 'field-hint' }, `Source: ${layer.attribution}`) : null,
-    info.fc ? [h('div', { class: 'rail-section-title' }, 'Filters'), filtersField(layer, info)] : null,
-    info.fc ? [h('div', { class: 'rail-section-title' }, activeFilters(layer).length ? 'Insights (filtered)' : 'Insights'), insightsPanel(layer, filterData(layer, info.fc))] : null,
-    h('div', { class: 'rail-section-title' }, 'Style'),
-    isPoints ? field(st, { k: 'display', t: 'seg', label: 'Show points as', opts: [['features', 'Dots'], ['heatmap', 'Heatmap'], ['clusters', 'Clusters']], dflt: 'features' }) : null,
-    isPoints && st.display === 'heatmap' ? fieldSelect(st, 'weight', 'Weight the heat by (optional)', 'Each point counts the same') : null,
-    field(st, { k: 'mode', t: 'seg', label: 'Color', opts: [['single', 'One color'], ['categorical', 'By category'], ['graduated', 'By number']], dflt: 'single' }),
-    h('div', { class: 'grid-2' },
-      field(st, { k: 'color', t: 'color', label: st.mode === 'categorical' ? 'Other values' : st.mode === 'graduated' ? 'Highest values' : 'Color', dflt: '#2563eb' }),
-      st.mode && st.mode !== 'single' ? fieldSelect(st, 'field', 'Based on field', 'Choose…') : h('span')),
-    cats.length ? h('div', { class: 'field' }, labelEl('Category colors'), h('div', { class: 'cats' }, cats.map(([v, c]) => h('label', {},
-      h('input', { type: 'color', value: c, oninput: (e) => { (st.colors ||= {})[v] = e.target.value; changed(); } }), v)))) : null,
-    h('div', { class: 'grid-3' },
-      field(st, { k: 'opacity', t: 'number', label: 'Fill opacity' }),
-      field(st, { k: 'radius', t: 'number', label: 'Point size' }),
-      field(st, { k: 'width', t: 'number', label: 'Line width' })),
-    fieldSelect(st, 'label', 'Show labels from'),
-    h('div', { class: 'rail-section-title' }, 'Popup'),
-    field(layer.popup, { k: 'title', label: 'Popup title', placeholder: flds[0] ? `{${flds[0]}}` : '{name}', hint: 'Put field names in braces, like {NAME}.' }),
-    h('label', { class: 'field' }, labelEl('Fields to list'),
-      h('input', { type: 'text', value: (layer.popup.fields || []).join(', '), placeholder: flds.slice(0, 4).join(', ') || 'Leave blank to show the first few',
-        oninput: (e) => { layer.popup.fields = e.target.value.split(',').map((f) => f.trim()).filter(Boolean); changed(); } })));
-}
+const { layerForm, inspectLayer, layerStatus } = layerEditor({ doc: () => story, changed: () => changed(), rerender: () => renderRail(), onInfo: () => { if (tab === 'data') renderRail(); } });
 
 /* ---------- Map picker ---------- */
 

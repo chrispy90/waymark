@@ -111,14 +111,14 @@ const fit = (map, data) => { const b = data && bbox(data); if (b) map.fitBounds(
 
 /* ---------- Analyze ---------- */
 
-export async function openAnalysis({ tool: startTool, layerId } = {}) {
+export async function openAnalysis({ tool: startTool, layerId, view: here } = {}) {
   const story = ctx.story();
   const lib = story.layers || [];
   if (!lib.length) { toast('Add a data layer first, then analyze it.'); openAddData(); return; }
   const side = h('div', { class: 'wb-side' }, h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Loading your data…'));
   let map;
   const { dlg, mapEl } = workspace({ title: 'Analyze', side, onClose: () => map?.remove() });
-  map = createMap(mapEl, { ...DEFAULT_VIEW, layers: [] }, { library: lib });
+  map = createMap(mapEl, { ...(here || DEFAULT_VIEW), markers: [], layers: here?.layers || [] }, { library: lib });
   map.scrollZoom.enable();
   whenStyled(map, () => resultLayers(map, 'wm-result'));
   map.on('style.load', () => resultLayers(map, 'wm-result'));
@@ -130,7 +130,7 @@ export async function openAnalysis({ tool: startTool, layerId } = {}) {
 
   const list = () => {
     side.replaceChildren(
-      h('p', { class: 'wb-intro' }, 'Pick an analysis. You\'ll see the result on the map before anything is added to your story.'),
+      h('p', { class: 'wb-intro' }, 'Pick an analysis. You\'ll see the result on the map before anything is added to your layers.'),
       h('div', { class: 'wb-tools' }, Object.entries(TOOLS).map(([id, t]) => h('button', { type: 'button', class: 'pick', onclick: () => form(id) },
         h('span', { class: 'pick-icon' }, icon(t.icon, { size: 18 })), h('span', {}, h('strong', {}, t.name), h('span', {}, t.desc))))));
   };

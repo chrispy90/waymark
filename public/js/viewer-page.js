@@ -5,11 +5,15 @@
 //   ?story=stories/x.json  static sample file
 import { renderStory } from './render.js';
 import { api } from './api.js';
+import { withMaps } from './webmap.js';
 
 const root = document.getElementById('story');
 const params = new URLSearchParams(location.search);
 let destroy = null;
 const show = (story) => { destroy?.(); destroy = renderStory(story, root); };
+// Saved maps load live: readers get the published copy of each map; the owner previewing a draft gets their latest.
+const publicMap = (id) => fetch(`/api/public/maps/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json() : Promise.reject()));
+const ownMap = (id) => api('GET', `/api/maps/${encodeURIComponent(id)}`).then((r) => r.map);
 const fail = (msg) => {
   root.replaceChildren();
   const p = document.createElement('p');
@@ -22,7 +26,7 @@ const fail = (msg) => {
 const slug = document.querySelector('meta[name="sm-slug"]')?.content;
 
 if (slug) {
-  fetch(`/api/public/${encodeURIComponent(slug)}`).then((r) => (r.ok ? r.json() : Promise.reject())).then(show)
+  fetch(`/api/public/${encodeURIComponent(slug)}`).then((r) => (r.ok ? r.json() : Promise.reject())).then((s) => withMaps(s, publicMap)).then(show)
     .catch(() => fail('This story is not available.'));
 } else if (params.has('preview')) {
   // Builder preview: the story arrives by postMessage; clicks select blocks in the editor.
@@ -58,7 +62,7 @@ if (slug) {
   parent.postMessage({ type: 'preview-ready' }, location.origin);
 } else if (params.get('draft')) {
   api('GET', `/api/stories/${encodeURIComponent(params.get('draft'))}`)
-    .then((r) => show(r.story))
+    .then((r) => withMaps(r.story, ownMap)).then(show)
     .catch((e) => fail(e.status === 401 ? 'Sign in to preview this draft.' : 'Draft not found.'));
 } else {
   const src = params.get('story') || 'stories/potomac.json';

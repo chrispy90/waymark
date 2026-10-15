@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { h, icon, dialog, toast, BRAND } from './ui.js';
 import { loadLayerData } from './maps.js';
 import { buildExport } from './export-core.js';
+import { withMaps } from './webmap.js';
 
 // Browser implementation of the exporter's file and network access.
 const browserIO = {
@@ -70,6 +71,8 @@ export async function openExport({ id, story: current, meta: currentMeta, flush 
       let story = draft;
       if (state.version === 'draft' && flush) await flush();
       if (state.version === 'published') story = await api('GET', `/api/public/${encodeURIComponent(meta.slug)}`);
+      // saved maps are copied in, so the exported site doesn't depend on this server
+      story = await withMaps(story, (mid) => api('GET', `/api/maps/${encodeURIComponent(mid)}`).then((r) => r.map));
       const out = await buildExport(story, state, browserIO, BRAND, step);
       last?.classList.add('is-done');
       const url = URL.createObjectURL(out.blob);
