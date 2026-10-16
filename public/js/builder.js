@@ -1174,7 +1174,7 @@ function openPicker({ mode, value, noMarkers, noLayers, title }, done) {
     actions: [
       h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel'),
       h('button', { type: 'button', class: 'btn btn-primary', onclick: () => {
-        const out = { ...readView(pickerMap), markers: noMarkers ? [] : markers };
+        const out = { ...readView(pickerMap), markers: noMarkers ? [] : markers }; // includes the time slider's setting, if any
         if (noLayers) delete out.layers;
         done(mode === 'point' ? point : out);
         dlg.close();

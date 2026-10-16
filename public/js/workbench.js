@@ -2,7 +2,7 @@
 import { h, icon, dialog, toast } from './ui.js';
 import { createMap, setVisibleLayers, reloadLayer, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
 import { openCatalog } from './catalog.js';
-import { TOOLS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
+import { TOOLS, TOOL_GROUPS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 
 let ctx; // { story, changed, renderRail, openLayer, selectedIndex, insertBlock }
@@ -131,8 +131,8 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
   const list = () => {
     side.replaceChildren(
       h('p', { class: 'wb-intro' }, 'Pick an analysis. You\'ll see the result on the map before anything is added to your layers.'),
-      h('div', { class: 'wb-tools' }, Object.entries(TOOLS).map(([id, t]) => h('button', { type: 'button', class: 'pick', onclick: () => form(id) },
-        h('span', { class: 'pick-icon' }, icon(t.icon, { size: 18 })), h('span', {}, h('strong', {}, t.name), h('span', {}, t.desc))))));
+      TOOL_GROUPS.map((g) => [h('div', { class: 'rail-section-title' }, g), h('div', { class: 'wb-tools' }, Object.entries(TOOLS).filter(([, t]) => t.group === g).map(([id, t]) => h('button', { type: 'button', class: 'pick', onclick: () => form(id) },
+        h('span', { class: 'pick-icon' }, icon(t.icon, { size: 18 })), h('span', {}, h('strong', {}, t.name), h('span', {}, t.desc)))))]).flat());
   };
 
   const form = (toolId) => {
@@ -177,6 +177,7 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
               p.optional ? h('option', { value: '' }, 'None') : null,
               opts.length ? opts.map((o) => h('option', { value: o, selected: params[p.k] === o }, o)) : h('option', { value: '' }, p.numeric ? 'No number fields' : 'No fields')));
           }
+          case 'choice': return h('div', { class: 'field' }, label, seg(p.opts, params[p.k], set));
           case 'op': return h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Rule'), h('select', { onchange: (e) => set(e.target.value) }, OPS.map((o) => h('option', { value: o, selected: params[p.k] === o }, o))));
           case 'number': return h('label', { class: 'field' }, label, h('input', { type: 'number', min: 0, step: 'any', value: params[p.k] ?? '', oninput: (e) => { params[p.k] = e.target.value; } }));
           default: return h('label', { class: 'field' }, label, h('input', { type: 'text', value: params[p.k] ?? '', oninput: (e) => { params[p.k] = e.target.value; } }));
@@ -200,7 +201,7 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
       setTimeout(() => {
         try {
           const ins = Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, data[id].data]));
-          result = tool.run(ins, { ...params });
+          result = tool.run(ins, { ...params, _names: Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, lib.find((l) => l.id === id)?.name || 'Layer'])) });
           map._wmResult = result.data;
           if (map.isStyleLoaded()) resultLayers(map, 'wm-result');
           map.getSource('wm-result')?.setData(result.data);
@@ -255,7 +256,7 @@ export async function rerunAnalysis(layer) {
     ins[k] = await layerFeatures(src);
   }
   try {
-    const r = tool.run(ins, a.params);
+    const r = tool.run(ins, { ...a.params, _names: Object.fromEntries(Object.entries(a.inputs).map(([k, lid]) => [k, lib.find((l) => l.id === lid)?.name || 'Layer'])) });
     layer.data = r.data;
     a.at = Date.now();
     ctx.changed();

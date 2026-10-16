@@ -165,6 +165,11 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
         field(st, { k: 'opacity', t: 'number', label: 'Fill opacity' }),
         field(st, { k: 'radius', t: 'number', label: 'Point size' }),
         field(st, { k: 'width', t: 'number', label: 'Line width' })),
+      h('div', { class: 'rail-section-title' }, 'Size'),
+      sizeField(st, info),
+      h('div', { class: 'rail-section-title' }, 'Time'),
+      timeField(layer, info),
+      h('div', { class: 'rail-section-title' }, 'Labels and visibility'),
       fieldSelect(st, 'label', 'Show labels from'),
       h('div', { class: 'grid-2' },
         field(st, { k: 'minzoom', t: 'number', label: 'Visible from zoom', placeholder: '0' }),
@@ -175,6 +180,37 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
       h('label', { class: 'field' }, labelEl('Fields to list'),
         h('input', { type: 'text', value: (layer.popup.fields || []).join(', '), placeholder: flds.slice(0, 4).join(', ') || 'Leave blank to show the first few',
           oninput: (e) => { layer.popup.fields = e.target.value.split(',').map((f) => f.trim()).filter(Boolean); changed(); } })));
+  }
+
+  // Proportional symbols: size points (circle area), areas (a circle at the center) or lines (width) by a number.
+  function sizeField(st, info) {
+    const stats = info.fc ? layerStats(info.fc) : { fields: [] };
+    const nums = stats.fields.filter((f) => f.kind === 'number').map((f) => f.name);
+    const lines = info.fc ? kinds(info.fc).size === 1 && kinds(info.fc).has('line') : false;
+    return h('div', {},
+      h('label', { class: 'field' }, labelEl('Size by number'),
+        h('select', { onchange: (e) => { st.sizeField = e.target.value || undefined; changed(); renderRail(); } },
+          h('option', { value: '' }, 'Same size for all'), nums.map((f) => h('option', { value: f, selected: st.sizeField === f }, f)))),
+      st.sizeField ? h('div', { class: 'grid-2' },
+        field(st, { k: 'sizeMin', t: 'number', label: lines ? 'Thinnest (px)' : 'Smallest (px)', placeholder: lines ? '1' : '4' }),
+        field(st, { k: 'sizeMax', t: 'number', label: lines ? 'Widest (px)' : 'Largest (px)', placeholder: lines ? '10' : '28' })) : null,
+      h('p', { class: 'field-hint' }, st.sizeField ? (lines ? 'Lines get wider as the value grows.' : 'Circle area grows with the value, so twice the value looks twice as big. Areas get a circle at their center. Works together with color.')
+        : nums.length ? 'Proportional symbols: bigger circles (or wider lines) for bigger values.' : 'This layer has no number fields to size by.'));
+  }
+
+  // A time field adds a time slider to every map that shows this layer, in the editor and in stories.
+  function timeField(layer, info) {
+    const flds = info.fields || [];
+    const sample = info.fc?.features?.slice(0, 50) || [];
+    const looksLikeTime = (f) => /time|date|when|year|day|updated|created|start|end/i.test(f)
+      || sample.some((ft) => { const v = ft.properties?.[f]; return (typeof v === 'number' && v > 1e11 && v < 4e12) || (typeof v === 'string' && /^\d{4}-\d\d-\d\d/.test(v)); });
+    const ordered = [...flds.filter(looksLikeTime), ...flds.filter((f) => !looksLikeTime(f))];
+    return h('div', {},
+      h('label', { class: 'field' }, labelEl('Time field'),
+        h('select', { onchange: (e) => { if (e.target.value) layer.time = { field: e.target.value }; else delete layer.time; changed(); renderRail(); } },
+          h('option', { value: '' }, 'No time slider'), ordered.map((f) => h('option', { value: f, selected: layer.time?.field === f }, looksLikeTime(f) ? `${f} (looks like a date)` : f)))),
+      h('p', { class: 'field-hint' }, layer.time?.field ? 'Maps showing this layer get a time slider with play. Readers can scrub through it; bookmarks and story cards remember where it was set.'
+        : 'Pick a date or time field to add a time slider with play to maps showing this layer.'));
   }
 
   return { layerForm, inspectLayer, layerStatus, layerInfo };

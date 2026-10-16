@@ -45,6 +45,8 @@ export function concreteView(view, maps) {
     center: cam.center, zoom: cam.zoom, bearing: cam.bearing ?? 0, pitch: cam.pitch ?? 0,
     basemap: m.view?.basemap || own.basemap || 'streets',
     legend: own.legend ?? m.view?.legend ?? true,
+    // a bookmark brings its own time setting (none = all dates); otherwise the view's, else the map's
+    ...((bm ? bm.time : own.time ?? m.view?.time) ? { time: bm ? bm.time : own.time ?? m.view?.time } : {}),
     layers: [...visible.filter((lid) => m.layers.some((l) => l.id === lid)).map((lid) => layerKey(id, lid)), ...(own.layers || [])],
   };
 }

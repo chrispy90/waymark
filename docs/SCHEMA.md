@@ -34,6 +34,9 @@ The camera and markers used by maps.
 }
 ```
 
+Any view can also carry `"time": { "at": <ms>, "span": <ms> }`: show features from layers with a time field up to `at`,
+and when `span` is more than 0 only the span before it. Leave it out to show all dates.
+
 ## Layer
 
 ```jsonc
@@ -49,9 +52,12 @@ The camera and markers used by maps.
     "colors": { "Park": "#16a34a" },          // optional fixed category colors
     "opacity": 0.45, "radius": 6, "width": 3, // polygon fill opacity, point radius, line width
     "label": "name",                          // optional label field
+    "sizeField": "magnitude", "sizeMin": 4, "sizeMax": 28,  // proportional symbols: circle area (points, areas) or width (lines) by a number
+    "minzoom": 5, "maxzoom": 18,              // optional visible zoom range
     "display": "features",                    // points only: "features" | "heatmap" | "clusters"
     "weight": "visitors"                      // heatmap only: optional numeric field that weights each point
   },
+  "time": { "field": "time" },               // a date or time field: maps showing the layer get a time slider
   "filters": [{ "field": "magnitude", "op": "≥", "value": "5" }, { "field": "time", "op": "in the last (days)", "value": "7" }],
   "filterMatch": "all",                       // "all" | "any"
   "query": { "where": "STATE='51'", "outFields": "NAME", "maxAllowableOffset": 0.002 },  // ArcGIS layers: passed to the server
@@ -97,7 +103,8 @@ A saved map is its own document, made in the map editor (`/map.html?id=…`) and
   "title": "Earthquake watch", "summary": "…", "thumbnail": "/uploads/….png",
   "layers": [ /* Layer[], exactly as in a story */ ],
   "view": { "center": [150, 20], "zoom": 1.6, "bearing": 0, "pitch": 0, "basemap": "dark", "layers": ["quakes"], "legend": true },  // starting view and visible layers
-  "bookmarks": [{ "id": "b1", "name": "Where they cluster", "note": "…", "view": { "center": [138, 36], "zoom": 4.2 }, "layers": ["quakes", "hex"] }]
+  "bookmarks": [{ "id": "b1", "name": "Where they cluster", "note": "…", "view": { "center": [138, 36], "zoom": 4.2 }, "layers": ["quakes", "hex"],
+                  "time": { "at": 1791748579015, "span": 86400000 } }]  // optional: the time slider's setting for this bookmark
 }
 ```
 

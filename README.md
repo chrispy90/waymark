@@ -103,7 +103,14 @@ Live layers refresh every time someone opens the story, so a published map stays
 
 **Filters** narrow a layer with plain rules, like *magnitude ≥ 5*, *in the last 7 days* or *state = Texas*. They apply to the map, the insights, the analysis and the export.
 
-**Analyze** previews every result on a map before you keep it. The tools are buffer, hex bins, count in areas, distance to nearest, within distance, center points, outline and filter. Results become ordinary layers, and you can re-run them on fresh data.
+**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 18 tools are grouped the way desktop GIS toolboxes group them:
+
+| Group | Tools |
+|---|---|
+| **Summarize** | Hex bins (count, sum or average) · Count in areas · Dissolve (by a field, e.g. counties into states) |
+| **Proximity** | Buffer · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
+| **Overlay** | Clip · Erase · Intersect · Join by location · Select by location (touch, inside, contain, stay clear) · Merge |
+| **Manage data** | Center points · Outline (convex hull) · Simplify · Add geometry attributes (area, length, coordinates) · Filter |
 
 <table>
   <tr>
@@ -116,15 +123,15 @@ Live layers refresh every time someone opens the story, so a published map stays
   </tr>
 </table>
 
-You can also show points as a **heatmap** or **clusters**. Bring your own data too: GeoJSON, CSV, or any public ArcGIS layer.
+You can also show points as a **heatmap** or **clusters**, or use **proportional symbols**: size points, areas or lines by a number field (circle area grows with the value, and it works together with color). Give a layer a **time field** and its maps get a **time slider** with play, showing everything up to a moment or a trailing day, week or month. Readers can scrub it too, and bookmarks and story cards remember where it was set. Bring your own data: GeoJSON, CSV, or any public ArcGIS layer.
 
 ### Make a map once, use it in every story
 
 **Maps** on the home screen are maps you build on their own, in a full-screen map editor, and then use in as many stories as you like. Edit the map once and every story that uses it updates, published stories included.
 
 - **Layers:** live public data, your files, or links. Reorder them by dragging, switch them on and off, and zoom to each.
-- **Per-layer settings:** style, labels, popups, filters, visible zoom range and insights, plus an **attribute table** you can sort and search. Click a row to zoom to that feature.
-- **Tools:** analysis (buffer, hex bins, counts, nearest, and more), drawing, measuring, place search, a basemap gallery and the legend.
+- **Per-layer settings:** color, proportional symbols, a time field for the time slider, labels, popups, filters, visible zoom range and insights, plus an **attribute table** you can sort and search. Click a row to zoom to that feature.
+- **Tools:** 18 analysis tools (clip, erase, intersect, dissolve, spatial join, buffer, hex bins, Voronoi and more), a time slider, drawing, measuring, place search, a basemap gallery and the legend.
 - **Bookmarks:** named views that also remember which layers are on, with a note for each.
 
 Then **walk readers through it**: one click turns the bookmarks into moving-map cards, so a story can show the raw data, then the analysis, then the result, one card at a time. Any map in a story can also **use a saved map**, showing one of its bookmarks or a view you frame.

@@ -2,10 +2,10 @@
 // an attribute table and per-layer settings. Maps made here can be used in any number of stories.
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, setTitle } from './ui.js';
-import { BASEMAPS, createMap, readView, setVisibleLayers, refreshLayers, rebuildLayer, orderLayers, fitToLayer, layerFeatures, fieldNames, bbox } from './maps.js';
+import { BASEMAPS, createMap, readView, setTime, setVisibleLayers, refreshLayers, rebuildLayer, orderLayers, fitToLayer, layerFeatures, fieldNames, bbox } from './maps.js';
 import { initWorkbench, openAddData, openAnalysis, openDraw, openPublicData, rerunAnalysis } from './workbench.js';
 import { layerEditor } from './layer-form.js';
-import { TOOLS, fmtDist, fmtArea } from './analysis.js';
+import { TOOLS, TOOL_GROUPS, fmtDist, fmtArea } from './analysis.js';
 import { findPlaces } from './wizard.js';
 import { storyFromMap } from './webmap.js';
 
@@ -78,6 +78,8 @@ setSave('saved');
 const map = createMap($('#map'), { ...doc.view, markers: [] }, { library: doc.layers });
 map.scrollZoom.enable();
 map._legend.enabled = doc.view.legend !== false;
+// the time slider's setting is part of the map (and of each bookmark made while it's set)
+map._onTime = (t) => { if (t) doc.view.time = t; else delete doc.view.time; changed({ redraw: false }); };
 const currentView = () => ({ ...readView(map), basemap: doc.view.basemap, layers: [...doc.view.layers], markers: [] });
 // The starting view only changes when you say so (Map details → Make this the starting view).
 const setStartingView = () => {
@@ -149,7 +151,7 @@ const PANELS = {
 };
 function renderPanel() {
   const scroll = panel.scrollTop;
-  panel.replaceChildren(...[PANELS[tool]()].flat().filter(Boolean));
+  panel.replaceChildren(...[PANELS[tool]()].flat(Infinity).filter(Boolean));
   panel.scrollTop = scroll;
 }
 const head = (title, hint) => [h('h2', { class: 'me-h' }, title), hint ? h('p', { class: 'me-hint' }, hint) : null];
@@ -217,13 +219,13 @@ function basemapPanel() {
 /* Bookmarks: named views (and which layers are on), the steps a story walks readers through */
 function bookmarksPanel() {
   const add = () => {
-    const b = { id: `b${Math.random().toString(36).slice(2, 8)}`, name: `View ${doc.bookmarks.length + 1}`, view: pick(readView(map)), layers: [...doc.view.layers] };
+    const b = { id: `b${Math.random().toString(36).slice(2, 8)}`, name: `View ${doc.bookmarks.length + 1}`, view: pick(readView(map)), layers: [...doc.view.layers], ...(map._time ? { time: { ...map._time } } : {}) };
     doc.bookmarks.push(b);
     changed({ redraw: false });
     renderPanel();
     requestAnimationFrame(() => [...panel.querySelectorAll('.me-bm input')].pop()?.select());
   };
-  const go = (b) => { map.flyTo({ ...b.view, duration: 1200 }); if (b.layers) { doc.view.layers = b.layers.filter((x) => doc.layers.some((l) => l.id === x)); changed(); } };
+  const go = (b) => { map.flyTo({ ...b.view, duration: 1200 }); setTime(map, b.time); map._onTime(b.time); if (b.layers) { doc.view.layers = b.layers.filter((x) => doc.layers.some((l) => l.id === x)); changed(); } };
   return [
     ...head('Bookmarks', 'Save views of the map, with the layers that are on. In a story, a moving map can walk readers through them one card at a time.'),
     h('button', { type: 'button', class: 'btn btn-primary btn-block', onclick: add }, icon('plus', { size: 15 }), 'Bookmark this view'),
@@ -233,14 +235,14 @@ function bookmarksPanel() {
         h('input', { class: 'input', type: 'text', value: b.name, 'aria-label': 'Bookmark name', oninput: (e) => { b.name = e.target.value; changed({ redraw: false }); } }),
         h('button', { type: 'button', class: 'icon-btn', title: 'Go there', 'aria-label': 'Go to this bookmark', onclick: () => go(b) }, icon('eye', { size: 15 })),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Bookmark options', onclick: (e) => menu(e.currentTarget, [
-          { label: 'Update to the current view and layers', icon: 'refresh', onClick: () => { b.view = pick(readView(map)); b.layers = [...doc.view.layers]; changed({ redraw: false }); renderPanel(); toast('Bookmark updated', { tone: 'ok' }); } },
+          { label: 'Update to the current view and layers', icon: 'refresh', onClick: () => { b.view = pick(readView(map)); b.layers = [...doc.view.layers]; if (map._time) b.time = { ...map._time }; else delete b.time; changed({ redraw: false }); renderPanel(); toast('Bookmark updated', { tone: 'ok' }); } },
           { label: 'Move up', icon: 'up', disabled: i === 0, onClick: () => { doc.bookmarks.splice(i - 1, 0, doc.bookmarks.splice(i, 1)[0]); changed({ redraw: false }); renderPanel(); } },
           { label: 'Move down', icon: 'down', disabled: i === doc.bookmarks.length - 1, onClick: () => { doc.bookmarks.splice(i + 1, 0, doc.bookmarks.splice(i, 1)[0]); changed({ redraw: false }); renderPanel(); } },
           'sep',
           { label: 'Delete', icon: 'trash', danger: true, onClick: () => { doc.bookmarks.splice(i, 1); changed({ redraw: false }); renderPanel(); } },
         ]) }, icon('more'))),
       h('textarea', { class: 'me-bm-note', rows: 2, placeholder: 'Note for this step (becomes the card text in a story)', value: b.note || '', oninput: (e) => { b.note = e.target.value || undefined; changed({ redraw: false }); } }),
-      h('span', { class: 'muted me-bm-meta' }, `Zoom ${(+b.view.zoom).toFixed(1)} · ${(b.layers || []).length} ${(b.layers || []).length === 1 ? 'layer' : 'layers'} on`)))),
+      h('span', { class: 'muted me-bm-meta' }, `Zoom ${(+b.view.zoom).toFixed(1)} · ${(b.layers || []).length} ${(b.layers || []).length === 1 ? 'layer' : 'layers'} on${b.time ? ` · ${new Date(b.time.at).toLocaleDateString()}` : ''}`)))),
     doc.bookmarks.length ? h('button', { type: 'button', class: 'btn btn-block', onclick: newStoryFromMap }, icon('scrollmap', { size: 15 }), 'Start a story that walks through these') : null,
   ];
 }
@@ -249,9 +251,9 @@ const pick = (v) => ({ center: v.center, zoom: v.zoom, bearing: v.bearing, pitch
 function analysisPanel() {
   const results = doc.layers.filter((l) => l.analysis);
   return [
-    ...head('Analysis', 'Buffers, hex bins, counts in areas, distance to nearest, proximity, centers, outlines and attribute filters. Every result is previewed before it becomes a layer.'),
-    h('div', { class: 'wb-tools' }, Object.entries(TOOLS).map(([k, t]) => h('button', { type: 'button', class: 'pick', onclick: () => openAnalysis({ tool: k, view: currentView() }) },
-      h('span', { class: 'pick-icon' }, icon(t.icon, { size: 18 })), h('span', {}, h('strong', {}, t.name), h('span', {}, t.desc))))),
+    ...head('Analysis', `${Object.keys(TOOLS).length} tools for summarizing, proximity, overlay and data management. Every result is previewed before it becomes a layer, and can be re-run on fresh data.`),
+    TOOL_GROUPS.map((g) => [h('div', { class: 'rail-section-title' }, g), h('div', { class: 'wb-tools' }, Object.entries(TOOLS).filter(([, t]) => t.group === g).map(([k, t]) => h('button', { type: 'button', class: 'pick', onclick: () => openAnalysis({ tool: k, view: currentView() }) },
+      h('span', { class: 'pick-icon' }, icon(t.icon, { size: 18 })), h('span', {}, h('strong', {}, t.name), h('span', {}, t.desc)))))]),
     results.length ? [h('div', { class: 'rail-section-title' }, 'Results in this map'), h('div', { class: 'sub-list' }, results.map((l) => h('div', { class: 'me-result' },
       h('span', {}, h('strong', {}, l.name), h('span', { class: 'muted' }, TOOLS[l.analysis.tool]?.name || '')),
       h('button', { type: 'button', class: 'btn btn-sm', onclick: () => rerunAnalysis(l) }, icon('refresh', { size: 14 }), 'Re-run'))))] : null,

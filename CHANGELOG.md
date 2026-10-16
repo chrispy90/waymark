@@ -4,7 +4,13 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Proportional symbols.** Size points, areas or lines by a number field ("Size by number"): circle area grows with the value, areas get a circle at their center, lines get wider, and big circles draw under small ones. The legend shows the sizes, and it works together with color by category or number.
+- **Time slider.** Pick a time field on a layer and every map showing it gets a time slider with play. Show everything up to a moment, or a trailing day, week or 30 days. It works in the map editor, in stories (readers can scrub and play) and in exported sites, and bookmarks and story cards remember the setting.
+- **Ten more analysis tools**, for 18 in all, now grouped into Summarize, Proximity, Overlay and Manage data: **Clip**, **Erase**, **Intersect**, **Join by location** (spatial join), **Select by location** (touch, inside, contain, stay clear), **Merge**, **Dissolve** (optionally by a field), **Voronoi areas** (Thiessen polygons), **Simplify** and **Add geometry attributes** (area, perimeter, length, coordinates).
+
+### Fixed
+- The legend and other bottom-left map controls move up out of the way of the time slider.
 
 ## 1.3.0 (2026-10-15)
 

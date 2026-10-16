@@ -51,6 +51,10 @@ export function createMap(container, view = DEFAULT_VIEW, { interactive = true, 
   map._markers = [];
   map._library = library;
   map._visible = v.layers || [];
+  map._time = v.time || null;
+  map._timeExt = {};
+  map._timeBar = timeBar(map);
+  container.append(map._timeBar);
   map._legend = new LegendControl();
   map._legend.enabled = v.legend !== false;
   map.addControl(map._legend, 'bottom-left');
@@ -90,6 +94,7 @@ export function applyView(map, view, { animate = true } = {}) {
   if (animate && !reduce) map.flyTo({ ...cam, duration: 2200, essential: true });
   else map.jumpTo(cam);
   setMarkers(map, v.markers);
+  if ('time' in v || map._time) setTime(map, v.time);
 }
 
 export function readView(map) {
@@ -102,6 +107,7 @@ export function readView(map) {
     basemap: map._basemap,
     layers: [...map._visible],
     legend: map._legend.enabled,
+    ...(map._time ? { time: { ...map._time } } : {}),
   };
 }
 
@@ -319,6 +325,7 @@ const DASH = ['coalesce', ['get', 'stroke-dash'], 'solid'];
 const NOTE = ['has', 'text'];
 const ARROWHEAD = ['has', '__arrow'];
 const PLAIN_POINT = ['all', POINT, ['!', NOTE], ['!', ARROWHEAD]];
+const SYMBOL = ['has', '__sym']; // a proportional symbol drawn at the center of an area
 // Themes whose maps draw data with a soft glow ("firefly" cartography).
 // Labels and text notes switch to light text on dark and imagery basemaps.
 const darkBase = (map) => ['dark', 'satellite', 'usgs-imagery'].includes(map._basemap);
@@ -440,11 +447,13 @@ function installLayers(map) {
       visibility: vis, 'text-field': ['to-string', ['get', 'text']], 'text-font': ['Noto Sans Bold'], 'text-size': num('text-size', 18),
       'text-max-width': 14, 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': color, 'text-halo-color': darkBase(map) ? 'rgba(8,8,16,0.85)' : '#ffffff', 'text-halo-width': 2, 'text-opacity': lineOpacity } });
-    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, filter: display === 'clusters' ? NOT_CLUSTER : ['all', ['!', NOTE], ['!', ARROWHEAD]], layout: {
+    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, filter: display === 'clusters' ? NOT_CLUSTER : ['all', ['!', NOTE], ['!', ARROWHEAD], ['!', SYMBOL]], layout: {
       visibility: s.label ? vis : 'none', 'text-field': s.label ? ['to-string', ['get', s.label]] : '', 'text-font': ['Noto Sans Regular'],
       'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
     paint: darkBase(map) ? { 'text-color': '#f3f2fb', 'text-halo-color': 'rgba(8,8,16,0.85)', 'text-halo-width': 1.5 } : { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
 
+    map._baseFilters ||= {};
+    subIds(layer.id).forEach((lid) => { if (map.getLayer(lid)) map._baseFilters[lid] = map.getFilter(lid); });
     // optional visible range, e.g. hide street-level detail when zoomed out
     if (s.minzoom != null || s.maxzoom != null) subIds(layer.id).forEach((lid) => map.getLayer(lid) && map.setLayerZoomRange(lid, +(s.minzoom ?? 0), +(s.maxzoom ?? 24)));
     if (vis === 'visible') loadInto(map, layer);
@@ -478,7 +487,18 @@ function loadInto(map, layer) {
   if (layer.type === 'raster') return;
   layerFeatures(layer).then((fc) => {
     if (map.getSource(src) !== source) return; // style was swapped while loading
-    source.setData(display === 'features' ? withArrows(fc) : fc);
+    let data = fc;
+    if (layer.time?.field) {
+      data = withTime(data, layer.time.field);
+      const ts = data.features.map((f) => f.properties.__t).filter(Number.isFinite);
+      map._timeExt[layer.id] = ts.length ? [Math.min(...ts), Math.max(...ts)] : null;
+    }
+    const size = s.sizeField ? sizeScale(layer, data) : null;
+    if (size?.areas && display === 'features') data = withSymbols(data);
+    source.setData(display === 'features' ? withArrows(data) : data);
+    if (size) applySize(map, src, size, display);
+    applyTime(map);
+    updateTimeBar(map);
     const { expr, legend } = colorRamp(layer, fc);
     const own = !s.mode || s.mode === 'single'; // features' own colors only override a single-color style
     const line = own ? ['to-color', ['get', 'stroke'], expr] : ['case', POLY, '#ffffff', expr];
@@ -500,6 +520,7 @@ function loadInto(map, layer) {
       info = { type: 'heat', stops: heatStops(color), weight: s.weight };
     }
     if (display === 'clusters') info = { ...legend, clusters: true };
+    if (size) info = { ...info, size };
     map._legendInfo[layer.id] = info;
     map._legend.render(map);
   }).catch((err) => {
@@ -507,6 +528,128 @@ function loadInto(map, layer) {
     map._legend.render(map);
   });
 }
+
+/* ---------------- Proportional symbols ---------------- */
+
+// Sizes by a number field: circle area grows with the value (so twice the value looks twice as big), lines get wider.
+function sizeScale(layer, fc) {
+  const s = layer.style || {};
+  const vals = fc.features.map((f) => Number(f.properties?.[s.sizeField])).filter((v) => Number.isFinite(v) && v >= 0);
+  if (!vals.length) return null;
+  const k = { point: false, line: false, polygon: false };
+  fc.features.forEach((f) => { const t = f.geometry?.type || ''; if (t.includes('Point')) k.point = true; else if (t.includes('Line')) k.line = true; else if (t.includes('Polygon')) k.polygon = true; });
+  const lines = k.line && !k.point && !k.polygon;
+  return { field: s.sizeField, min: Math.min(...vals), max: Math.max(...vals), lo: +(s.sizeMin ?? (lines ? 1 : 4)), hi: +(s.sizeMax ?? (lines ? 10 : 28)), lines, areas: k.polygon };
+}
+function applySize(map, src, z, display) {
+  const v = ['max', 0, ['to-number', ['get', z.field], 0]];
+  if (z.lines || !map.getLayer(`${src}-circle`)) {
+    const w = z.max > z.min ? ['interpolate', ['linear'], v, z.min, z.lo, z.max, z.hi] : z.hi;
+    ['line', 'dash', 'dot'].forEach((k) => map.getLayer(`${src}-${k}`) && map.setPaintProperty(`${src}-${k}`, 'line-width', ['case', LINE, w, 1]));
+    return;
+  }
+  if (display === 'clusters') return; // cluster circles keep their own sizes
+  const r = z.max > z.min ? ['interpolate', ['linear'], ['sqrt', v], Math.sqrt(z.min), z.lo, Math.sqrt(z.max), z.hi] : z.hi;
+  map.setPaintProperty(`${src}-circle`, 'circle-radius', r);
+  map.setPaintProperty(`${src}-circle`, 'circle-opacity', 0.82);
+  map.setLayoutProperty(`${src}-circle`, 'circle-sort-key', ['-', 0, v]); // big circles underneath small ones
+  if (map.getLayer(`${src}-glow`)) map.setPaintProperty(`${src}-glow`, 'circle-radius', ['*', r, 2.2]);
+}
+// A point at the middle of each area, carrying its properties, for size-by-number on polygons.
+function withSymbols(fc) {
+  const pts = [];
+  fc.features.forEach((f) => {
+    const g = f.geometry;
+    if (!g || !/Polygon/.test(g.type)) return;
+    const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.coordinates.map((p) => p[0]);
+    const ring = rings.reduce((a, b) => (b.length > a.length ? b : a), rings[0] || []);
+    if (!ring.length) return;
+    let [x, y] = [0, 0];
+    ring.forEach((c) => { x += c[0]; y += c[1]; });
+    pts.push({ type: 'Feature', properties: { ...f.properties, __sym: true }, geometry: { type: 'Point', coordinates: [x / ring.length, y / ring.length] } });
+  });
+  return pts.length ? { ...fc, features: [...fc.features, ...pts] } : fc;
+}
+
+/* ---------------- Time ---------------- */
+
+// Layers with a time field get a numeric __t (milliseconds) on every feature, which the time filter compares.
+function withTime(fc, field) {
+  return { ...fc, features: fc.features.map((f) => {
+    const t = asTime(f.properties?.[field]);
+    return Number.isFinite(t) ? { ...f, properties: { ...f.properties, __t: t } } : f;
+  }) };
+}
+const timeLayers = (map) => map._library.filter((l) => l.time?.field && map._visible.includes(l.id));
+// map._time is null (show everything) or { at, span }: features up to `at`, and if span > 0 only the span before it.
+function applyTime(map) {
+  if (!map.isStyleLoaded?.()) return;
+  const t = map._time;
+  map._library.filter((l) => l.time?.field).forEach((l) => subIds(l.id).forEach((lid) => {
+    if (!map.getLayer(lid)) return;
+    const base = map._baseFilters?.[lid] ?? ['all'];
+    map.setFilter(lid, t ? ['all', base, ['has', '__t'], ['<=', ['get', '__t'], t.at], ...(t.span ? [['>=', ['get', '__t'], t.at - t.span]] : [])] : base);
+  }));
+}
+export function setTime(map, time) {
+  map._time = time || null;
+  applyTime(map);
+  updateTimeBar(map);
+}
+const SPANS = [[0, 'Everything up to'], [864e5, 'The day before'], [6048e5, 'The week before'], [2592e6, 'The 30 days before']];
+function timeBar(map) {
+  const el = document.createElement('div');
+  el.className = 'sm-time';
+  el.hidden = true;
+  el.innerHTML = '<button type="button" class="sm-time-play" aria-label="Play">▶</button><div class="sm-time-mid"><div class="sm-time-label"></div><input type="range" min="0" max="1000" aria-label="Time"></div><select aria-label="What to show"></select>';
+  const [play, mid, sel] = el.children;
+  const range = mid.querySelector('input');
+  SPANS.forEach(([v, l]) => sel.append(new Option(l, String(v))));
+  let timer = null;
+  const ext = () => {
+    const xs = timeLayers(map).map((l) => map._timeExt[l.id]).filter(Boolean);
+    return xs.length ? [Math.min(...xs.map((x) => x[0])), Math.max(...xs.map((x) => x[1]))] : null;
+  };
+  const set = (at, span) => {
+    const [lo, hi] = ext() || [0, 0];
+    map._time = at >= hi && !span ? null : { at: Math.round(at), span }; // at the very end with no window: show everything
+    applyTime(map);
+    update();
+    map._onTime?.(map._time);
+  };
+  const stop = () => { clearInterval(timer); timer = null; play.textContent = '▶'; play.setAttribute('aria-label', 'Play'); };
+  play.addEventListener('click', () => {
+    if (timer) { stop(); return; }
+    const [lo, hi] = ext() || [0, 0];
+    const span = +sel.value;
+    let at = map._time && map._time.at < hi ? map._time.at : lo;
+    play.textContent = '❚❚';
+    play.setAttribute('aria-label', 'Pause');
+    timer = setInterval(() => {
+      at += (hi - lo) / 120;
+      if (at >= hi) { set(hi, span); stop(); return; }
+      set(at, span);
+    }, 110);
+  });
+  range.addEventListener('input', () => { const [lo, hi] = ext() || [0, 0]; stop(); set(lo + ((hi - lo) * +range.value) / 1000, +sel.value); });
+  sel.addEventListener('change', () => { const [, hi] = ext() || [0, 0]; set(map._time?.at ?? hi, +sel.value); });
+  const fmtT = (ms, wide) => new Date(ms).toLocaleString(undefined, wide ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const update = () => {
+    const e = ext();
+    el.hidden = !e;
+    if (!e) return;
+    const [lo, hi] = e;
+    const wide = hi - lo > 3 * 864e5;
+    const t = map._time;
+    range.value = String(t ? Math.round(((t.at - lo) / ((hi - lo) || 1)) * 1000) : 1000);
+    sel.value = String(t?.span || 0);
+    mid.firstChild.textContent = !t ? `All dates · ${fmtT(lo, wide)} to ${fmtT(hi, wide)}`
+      : t.span ? `${fmtT(t.at - t.span, wide)} to ${fmtT(t.at, wide)}` : `Up to ${fmtT(t.at, wide)}`;
+  };
+  el._update = update;
+  return el;
+}
+function updateTimeBar(map) { map._timeBar?._update(); }
 
 /** Re-reads a layer's data and paint after its features changed (used while drawing). */
 export function reloadLayer(map, layer) {
@@ -543,6 +686,7 @@ export function setVisibleLayers(map, ids) {
       map.setLayoutProperty(lid, 'visibility', k === 'label' && !layer.style?.label ? 'none' : vis);
     });
   });
+  updateTimeBar(map);
   map._legend.render(map);
 }
 
@@ -630,6 +774,25 @@ class LegendControl {
         row.append(bar, lbl);
       }
       if (info.type === 'categories') info.entries.forEach(([label, c]) => { const d = document.createElement('div'); d.append(swatch(c), label); row.append(d); });
+      if (info.size) {
+        const z = info.size;
+        const box = document.createElement('div');
+        box.className = 'sm-legend-sizes';
+        const steps = z.max > z.min ? [z.min, (z.min + z.max) / 2, z.max] : [z.max];
+        steps.forEach((val) => {
+          const item = document.createElement('span');
+          const dot = document.createElement('i');
+          const px = z.lines ? z.lo + ((val - z.min) / ((z.max - z.min) || 1)) * (z.hi - z.lo)
+            : 2 * (z.max > z.min ? z.lo + ((Math.sqrt(val) - Math.sqrt(z.min)) / (Math.sqrt(z.max) - Math.sqrt(z.min))) * (z.hi - z.lo) : z.hi);
+          if (z.lines) { dot.className = 'is-line'; dot.style.height = `${Math.max(1, Math.min(px, 16))}px`; } else { dot.style.width = dot.style.height = `${Math.min(px, 56)}px`; }
+          item.append(dot, fmt(val));
+          box.append(item);
+        });
+        const cap = document.createElement('div');
+        cap.className = 'sm-legend-note';
+        cap.textContent = `Size: ${z.field}`;
+        row.append(cap, box);
+      }
       if (info.type === 'ramp') {
         const bar = document.createElement('div');
         bar.className = 'sm-legend-ramp';

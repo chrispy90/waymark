@@ -43,3 +43,11 @@ test('a moving map can be built from a saved map\'s bookmarks', async () => {
   assert.ok(cards[1].html.includes('&lt;Wide&gt;'));
   assert.deepEqual(mapIdsIn({ blocks: [{ type: 'scrollmap', slides: cards }] }), ['M1']);
 });
+
+test("time settings: a bookmark brings its own (or none), other views fall back to the map's", async () => {
+  const { concreteView } = await load();
+  const timed = { ...map, view: { ...map.view, time: { at: 100, span: 10 } }, bookmarks: [{ id: 'b1', view: { center: [0, 0], zoom: 1 } }, { id: 'b2', view: { center: [0, 0], zoom: 1 }, time: { at: 50, span: 0 } }] };
+  assert.equal(concreteView({ map: 'M1', bookmark: 'b1' }, { M1: timed }).time, undefined);
+  assert.deepEqual(concreteView({ map: 'M1', bookmark: 'b2' }, { M1: timed }).time, { at: 50, span: 0 });
+  assert.deepEqual(concreteView({ map: 'M1', center: [1, 1], zoom: 2 }, { M1: timed }).time, { at: 100, span: 10 });
+});
