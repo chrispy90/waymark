@@ -12,13 +12,14 @@
 
 <p align="center">
   <b>Write a story. Scroll it. Publish it anywhere.</b><br>
-  Waymark is a self-hosted editor for scroll-driven map stories.<br>
-  Add maps that move as you read, live government data, and photos, then share a link or export a website.
+  Waymark is a self-hosted editor for scroll-driven map stories and the maps inside them.<br>
+  Build maps with live government data and analysis, reuse them across stories, then share a link or export a website.
 </p>
 
 <p align="center">
   <a href="#-start-in-a-minute">Quick start</a> ·
   <a href="#-what-you-can-make">Features</a> ·
+  <a href="#make-a-map-once-use-it-in-every-story">Saved maps</a> ·
   <a href="#-publish-it-anywhere">Export</a> ·
   <a href="#-host-it-yourself">Self-hosting</a> ·
   <a href="docs/SCHEMA.md">Story format</a>
@@ -58,7 +59,7 @@ Then open **http://localhost:5180**.
 
 ### A map that moves with the story
 
-The map stays put while story cards scroll past, and it glides to each card's place. You can tilt it, rotate it, switch layers, or swap it for a photo or video on any card.
+The map stays put while story cards scroll past, and it glides to each card's place. You can tilt it, rotate it, switch layers, or swap it for a photo or video on any card. Select words in a card and press **Map link** to make them send the map somewhere else; click a link in the text to change it, move it to other words, or remove it.
 
 <p align="center"><img src="docs/media/moving-map.gif" alt="A moving map flying between places as the reader scrolls" width="100%"></p>
 
@@ -136,6 +137,12 @@ Press **Draw** on any map in the editor and sketch points, lines, freehand route
 
 <p align="center"><img src="docs/media/draw.png" alt="The Draw workspace with a selected area, a dashed arrow and the style panel" width="100%"></p>
 
+### Tours from your phone photos
+
+**Stop by stop** tours have their own tour builder: every stop numbered on a big map, a list with photo thumbnails, and the selected stop's photo, name and text side by side. Drop a batch of photos and each becomes a stop where it was taken, in the order you took it, named after the file. Photos without a location are flagged and placed with a click. Add stops by searching or clicking the map, drag markers to move them, and drag the list to reorder.
+
+<p align="center"><img src="docs/media/tour-builder.png" alt="The tour builder with numbered stops on a map, a list of stops with photos, and the selected stop's details" width="100%"></p>
+
 ### An editor that gets out of the way
 
 Click anything in the live preview to edit it. You also get drag to reorder, undo and redo, a command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>), a phone preview and autosave. Drafts stay private until you publish again.
@@ -195,7 +202,7 @@ Prefer to learn from something finished? **Explore an example** opens a complete
 | **Website folder (.zip)** | Apache, nginx, IIS, shared hosting, S3, GitHub Pages, Netlify, or just double-click `index.html` |
 | **Tomcat web app (.war)** | Drop it in Tomcat's `webapps/` folder (Tomcat 8.5 to 11) |
 
-The export includes the page, your images, a snapshot of your map data and, optionally, the map library. Every path is relative, so it works in any folder. You can also export from the command line:
+The export includes the page, your images, a snapshot of your map data (saved maps included) and, optionally, the map library. Every path is relative, so it works in any folder. You can also export from the command line:
 
 ```bash
 node server.js export my-story --war --out /opt/tomcat/webapps/my-story.war
@@ -220,7 +227,7 @@ Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--n
 
 ## 🏠 Host it yourself
 
-Your stories, accounts and images all live in one `data/` folder. Waymark runs anywhere that has Node 22.13+ or Docker and a persistent disk: a VPS, a home server, Fly.io, Railway, Render and so on.
+Your stories, saved maps, accounts and images all live in one `data/` folder. Waymark runs anywhere that has Node 22.13+ or Docker and a persistent disk: a VPS, a home server, Fly.io, Railway, Render and so on.
 
 1. **Put it behind HTTPS.** [Caddy](https://caddyserver.com) is the easiest: `caddy reverse-proxy --from stories.example.com --to localhost:5180`
 2. **In `.env`,** set `APP_URL=https://stories.example.com` and `COOKIE_SECURE=1`.
@@ -241,7 +248,7 @@ Copy `.env.example` to `.env` and edit it. Everything is optional.
 | `PORT` | `5180` | Port to listen on |
 | `HOST` | this computer only | Set to `0.0.0.0` to let other devices on your network connect |
 | `APP_URL` | `http://localhost:PORT` | Your site's public address, used in password reset emails |
-| `DATA_DIR` | `./data` | Where the database (`storymaps.db`) and uploaded images are stored |
+| `DATA_DIR` | `./data` | Where the database (`waymark.db`) and uploaded images are stored |
 | `COOKIE_SECURE` | off | Set to `1` when the site is served over HTTPS |
 | `ALLOW_SIGNUP` | on | Set to `0` to stop new sign-ups once your accounts exist |
 | `SMTP_*` | off | Email for password resets. See below |
@@ -312,12 +319,15 @@ public/                the web app (plain ES modules, no build step)
   js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
   js/export.js         the export dialog
   js/zip.js            minimal zip writer
-  js/builder.js        the editor
-  js/templates.js      starter templates
+  js/builder.js        the story editor
+  js/wizard.js         the New story wizard; story-kit.js builds stories from its answers and holds the looks
+  js/tour.js           the tour builder for Stop by stop; exif.js reads where and when photos were taken
+  js/templates.js      finished examples
+  map.html             the saved-map editor page
   welcome.html         landing page for signed-out visitors (itself a story)
   stories/, data/      sample story and sample GeoJSON
-docs/SCHEMA.md         the story file format
-test/                  end-to-end API tests (node:test)
+docs/SCHEMA.md         the story and saved-map file formats
+test/                  API tests plus unit tests for saved maps, the wizard, photo locations and story formats (node:test)
 ```
 
 </details>

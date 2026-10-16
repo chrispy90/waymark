@@ -4,6 +4,10 @@ All notable changes to Waymark are listed here. Versions follow [semantic versio
 
 ## Unreleased
 
+Nothing yet.
+
+## 1.3.0 (2026-10-15)
+
 ### Added
 - **Saved maps.** Build a map once in a full-screen map editor and use it in any number of stories; edit it and every story updates, published ones included (readers load maps live; exports get a copy).
   - **Layers:** add from the public data catalog, files, links or drawing; reorder by dragging; show/hide; zoom to; duplicate; remove.
