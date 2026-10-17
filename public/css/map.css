@@ -38,3 +38,8 @@
 .sm-legend-sizes span { display: grid; justify-items: center; gap: 3px; color: #6b7280; font-size: 11px; }
 .sm-legend-sizes i { display: block; border-radius: 50%; border: 1.5px solid #6b7280; background: rgba(107, 114, 128, .15); }
 .sm-legend-sizes i.is-line { width: 28px; border-radius: 2px; border: 0; background: #6b7280; }
+/* Bivariate 3x3 matrix legend */
+.sm-legend-bivar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.sm-bivar-grid { display: grid; grid-template-columns: repeat(3, 16px); grid-template-rows: repeat(3, 16px); gap: 1px; border: 1px solid rgba(0,0,0,.2); border-radius: 3px; overflow: hidden; flex: none; }
+.sm-bivar-grid span { display: block; width: 16px; height: 16px; }
+.sm-bivar-axes { display: grid; gap: 2px; font-size: 11px; color: #4b5563; line-height: 1.25; }

@@ -146,3 +146,22 @@ test('multi-ring trade areas, hub-and-spoke spider lines, spatial clusters, and 
   assert.equal(joinRes.data.features.length, 2);
   assert.equal(joinRes.data.features[0].properties.join_annual_sales, 950000);
 });
+
+test('bivariate 3x3 choropleth colorRamp computes quantile breaks and matrix expression', async () => {
+  const { colorRamp, BIVARIATE_SCHEMES } = await import('../public/js/maps.js');
+  const fc = {
+    type: 'FeatureCollection',
+    features: [
+      { type: 'Feature', properties: { income: 30, risk: 10 }, geometry: { type: 'Point', coordinates: [0, 0] } },
+      { type: 'Feature', properties: { income: 60, risk: 50 }, geometry: { type: 'Point', coordinates: [1, 1] } },
+      { type: 'Feature', properties: { income: 90, risk: 90 }, geometry: { type: 'Point', coordinates: [2, 2] } },
+    ],
+  };
+  const layer = { style: { mode: 'bivariate', field: 'income', field2: 'risk', bivariatePalette: 'blue-orange' } };
+  const { expr, legend } = colorRamp(layer, fc);
+  assert.equal(legend.type, 'bivariate');
+  assert.equal(legend.fieldA, 'income');
+  assert.equal(legend.fieldB, 'risk');
+  assert.deepEqual(legend.grid, BIVARIATE_SCHEMES['blue-orange'].grid);
+  assert.equal(expr[0], 'case');
+});

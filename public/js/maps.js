@@ -310,6 +310,33 @@ export async function fitToLayer(map, id) {
 
 /* ---------------- Styling ---------------- */
 
+export const BIVARIATE_SCHEMES = {
+  'teal-magenta': {
+    label: 'Teal × Magenta',
+    grid: [
+      ['#e8e8e8', '#ace4e4', '#5ac8c8'],
+      ['#dfb0d6', '#a5add3', '#5698b9'],
+      ['#be64ac', '#8c62aa', '#3b4994'],
+    ],
+  },
+  'blue-orange': {
+    label: 'Blue × Orange',
+    grid: [
+      ['#e8e8e8', '#b5c0da', '#6c83b5'],
+      ['#f3c6a0', '#b8a0b0', '#686b8f'],
+      ['#f07c2e', '#b35c4e', '#573b50'],
+    ],
+  },
+  'green-purple': {
+    label: 'Green × Purple',
+    grid: [
+      ['#e8e8e8', '#b8d6be', '#73ae80'],
+      ['#d4b9da', '#9eb0b5', '#5a9178'],
+      ['#980043', '#6c3b75', '#2a5a5b'],
+    ],
+  },
+};
+
 /** Computes the MapLibre color expression and legend entries for a layer given its data. */
 export function colorRamp(layer, fc) {
   const s = layer.style || {};
@@ -335,6 +362,28 @@ export function colorRamp(layer, fc) {
       return { expr, legend: { type: 'ramp', min, max, low, high: color } };
     }
   }
+  if (s.mode === 'bivariate' && field && s.field2) {
+    const valsA = fc.features.map((f) => Number(f.properties?.[field])).filter(Number.isFinite).sort((a, b) => a - b);
+    const valsB = fc.features.map((f) => Number(f.properties?.[s.field2])).filter(Number.isFinite).sort((a, b) => a - b);
+    if (valsA.length && valsB.length) {
+      const q = (arr, t) => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * t)))];
+      const a1 = q(valsA, 1 / 3);
+      const a2 = q(valsA, 2 / 3);
+      const b1 = q(valsB, 1 / 3);
+      const b2 = q(valsB, 2 / 3);
+      const scheme = BIVARIATE_SCHEMES[s.bivariatePalette] || BIVARIATE_SCHEMES['teal-magenta'];
+      const g = scheme.grid;
+      const va = ['to-number', ['get', field], valsA[0]];
+      const vb = ['to-number', ['get', s.field2], valsB[0]];
+      const expr = [
+        'case',
+        ['<', vb, b1], ['case', ['<', va, a1], g[0][0], ['<', va, a2], g[0][1], g[0][2]],
+        ['<', vb, b2], ['case', ['<', va, a1], g[1][0], ['<', va, a2], g[1][1], g[1][2]],
+        ['case', ['<', va, a1], g[2][0], ['<', va, a2], g[2][1], g[2][2]],
+      ];
+      return { expr, legend: { type: 'bivariate', fieldA: field, fieldB: s.field2, grid: g, a1, a2, b1, b2 } };
+    }
+  }
   return { expr: color, legend: { type: 'single', color } };
 }
 
@@ -348,9 +397,9 @@ const POLY = ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]]
 const LINE = ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
 const POINT = ['in', ['geometry-type'], ['literal', ['Point', 'MultiPoint']]];
 // Each data layer is drawn with several MapLibre layers; which ones exist depends on style.display.
-const SUBS = ['raster', 'fill', 'lineglow', 'line', 'dash', 'dot', 'glow', 'circle', 'arrow', 'note', 'label', 'heat', 'cluster', 'count'];
+const SUBS = ['raster', 'fill', 'extrusion', 'lineglow', 'line', 'dash', 'dot', 'glow', 'circle', 'arrow', 'note', 'label', 'heat', 'cluster', 'count'];
 const subIds = (id) => SUBS.map((k) => `dl-${id}-${k}`);
-const hitIds = (map) => map._library.flatMap((l) => ['fill', 'line', 'dash', 'dot', 'circle', 'note', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
+const hitIds = (map) => map._library.flatMap((l) => ['fill', 'extrusion', 'line', 'dash', 'dot', 'circle', 'note', 'cluster'].map((k) => `dl-${l.id}-${k}`)).filter((id) => map.getLayer(id));
 
 /* Per-feature styles. Features can carry their own look in the simplestyle convention (also written by geojson.io):
    stroke, stroke-width, stroke-opacity, fill, fill-opacity, marker-color, marker-size. Waymark adds stroke-dash
@@ -506,7 +555,22 @@ function installLayers(map) {
     const width = num('stroke-width', ['case', LINE, s.width ?? 3, 1]);
     const lineOpacity = num('stroke-opacity', 1);
     map.addLayer({ id: `${src}-fill`, type: 'fill', source: src, filter: POLY, layout: { visibility: vis },
-      paint: { 'fill-color': color, 'fill-opacity': num('fill-opacity', s.opacity ?? 0.45) } });
+      paint: { 'fill-color': color, 'fill-opacity': s.extrude ? 0.08 : num('fill-opacity', s.opacity ?? 0.45) } });
+    if (s.extrude) {
+      map.addLayer({
+        id: `${src}-extrusion`,
+        type: 'fill-extrusion',
+        source: src,
+        filter: POLY,
+        layout: { visibility: vis },
+        paint: {
+          'fill-extrusion-color': color,
+          'fill-extrusion-height': Math.max(1, +(s.extrudeHeight ?? 500)),
+          'fill-extrusion-base': Math.max(0, +(s.extrudeBase ?? 0)),
+          'fill-extrusion-opacity': Math.min(1, Math.max(0.25, +(s.opacity ?? 0.82))),
+        },
+      });
+    }
     if (glowing()) {
       map.addLayer({ id: `${src}-lineglow`, type: 'line', source: src, filter: LINE, layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': color, 'line-width': ['*', width, 5], 'line-blur': ['*', width, 3.5], 'line-opacity': 0.4 } });
@@ -611,7 +675,28 @@ function loadInto(map, layer) {
     const { expr, legend } = colorRamp(layer, fc);
     const own = !s.mode || s.mode === 'single'; // features' own colors only override a single-color style
     const line = own ? ['to-color', ['get', 'stroke'], expr] : ['case', POLY, '#ffffff', expr];
-    map.setPaintProperty(`${src}-fill`, 'fill-color', own ? ['to-color', ['get', 'fill'], ['get', 'stroke'], expr] : expr);
+    const fillColor = own ? ['to-color', ['get', 'fill'], ['get', 'stroke'], expr] : expr;
+    map.setPaintProperty(`${src}-fill`, 'fill-color', fillColor);
+    let extrudeInfo = null;
+    if (map.getLayer(`${src}-extrusion`)) {
+      map.setPaintProperty(`${src}-extrusion`, 'fill-extrusion-color', fillColor);
+      const topH = Math.max(1, +(s.extrudeHeight ?? 500));
+      if (s.extrudeField) {
+        const vals = fc.features.map((f) => Number(f.properties?.[s.extrudeField])).filter((v) => Number.isFinite(v) && v >= 0);
+        if (vals.length) {
+          const min = Math.min(...vals);
+          const max = Math.max(...vals);
+          const hExpr = max > min
+            ? ['interpolate', ['linear'], ['max', 0, ['to-number', ['get', s.extrudeField], 0]], min, Math.max(8, topH * 0.04), max, topH]
+            : topH;
+          map.setPaintProperty(`${src}-extrusion`, 'fill-extrusion-height', hExpr);
+          extrudeInfo = { field: s.extrudeField, min, max, height: topH };
+        }
+      } else {
+        map.setPaintProperty(`${src}-extrusion`, 'fill-extrusion-height', topH);
+        extrudeInfo = { height: topH };
+      }
+    }
     ['line', 'dash', 'dot'].forEach((k) => map.setPaintProperty(`${src}-${k}`, 'line-color', line));
     map.setPaintProperty(`${src}-arrow`, 'icon-color', line);
     map.setPaintProperty(`${src}-note`, 'text-color', own ? ['to-color', ['get', 'stroke'], darkBase(map) ? '#f3f2fb' : '#1f2937'] : expr);
@@ -630,6 +715,7 @@ function loadInto(map, layer) {
     }
     if (display === 'clusters') info = { ...legend, clusters: true };
     if (size) info = { ...info, size };
+    if (extrudeInfo) info = { ...info, extrude: extrudeInfo };
     map._legendInfo[layer.id] = info;
     map._legend.render(map);
   }).catch((err) => {
@@ -912,6 +998,37 @@ class LegendControl {
         lbl.children[0].textContent = fmt(info.min);
         lbl.children[1].textContent = fmt(info.max);
         row.append(bar, lbl);
+      }
+      if (info.type === 'bivariate') {
+        const wrap = document.createElement('div');
+        wrap.className = 'sm-legend-bivar';
+        const mat = document.createElement('div');
+        mat.className = 'sm-bivar-grid';
+        for (let r = 2; r >= 0; r--) {
+          for (let c = 0; c < 3; c++) {
+            const cell = document.createElement('span');
+            cell.style.background = info.grid[r][c];
+            cell.title = `${info.fieldA} (${['Low', 'Med', 'High'][c]}) × ${info.fieldB} (${['Low', 'Med', 'High'][r]})`;
+            mat.append(cell);
+          }
+        }
+        const axes = document.createElement('div');
+        axes.className = 'sm-bivar-axes';
+        const axY = document.createElement('span');
+        axY.textContent = `↑ ${info.fieldB}`;
+        const axX = document.createElement('span');
+        axX.textContent = `${info.fieldA} →`;
+        axes.append(axY, axX);
+        wrap.append(mat, axes);
+        row.append(wrap);
+      }
+      if (info.extrude) {
+        const ex = document.createElement('div');
+        ex.className = 'sm-legend-note';
+        ex.textContent = info.extrude.field
+          ? `3D Height: ${info.extrude.field} (${fmt(info.extrude.min)}–${fmt(info.extrude.max)}, up to ${fmt(info.extrude.height)}m)`
+          : `3D Extruded (${fmt(info.extrude.height)}m)`;
+        row.append(ex);
       }
       return row;
     }));

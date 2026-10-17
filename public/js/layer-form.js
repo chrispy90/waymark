@@ -1,7 +1,7 @@
 // Settings for one data layer (source, filters, insights, style, labels, visible range, popup). Shared by the story
 // editor's Data tab and the saved-map editor, which pass in how to save and redraw.
 import { h, icon, toast } from './ui.js';
-import { loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters } from './maps.js';
+import { loadLayerData, fieldNames, colorRamp, BIVARIATE_SCHEMES, FILTER_OPS, filterData, activeFilters } from './maps.js';
 import { layerStats, TOOLS, kinds } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 import { openDraw, rerunAnalysis, insightsPanel } from './workbench.js';
@@ -195,8 +195,20 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
       h('div', { class: 'rail-section-title' }, 'Style'),
       isPoints ? field(st, { k: 'display', t: 'seg', label: 'Show points as', opts: [['features', 'Dots'], ['heatmap', 'Heatmap'], ['clusters', 'Clusters']], dflt: 'features' }) : null,
       isPoints && st.display === 'heatmap' ? fieldSelect(st, 'weight', 'Weight the heat by (optional)', 'Each point counts the same') : null,
-      field(st, { k: 'mode', t: 'seg', label: 'Color', opts: [['single', 'One color'], ['categorical', 'By category'], ['graduated', 'By number']], dflt: 'single' }),
-      h('div', { class: 'grid-2' },
+      field(st, { k: 'mode', t: 'seg', label: 'Color', opts: [['single', 'One color'], ['categorical', 'Category'], ['graduated', 'Number'], ['bivariate', 'Bivariate']], dflt: 'single' }),
+      st.mode === 'bivariate' ? [
+        h('div', { class: 'grid-2' },
+          fieldSelect(st, 'field', 'Field A (X-axis →)', 'Choose…'),
+          fieldSelect(st, 'field2', 'Field B (Y-axis ↑)', 'Choose…')),
+        field(st, {
+          k: 'bivariatePalette',
+          t: 'seg',
+          label: '3×3 Bivariate color matrix',
+          opts: Object.entries(BIVARIATE_SCHEMES).map(([k, v]) => [k, v.label]),
+          dflt: 'teal-magenta',
+        }),
+        h('p', { class: 'field-hint', style: 'margin-top:-6px' }, 'Colors features by two numeric fields at once (low, medium, high tertiles) with a 3×3 matrix legend.'),
+      ] : h('div', { class: 'grid-2' },
         field(st, { k: 'color', t: 'color', label: st.mode === 'categorical' ? 'Other values' : st.mode === 'graduated' ? 'Highest values' : 'Color', dflt: '#2563eb' }),
         st.mode && st.mode !== 'single' ? fieldSelect(st, 'field', 'Based on field', 'Choose…') : h('span')),
       cats.length ? h('div', { class: 'field' }, labelEl('Category colors'), h('div', { class: 'cats' }, cats.map(([v, c]) => h('label', {},
@@ -205,8 +217,9 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
         field(st, { k: 'opacity', t: 'number', label: 'Fill opacity' }),
         field(st, { k: 'radius', t: 'number', label: 'Point size' }),
         field(st, { k: 'width', t: 'number', label: 'Line width' })),
-      h('div', { class: 'rail-section-title' }, 'Size'),
+      h('div', { class: 'rail-section-title' }, 'Size & 3D Extrusion'),
       sizeField(st, info),
+      extrudeField(st, info),
       h('div', { class: 'rail-section-title' }, 'Time'),
       timeField(layer, info),
       h('div', { class: 'rail-section-title' }, 'Labels and visibility'),
@@ -236,6 +249,33 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
         field(st, { k: 'sizeMax', t: 'number', label: lines ? 'Widest (px)' : 'Largest (px)', placeholder: lines ? '10' : '28' })) : null,
       h('p', { class: 'field-hint' }, st.sizeField ? (lines ? 'Lines get wider as the value grows.' : 'Circle area grows with the value, so twice the value looks twice as big. Areas get a circle at their center. Works together with color.')
         : nums.length ? 'Proportional symbols: bigger circles (or wider lines) for bigger values.' : 'This layer has no number fields to size by.'));
+  }
+
+  // 3D Polygon / Hexbin extrusion: extrude polygons into 3D prisms by a fixed height or numeric attribute.
+  function extrudeField(st, info) {
+    const hasPoly = !info.fc || kinds(info.fc).has('polygon');
+    if (!hasPoly && !st.extrude) return null;
+    const stats = info.fc ? layerStats(info.fc) : { fields: [] };
+    const nums = stats.fields.filter((f) => f.kind === 'number').map((f) => f.name);
+    return h('div', { style: 'margin-top:10px;padding-top:10px;border-top:1px solid var(--line)' },
+      h('label', { class: 'check' },
+        h('input', { type: 'checkbox', checked: !!st.extrude, onchange: (e) => {
+          st.extrude = e.target.checked || undefined;
+          if (st.extrude && st.extrudeHeight == null) st.extrudeHeight = 500;
+          changed();
+          renderRail();
+        } }),
+        'Extrude areas in 3D (3D prisms & hexbins)'),
+      st.extrude ? [
+        h('label', { class: 'field', style: 'margin-top:8px' }, labelEl('3D Height based on field'),
+          h('select', { onchange: (e) => { st.extrudeField = e.target.value || undefined; changed(); renderRail(); } },
+            h('option', { value: '' }, 'Uniform height for all shapes'),
+            nums.map((f) => h('option', { value: f, selected: st.extrudeField === f }, f)))),
+        h('div', { class: 'grid-2' },
+          field(st, { k: 'extrudeHeight', t: 'number', label: st.extrudeField ? 'Max height (meters)' : 'Height (meters)', dflt: 500 }),
+          field(st, { k: 'extrudeBase', t: 'number', label: 'Base elevation (m)', dflt: 0 })),
+        h('p', { class: 'field-hint', style: 'margin-top:-4px' }, 'Tilt the map camera (click 3D or Ctrl-drag) to view 3D extruded polygons.'),
+      ] : null);
   }
 
   // A time field adds a time slider to every map that shows this layer, in the editor and in stories.
