@@ -6,7 +6,8 @@ import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, setTitle } from './ui.js';
-import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile, openPublicData, openHostedLayerPicker } from './workbench.js';
+import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile, addFiles, openPublicData, openHostedLayerPicker } from './workbench.js';
+import { SUPPORTED } from './gisfiles.js';
 import { TOOLS, kinds } from './analysis.js';
 import { openExport } from './export.js';
 import { LOOKS, openPrompts, applyLook, lookOf } from './story-kit.js';
@@ -599,7 +600,7 @@ function dataTab() {
         layer.hostedLayerId ? h('span', { class: 'pill no-dot', title: 'Hosted Feature Layer' }, 'Hosted') : null,
         layer.analysis ? h('span', { class: 'pill no-dot', title: 'Made with an analysis tool' }, TOOLS[layer.analysis.tool]?.name || 'Analysis') : null),
       summary: layerStatus(layer), body: () => layerForm(layer), noun: 'Layer' }))),
-    h('p', { class: 'field-hint', style: 'margin:12px 2px 0' }, 'Tip: drop GeoJSON or CSV files anywhere on this panel to add them.'),
+    h('p', { class: 'field-hint', style: 'margin:12px 2px 0' }, 'Tip: drop GeoJSON, KML, GPX, CSV or geotagged photos anywhere on this panel to add them.'),
   ];
 }
 
@@ -619,10 +620,10 @@ $('#rail').addEventListener('dragleave', (e) => { if (!$('#rail').contains(e.rel
 $('#rail').addEventListener('drop', async (e) => {
   $('#rail').classList.remove('is-drop');
   if (tab !== 'data') return;
-  const files = [...e.dataTransfer.files].filter((f) => /\.(geo)?json$|\.csv$/i.test(f.name));
+  const files = [...e.dataTransfer.files].filter((f) => SUPPORTED.test(f.name));
   if (!files.length) return;
   e.preventDefault();
-  for (const f of files) await addFromFile(f);
+  await addFiles(files);
 });
 
 /* ---------- Fields ---------- */

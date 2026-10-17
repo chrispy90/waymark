@@ -1,10 +1,12 @@
 // Data workspaces for the editor: Add data, Analyze (with live map preview), and Draw & measure.
 import { h, icon, dialog, toast } from './ui.js';
-import { api } from './api.js';
+import { api, uploadImage } from './api.js';
 import { createMap, setVisibleLayers, reloadLayer, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
 import { openCatalog } from './catalog.js';
 import { TOOLS, TOOL_GROUPS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
+import { parseKML, parseGPX, fileKind, ACCEPT } from './gisfiles.js';
+import { readPhotoMeta, titleFromFilename } from './exif.js';
 import { openNewHostedLayerDialog, isHostedLayer, saveHostedLayer } from './table.js';
 
 let ctx; // { story, changed, renderRail, openLayer, selectedIndex, insertBlock }
@@ -38,14 +40,55 @@ export function addHostedLayerRef(r, { open = true } = {}) {
 /* ---------- Parsing uploads ---------- */
 
 export async function parseDataFile(file) {
+  const kind = fileKind(file.name, file.type);
+  if (kind === 'photo') throw new Error('Photos are added with addFiles()');
   const text = await file.text();
-  const data = /\.csv$/i.test(file.name) || file.type === 'text/csv' ? csvToGeoJSON(text) : JSON.parse(text);
+  const data = kind === 'csv' ? csvToGeoJSON(text) : kind === 'kml' ? parseKML(text) : kind === 'gpx' ? parseGPX(text) : JSON.parse(text);
   if (data.type === 'Feature') return { type: 'FeatureCollection', features: [data] };
-  if (data.type !== 'FeatureCollection' || !Array.isArray(data.features)) throw new Error('Expected GeoJSON (a FeatureCollection) or a CSV with lat/lon columns');
+  if (data.type !== 'FeatureCollection' || !Array.isArray(data.features)) throw new Error('Expected GeoJSON, KML, GPX, or a CSV with lat/lon columns');
+  if (!data.features.some((f) => f.geometry)) throw new Error('No mappable features were found in it');
   return { type: 'FeatureCollection', features: data.features.filter((f) => f.geometry) };
 }
 
+/** Geotagged JPEGs → one point layer, each photo uploaded so its popup can show it. */
+export async function addPhotos(files) {
+  const feats = [];
+  let skipped = 0;
+  const busy = toast(`Reading ${files.length} photo${files.length === 1 ? '' : 's'}…`, { duration: 60000 });
+  for (const f of files) {
+    const meta = readPhotoMeta(await f.arrayBuffer());
+    if (!meta.lngLat) { skipped++; continue; }
+    let url = '';
+    try { url = (await uploadImage(f))?.url || ''; } catch { /* keep the point even if the upload fails */ }
+    feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: meta.lngLat },
+      properties: { name: titleFromFilename(f.name) || f.name.replace(/\.\w+$/, ''), taken_at: meta.takenAt ? new Date(meta.takenAt).toISOString().replace('T', ' ').slice(0, 16) : '', photo_url: url, file: f.name } });
+  }
+  busy?.();
+  if (!feats.length) {
+    toast(`None of those photos have a GPS location. Turn on location for your camera, or use "Stop by stop" to place them by hand.`, { tone: 'error', duration: 7000 });
+    return null;
+  }
+  const layer = addLayer({ id: uid('l'), name: feats.length === 1 ? feats[0].properties.name : 'Geotagged photos', data: { type: 'FeatureCollection', features: feats },
+    style: { color: '#db2777' }, popup: { title: '{name}', fields: ['taken_at'] } });
+  toast(`Added ${feats.length} geotagged photo${feats.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} had no GPS location` : ''}`, { tone: 'ok' });
+  return layer;
+}
+
+/** Adds any mix of dropped/selected files: data files become layers, photos are grouped into one layer. */
+export async function addFiles(fileList) {
+  const files = [...fileList];
+  const photos = files.filter((f) => fileKind(f.name, f.type) === 'photo');
+  const others = files.filter((f) => !photos.includes(f));
+  for (const f of others) await addFromFile(f);
+  if (photos.length) await addPhotos(photos);
+}
+
 export async function addFromFile(file) {
+  if (fileKind(file.name, file.type) === 'photo') return addPhotos([file]);
+  if (!fileKind(file.name, file.type)) {
+    toast(`${file.name}: use GeoJSON, KML, GPX, CSV or geotagged JPEG photos. Shapefiles can be converted at mapshaper.org.`, { tone: 'error', duration: 7000 });
+    return null;
+  }
   try {
     const data = await parseDataFile(file);
     const kb = Math.round(JSON.stringify(data).length / 1024);
@@ -105,13 +148,14 @@ export async function openHostedLayerPicker() {
 /* ---------- Add data ---------- */
 
 export function openAddData() {
-  const fileInput = h('input', { type: 'file', accept: '.geojson,.json,.csv,application/json,text/csv', multiple: true, hidden: true,
-    onchange: async () => { const files = [...fileInput.files]; dlg.close(); for (const f of files) await addFromFile(f); } });
+  const fileInput = h('input', { type: 'file', accept: ACCEPT, multiple: true, hidden: true,
+    onchange: async () => { const files = [...fileInput.files]; dlg.close(); await addFiles(files); } });
   const drop = h('button', { type: 'button', class: 'ad-drop', onclick: () => fileInput.click() },
-    icon('upload', { size: 26 }), h('strong', {}, 'Drop a file here, or click to browse'), h('span', {}, 'GeoJSON, or CSV with latitude and longitude columns'));
+    icon('upload', { size: 26 }), h('strong', {}, 'Drop files here, or click to browse'),
+    h('span', {}, 'GeoJSON · KML (Google Earth) · GPX (GPS tracks) · CSV with lat/lon · geotagged JPEG photos'));
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-drop'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('is-drop'));
-  drop.addEventListener('drop', async (e) => { e.preventDefault(); const files = [...e.dataTransfer.files]; dlg.close(); for (const f of files) await addFromFile(f); });
+  drop.addEventListener('drop', async (e) => { e.preventDefault(); const files = [...e.dataTransfer.files]; dlg.close(); await addFiles(files); });
 
   const url = h('input', { class: 'input', type: 'url', placeholder: 'https://… GeoJSON, or an ArcGIS FeatureServer/MapServer layer' });
   const addUrl = () => {
@@ -251,10 +295,10 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
       if (tool.inputs.some((inp) => !inputs[inp.k])) { toast('Choose the layers to use first.', { tone: 'error' }); return; }
       runBtn.disabled = true;
       runBtn.replaceChildren(h('span', { class: 'spinner' }), 'Working…');
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const ins = Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, data[id].data]));
-          result = tool.run(ins, { ...params, _names: Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, lib.find((l) => l.id === id)?.name || 'Layer'])) });
+          result = await tool.run(ins, { ...params, _names: Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, lib.find((l) => l.id === id)?.name || 'Layer'])) });
           map._wmResult = result.data;
           if (map.isStyleLoaded()) resultLayers(map, 'wm-result');
           map.getSource('wm-result')?.setData(result.data);
@@ -309,7 +353,7 @@ export async function rerunAnalysis(layer) {
     ins[k] = await layerFeatures(src);
   }
   try {
-    const r = tool.run(ins, { ...a.params, _names: Object.fromEntries(Object.entries(a.inputs).map(([k, lid]) => [k, lib.find((l) => l.id === lid)?.name || 'Layer'])) });
+    const r = await tool.run(ins, { ...a.params, _names: Object.fromEntries(Object.entries(a.inputs).map(([k, lid]) => [k, lib.find((l) => l.id === lid)?.name || 'Layer'])) });
     layer.data = r.data;
     a.at = Date.now();
     ctx.changed();

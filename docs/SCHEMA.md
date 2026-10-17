@@ -27,7 +27,10 @@ The camera and markers used by maps.
 {
   "center": [-77.04, 38.89],   // [lng, lat]
   "zoom": 12, "bearing": 0, "pitch": 0,
-  "basemap": "streets",        // streets | bright | light | dark
+  "basemap": "streets",        // streets | bright | light | dark | satellite | usgs-imagery | usgs-topo
+  "terrain": true,             // 3D DEM terrain with hillshading and atmospheric sky
+  "terrainExaggeration": 1.5,  // 1.0 to 3.0 vertical exaggeration multiplier
+  "buildings3d": true,         // extruded 3D vector city buildings with height scaling
   "markers": [{ "lngLat": [-77.05, 38.88], "title": "…", "text": "…" }],
   "layers": ["parks", "trail"],  // ids from story.layers that are visible in this view, drawn in library order
   "legend": true                 // default true
@@ -47,9 +50,13 @@ and when `span` is more than 0 only the span before it. Leave it out to show all
   "hostedLayerId": "Lyr_abc123",              // set when pointing at a Waymark Hosted Feature Layer
   "data": { "type": "FeatureCollection" },    // inline data (from an upload), used instead of url
   "style": {
-    "mode": "single",                         // single | categorical | graduated
+    "mode": "single",                         // single | categorical | graduated | bivariate
     "color": "#2563eb",                       // single color, fallback color, or the high end of a graduated ramp
-    "field": "category",                      // used by categorical / graduated
+    "field": "category",                      // used by categorical / graduated / bivariate
+    "field2": "risk_score",                   // used by bivariate 3x3 choropleths
+    "bivariatePalette": "blue-orange",        // blue-orange | purple-green | teal-red | blue-pink
+    "extrudeField": "total_height",           // 3D polygon & hexbin extrusion field
+    "extrudeScale": 1.0,                      // height multiplier for 3D extrusions
     "colors": { "Park": "#16a34a" },          // optional fixed category colors
     "opacity": 0.45, "radius": 6, "width": 3, // polygon fill opacity, point radius, line width
     "label": "name",                          // optional label field

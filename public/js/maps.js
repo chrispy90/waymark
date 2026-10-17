@@ -960,11 +960,24 @@ function popupContent(layer, props = {}) {
   const p = layer.popup || {};
   const el = document.createElement('div');
   el.className = 'sm-popup';
+  if (props.photo_url) {
+    const im = document.createElement('img');
+    im.src = props.photo_url;
+    im.alt = props.name || 'Photo';
+    im.className = 'sm-popup-photo';
+    im.style.maxWidth = '100%';
+    im.style.maxHeight = '200px';
+    im.style.borderRadius = '6px';
+    im.style.marginBottom = '6px';
+    im.style.display = 'block';
+    im.style.objectFit = 'cover';
+    el.append(im);
+  }
   const title = (p.title || '').replace(/\{([^}]+)\}/g, (_, k) => props[k.trim()] ?? '');
   if (title.trim()) { const h = document.createElement('strong'); h.textContent = title; el.append(h); }
   if (props.description && !p.fields?.includes('description')) { const d = document.createElement('p'); d.textContent = String(props.description); el.append(d); }
   const fields = p.fields?.length ? p.fields : layer.drawn ? [] : Object.keys(props)
-    .filter((k) => !/^(OBJECTID|GLOBALID|FID|SHAPE.*|Shape.*|description)$/i.test(k) && !FEATURE_STYLE_KEYS.includes(k)).slice(0, 8);
+    .filter((k) => !/^(OBJECTID|GLOBALID|FID|SHAPE.*|Shape.*|description|photo_url)$/i.test(k) && !FEATURE_STYLE_KEYS.includes(k)).slice(0, 8);
   const table = document.createElement('table');
   fields.forEach((k) => {
     if (props[k] == null || props[k] === '') return;

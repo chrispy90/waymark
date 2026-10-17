@@ -1,5 +1,6 @@
 // Geospatial analysis for the editor, built on Turf.js (global `turf`, loaded only in the builder).
 // Every tool turns input layers into a new FeatureCollection that is saved as an ordinary layer.
+import { densifyLine, profileStats, sampleElevations } from './terrain.js';
 
 const T = () => {
   const t = globalThis.turf || (typeof window !== 'undefined' ? window.turf : null);
@@ -698,7 +699,53 @@ export const TOOLS = {
     },
     style: (src) => ({ ...src.style }),
   },
+
+  elevation: {
+    name: 'Elevation profile & slope', icon: 'mountain', group: 'Terrain',
+    desc: 'Lines become a profile of sample points with elevation, distance and grade (%). Points and areas get an elevation_m field. Uses free global DEM data, no setup.',
+    inputs: [{ k: 'input', label: 'Routes, trails, sites or areas' }],
+    params: [
+      { k: 'samples', t: 'number', label: 'Profile samples per line', dflt: 120 },
+      { k: 'detail', t: 'choice', label: 'DEM detail', dflt: '12', opts: [['10', '~120 m'], ['12', '~30 m'], ['14', '~8 m']] },
+    ],
+    name_: (p, a) => `${a.input} elevation`,
+    async run({ input }, p) {
+      const zoom = Number(p.detail) || 12;
+      const feats = input.features.filter((f) => f.geometry);
+      guard(feats.length, 2000, 'features');
+      const lines = feats.filter((f) => geomKind(f) === 'line');
+      if (lines.length) {
+        const samples = Math.max(10, Math.min(500, Number(p.samples) || 120));
+        const out = [];
+        const notes = [];
+        for (const [li, f] of lines.slice(0, 25).entries()) {
+          const parts = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
+          const coords = parts.flat();
+          const pts = densifyLine(coords, samples);
+          const elev = await sampleElevations(pts.map((s) => s.c), { zoom });
+          const good = pts.map((s, i) => ({ ...s, elev: elev[i] })).filter((s) => s.elev != null);
+          if (good.length < 2) continue;
+          const st = profileStats(good);
+          const name = featureName(f.properties) || `Line ${li + 1}`;
+          good.forEach((s, i) => out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [round(s.c[0], 6), round(s.c[1], 6)] },
+            properties: { line: name, sample: i + 1, distance_km: round(s.km, 3), elevation_m: s.elev, grade_pct: round(st.grades[i], 1) } }));
+          notes.push(`${name}: ${st.length_km} km, +${st.gain_m} m / −${st.loss_m} m, ${st.min_m}–${st.max_m} m, steepest ${st.max_grade_pct}%`);
+        }
+        if (!out.length) throw new Error('Could not read elevation for these lines. Check your connection and try again.');
+        return { data: fc(out), field: 'elevation_m', note: notes.join(' · ') };
+      }
+      const centers = feats.map((f) => pointOfSafe(f));
+      const elev = await sampleElevations(centers, { zoom });
+      const out = feats.map((f, i) => ({ ...f, properties: { ...f.properties, elevation_m: elev[i], elevation_ft: elev[i] == null ? null : round(elev[i] * 3.28084, 1) } }));
+      const vals = elev.filter((e) => e != null);
+      return { data: fc(out), field: 'elevation_m', note: vals.length ? `Elevation ${Math.round(Math.min(...vals))}–${Math.round(Math.max(...vals))} m across ${vals.length.toLocaleString()} features` : 'No elevation could be read' };
+    },
+    style: (src, r) => ({ color: '#15803d', mode: 'graduated', field: r?.field || 'elevation_m' }),
+  },
 };
+
+// A representative [lng,lat] for any feature, falling back to vertex averaging when Turf is missing.
+const pointOfSafe = (f) => centerCoordsOf(f);
 
 export const OPS = ['=', '≠', '>', '≥', '<', '≤', 'contains', 'is empty', 'is not empty'];
 
@@ -752,7 +799,7 @@ function prefixed(props = {}, prefix, use) {
 }
 
 /** Tools grouped the way desktop GIS toolboxes group them. */
-export const TOOL_GROUPS = ['Summarize', 'Proximity', 'Overlay', 'Manage data'];
+export const TOOL_GROUPS = ['Summarize', 'Proximity', 'Overlay', 'Terrain', 'Manage data'];
 
 /* ---------- Statistics ---------- */
 

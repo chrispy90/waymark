@@ -324,6 +324,7 @@ export function calculateField(fc, targetField, spec = {}) {
       else if (metric === 'area_sqft') val = Math.round(sqm * 10.7639);
       else if (metric === 'length_km') val = +km.toFixed(3);
       else if (metric === 'length_miles') val = +(km * 0.621371).toFixed(3);
+      else if (metric === 'elevation_m') val = p.elevation_m != null ? Number(p.elevation_m) : (feat.geometry?.coordinates?.[2] != null ? Math.round(feat.geometry.coordinates[2] * 10) / 10 : null);
       else if (metric === 'latitude') val = +lat.toFixed(6);
       else if (metric === 'longitude') val = +lon.toFixed(6);
       p[targetField] = val;
@@ -346,10 +347,12 @@ export function calculateField(fc, targetField, spec = {}) {
       return;
     }
     const [lon, lat] = geomCentroid(feat.geometry);
+    const elev = p.elevation_m != null ? p.elevation_m : (feat.geometry?.coordinates?.[2] != null ? feat.geometry.coordinates[2] : 0);
     const replaced = String(expression || '')
       .replace(/\$ROW\b/gi, String(idx + 1))
       .replace(/\$LAT\b/gi, String(+lat.toFixed(5)))
       .replace(/\$LON\b/gi, String(+lon.toFixed(5)))
+      .replace(/\$ELEV_M\b|\$ELEVATION_M\b/gi, String(elev))
       .replace(/\$AREA_KM2\b/gi, String(+(geomAreaSqm(feat) / 1e6).toFixed(3)))
       .replace(/\$AREA_ACRES\b/gi, String(+(geomAreaSqm(feat) * 0.000247105).toFixed(2)))
       .replace(/\$LEN_KM\b/gi, String(+geomLengthKm(feat).toFixed(3)))
@@ -618,6 +621,7 @@ export async function renderAttributeTable(container, layer, { map, onChange, on
             h('option', { value: 'area_sqft' }, 'Area (sq ft)'),
             h('option', { value: 'length_km' }, 'Length / Perimeter (km)'),
             h('option', { value: 'length_miles' }, 'Length / Perimeter (miles)'),
+            h('option', { value: 'elevation_m' }, 'Elevation (m from Z or DEM)'),
             h('option', { value: 'latitude' }, 'Centroid Latitude'),
             h('option', { value: 'longitude' }, 'Centroid Longitude'),
           );

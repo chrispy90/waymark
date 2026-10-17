@@ -99,17 +99,51 @@ Live layers refresh every time someone opens the story, so a published map stays
 
 <p align="center"><img src="docs/media/live-quakes.png" alt="This week's earthquakes and tectonic plate boundaries on a dark map" width="100%"></p>
 
+### 3D Terrain, Elevation HUD & 3D City Buildings
+
+Turn on realistic 3D elevation with a single click in any story map, moving map or saved map:
+
+- **Free global DEM terrain & hillshading:** powered by Mapzen Terrarium elevation tiles with dynamic vertical exaggeration (1.0× to 3.0×) and atmospheric sky horizon.
+- **3D city building footprints:** toggle extruded 3D structures (`fill-extrusion`) from OpenFreeMap vector building footprints with true-to-height scaling and ambient shadows.
+- **Camera Tilt & Pitch HUD:** live interactive tilt angle indicator in the map status bar with real-time pitch readouts (up to 85°).
+
+### 3D Polygon & Hexbin Extrusions + Bivariate Mapping
+
+Display complex multivariate geospatial relationships directly on the map:
+
+- **3D Attribute Extrusions:** extrude any 2D polygon layer or hexbin summary into 3D height prisms scaled proportionally to any numeric attribute (e.g. population, total sales, earthquake count).
+- **3×3 Bivariate Choropleth:** map two continuous variables simultaneously (e.g. *household income* vs *climate flood risk*) with quantile breaks and an interactive 3×3 matrix legend.
+
+### Remote Sensing, STAC Satellite Finder & Time Travel
+
+Professional Earth Observation and spectral analytics without leaving the browser:
+
+- **Spectral Index Catalog:** one-click live overlays for NASA MODIS NDVI Vegetation Health, False-Color Infrared 7-2-1 (burn scar & flood detection), Sea Surface Temperature (GHRSST), Aerosol Optical Depth (wildfire smoke & dust), Snow Cover NDSI, and USGS 3DEP Shaded Relief & National Hydrography.
+- **Live STAC Satellite Scene Finder:** search Copernicus Sentinel-2 L2A scenes around your map viewport using Element84 Earth Search STAC API. Filter by cloud cover %, inspect scene metadata (MGRS tile, sun elevation, telemetry), and stream 10-meter Cloud-Optimized GeoTIFFs (COG) directly into the map.
+- **Satellite Time-Travel Before & After:** compare multi-date satellite imagery side by side with a draggable swipe divider to detect wildfire burn scars, urban sprawl, drought depletion, or glacial retreat.
+
+### Universal GIS Ingest: KML, GPX, Photos, GeoJSON & CSV
+
+Drop any spatial file directly onto the map or Data panel:
+
+- **KML & KMZ:** parses Google Earth placemarks, folders, lines, polygons, and ExtendedData attributes.
+- **GPX:** reads GPS waypoints, tracks, and routes with automatic distance, elevation gain/loss, and timestamp stats.
+- **Geotagged JPEG Photos:** extracts camera EXIF GPS coordinates and timestamps; multiple photos automatically merge into an interactive photo-points layer with popup image previews.
+- **Elevation Profile & Slope Analysis Tool:** sample polylines or points against the global DEM in the **Analyze** toolbox to compute total distance, elevation gain/loss, and slope grade percentages (%).
+- **`$ELEVATION_M` in Field Calculator:** access elevation directly in attribute tables and calculate derived metrics.
+
 ### Filter it, then analyze it
 
 **Filters** narrow a layer with plain rules, like *magnitude ≥ 5*, *in the last 7 days* or *state = Texas*. They apply to the map, the insights, the analysis and the export.
 
-**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 22 tools are grouped the way desktop GIS toolboxes group them:
+**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 23 tools are grouped the way desktop GIS toolboxes group them:
 
 | Group | Tools |
 |---|---|
 | **Summarize** | Hex bins (count, sum or average) · Spatial density clusters (DBSCAN) · Count in areas · Dissolve (by a field, e.g. counties into states) |
 | **Proximity** | Buffer · Multi-ring trade areas (concentric catchment bands) · Hub & spoke desire lines · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
 | **Overlay** | Clip · Erase · Intersect · Join by location · Select by location (touch, inside, contain, stay clear) · Merge |
+| **Terrain** | Elevation profile & slope (samples polylines along global DEM for distance, gain/loss, and grade %) |
 | **Manage data** | Join attributes by field · Center points · Outline (convex hull) · Simplify · Add geometry attributes (area, length, coordinates) · Filter |
 
 <table>
@@ -123,7 +157,7 @@ Live layers refresh every time someone opens the story, so a published map stays
   </tr>
 </table>
 
-You can also show points as a **heatmap** or **clusters**, or use **proportional symbols**: size points, areas or lines by a number field (circle area grows with the value, and it works together with color). Give a layer a **time field** and its maps get a **time slider** with play, showing everything up to a moment or a trailing day, week or month. Readers can scrub it too, and bookmarks and story cards remember where it was set. Bring your own data: GeoJSON, CSV, Hosted Feature Layers, or any public ArcGIS layer.
+You can also show points as a **heatmap** or **clusters**, or use **proportional symbols**: size points, areas or lines by a number field (circle area grows with the value, and it works together with color). Give a layer a **time field** and its maps get a **time slider** with play, showing everything up to a moment or a trailing day, week or month. Readers can scrub it too, and bookmarks and story cards remember where it was set. Bring your own data: GeoJSON, KML, GPX, geotagged photos, CSV, Hosted Feature Layers, or any public ArcGIS layer.
 
 ### Hosted feature layers & editable attribute tables
 

@@ -199,3 +199,132 @@ test('remote sensing: satellite sensors catalog and STAC scene conversion', asyn
   assert.equal(p.visual_cog_url, 'https://example.com/visual.tif');
   assert.match(fc.metadata.attribution, /Sentinel-2/);
 });
+
+test('universal GIS file ingest: KML and GPX parsing into GeoJSON FeatureCollections', async () => {
+  const { parseKML, parseGPX, fileKind } = await load('gisfiles.js');
+
+  assert.equal(fileKind('trail.kml'), 'kml');
+  assert.equal(fileKind('hike.gpx'), 'gpx');
+  assert.equal(fileKind('photo.jpg'), 'photo');
+  assert.equal(fileKind('points.geojson'), 'geojson');
+  assert.equal(fileKind('data.csv'), 'csv');
+
+  // KML parsing test
+  const sampleKml = `<?xml version="1.0" encoding="UTF-8"?>
+  <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+      <Placemark>
+        <name>Summit Station</name>
+        <description>High altitude sensor</description>
+        <ExtendedData>
+          <Data name="temp_c"><value>14.5</value></Data>
+        </ExtendedData>
+        <Point><coordinates>-105.2705,40.0150,2100</coordinates></Point>
+      </Placemark>
+      <Placemark>
+        <name>Ridge Trail</name>
+        <LineString>
+          <coordinates>-105.27,40.01 -105.28,40.02 -105.29,40.03</coordinates>
+        </LineString>
+      </Placemark>
+    </Document>
+  </kml>`;
+
+  const kmlFc = parseKML(sampleKml);
+  assert.equal(kmlFc.type, 'FeatureCollection');
+  assert.equal(kmlFc.features.length, 2);
+  assert.equal(kmlFc.features[0].geometry.type, 'Point');
+  assert.deepEqual(kmlFc.features[0].geometry.coordinates, [-105.2705, 40.015, 2100]);
+  assert.equal(kmlFc.features[0].properties.name, 'Summit Station');
+  assert.equal(kmlFc.features[0].properties.temp_c, 14.5);
+  assert.equal(kmlFc.features[1].geometry.type, 'LineString');
+  assert.equal(kmlFc.features[1].geometry.coordinates.length, 3);
+
+  // GPX parsing test
+  const sampleGpx = `<?xml version="1.0" encoding="UTF-8"?>
+  <gpx version="1.1" creator="Waymark Test" xmlns="http://www.topografix.com/GPX/1/1">
+    <wpt lat="37.7749" lon="-122.4194">
+      <ele>15.2</ele>
+      <name>San Francisco Start</name>
+    </wpt>
+    <trk>
+      <name>Pacific Ridge Route</name>
+      <trkseg>
+        <trkpt lat="37.77" lon="-122.42"><ele>10.0</ele></trkpt>
+        <trkpt lat="37.78" lon="-122.43"><ele>50.0</ele></trkpt>
+        <trkpt lat="37.79" lon="-122.44"><ele>30.0</ele></trkpt>
+      </trkseg>
+    </trk>
+  </gpx>`;
+
+  const gpxFc = parseGPX(sampleGpx);
+  assert.equal(gpxFc.type, 'FeatureCollection');
+  assert.equal(gpxFc.features.length, 2);
+  assert.equal(gpxFc.features[0].geometry.type, 'Point');
+  assert.equal(gpxFc.features[0].properties.name, 'San Francisco Start');
+  assert.equal(gpxFc.features[0].properties.elevation_m, 15.2);
+  assert.equal(gpxFc.features[1].geometry.type, 'LineString');
+  assert.equal(gpxFc.features[1].properties.name, 'Pacific Ridge Route');
+  assert.ok(gpxFc.features[1].properties.length_km > 0);
+  assert.equal(gpxFc.features[1].properties.elev_gain_m, 40);
+  assert.equal(gpxFc.features[1].properties.elev_loss_m, 20);
+});
+
+test('terrain DEM decoder, line densification, profile stats, and field calculator elevation', async () => {
+  const { decodeTerrarium, lngLatToTilePixel, densifyLine, profileStats } = await load('terrain.js');
+  const { calculateField } = await load('table.js');
+
+  // Terrarium elevation decode: R*256 + G + B/256 - 32768
+  // e.g. R=128, G=0, B=0 -> 128*256 - 32768 = 0 meters (sea level)
+  assert.equal(decodeTerrarium(128, 0, 0), 0);
+  // e.g. Mt Everest ~8848m -> R=162, G=176, B=0 -> 162*256 + 176 - 32768 = 41648 - 32768 = 8880
+  const everestSample = decodeTerrarium(162, 176, 0);
+  assert.ok(everestSample > 8800 && everestSample < 8900);
+
+  // Web mercator tile math
+  const tile = lngLatToTilePixel([-105.27, 40.01], 12);
+  assert.ok(Number.isInteger(tile.tx));
+  assert.ok(Number.isInteger(tile.ty));
+  assert.ok(tile.px >= 0 && tile.px < 256);
+  assert.ok(tile.py >= 0 && tile.py < 256);
+
+  // Line densification along coordinates
+  const line = [[-105.27, 40.01], [-105.28, 40.02]];
+  const samples = densifyLine(line, 10);
+  assert.equal(samples.length, 10);
+  assert.equal(samples[0].km, 0);
+  assert.ok(samples[9].km > 0);
+
+  // Elevation profile stats calculation
+  const profile = [
+    { km: 0.0, elev: 100 },
+    { km: 1.0, elev: 200 },
+    { km: 2.0, elev: 150 },
+    { km: 3.0, elev: 300 },
+  ];
+  const stats = profileStats(profile);
+  assert.equal(stats.gain_m, 250);
+  assert.equal(stats.loss_m, 50);
+  assert.equal(stats.min_m, 100);
+  assert.equal(stats.max_m, 300);
+  assert.equal(stats.length_km, 3.0);
+  assert.ok(stats.max_grade_pct > 0);
+
+  // Field calculator elevation metrics
+  const fc = {
+    type: 'FeatureCollection',
+    metadata: { fields: [] },
+    features: [
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-105, 40, 1850] }, properties: {} },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-105, 40] }, properties: { elevation_m: 2200 } },
+    ],
+  };
+
+  calculateField(fc, 'elev_calc', { mode: 'geometry', metric: 'elevation_m' });
+  assert.equal(fc.features[0].properties.elev_calc, 1850);
+  assert.equal(fc.features[1].properties.elev_calc, 2200);
+
+  calculateField(fc, 'elev_formula', { mode: 'formula', expression: '$ELEVATION_M + 100' });
+  assert.equal(fc.features[0].properties.elev_formula, 1950);
+  assert.equal(fc.features[1].properties.elev_formula, 2300);
+});
