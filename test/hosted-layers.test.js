@@ -165,3 +165,37 @@ test('bivariate 3x3 choropleth colorRamp computes quantile breaks and matrix exp
   assert.deepEqual(legend.grid, BIVARIATE_SCHEMES['blue-orange'].grid);
   assert.equal(expr[0], 'case');
 });
+
+test('remote sensing: satellite sensors catalog and STAC scene conversion', async () => {
+  const { SATELLITE_SENSORS } = await load('maps.js');
+  const keys = Object.keys(SATELLITE_SENSORS);
+  assert.ok(keys.length >= 7);
+  for (const k of keys) {
+    const s = SATELLITE_SENSORS[k];
+    assert.ok(s.label && s.attribution, `${k} needs label and attribution`);
+    assert.match(s.tiles, /\{date\}/, `${k} tiles must be date-templated for time travel`);
+    assert.match(s.tiles, /\{z\}.*\{y\}.*\{x\}/);
+    assert.ok(Number.isFinite(s.maxzoom));
+  }
+
+  const { stacItemsToGeoJSON } = await load('catalog.js');
+  const fc = stacItemsToGeoJSON([
+    {
+      id: 'S2B_18SUJ_20240801_0_L2A',
+      geometry: { type: 'Polygon', coordinates: [[[-77, 38], [-76, 38], [-76, 39], [-77, 39], [-77, 38]]] },
+      properties: { datetime: '2024-08-01T15:59:12Z', 'eo:cloud_cover': 3.456, platform: 'sentinel-2b', 'mgrs:utm_zone': 18, 'mgrs:latitude_band': 'S', 'mgrs:grid_square': 'UJ', 'view:sun_elevation': 61.23 },
+      assets: { thumbnail: { href: 'https://example.com/thumb.jpg' }, visual: { href: 'https://example.com/visual.tif' } },
+    },
+    { id: 'no-geometry', properties: {} },
+  ]);
+  assert.equal(fc.type, 'FeatureCollection');
+  assert.equal(fc.features.length, 1);
+  const p = fc.features[0].properties;
+  assert.equal(p.scene_id, 'S2B_18SUJ_20240801_0_L2A');
+  assert.equal(p.date, '2024-08-01');
+  assert.equal(p.cloud_cover_pct, 3.5);
+  assert.equal(p.mgrs_tile, '18SUJ');
+  assert.equal(p.sun_elevation, 61.2);
+  assert.equal(p.visual_cog_url, 'https://example.com/visual.tif');
+  assert.match(fc.metadata.attribution, /Sentinel-2/);
+});

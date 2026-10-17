@@ -23,6 +23,51 @@ export const BASEMAPS = {
     'USGS The National Map', 16) },
 };
 
+export const SATELLITE_SENSORS = {
+  'modis-true': {
+    label: 'MODIS True Color (Daily)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+    maxzoom: 9,
+    attribution: 'NASA GIBS / EOSDIS, MODIS Terra True Color',
+  },
+  'viirs-true': {
+    label: 'VIIRS True Color (High-Res Daily)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+    maxzoom: 9,
+    attribution: 'NASA GIBS / NOAA Suomi NPP VIIRS',
+  },
+  'modis-false-ir': {
+    label: 'False-Color Infrared 7-2-1 (Burn Scars, Floods & Smoke Penetration)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_Bands721/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+    maxzoom: 9,
+    attribution: 'NASA GIBS / MODIS Terra Bands 7-2-1 (SWIR/NIR)',
+  },
+  ndvi: {
+    label: 'NDVI Vegetation Health Index (8-Day)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDVI_8Day/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png',
+    maxzoom: 9,
+    attribution: 'NASA GIBS / MODIS Terra NDVI',
+  },
+  sst: {
+    label: 'Sea Surface Temperature (Infrared GHRSST)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GHRSST_L4_MUR_Sea_Surface_Temperature/default/{date}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png',
+    maxzoom: 7,
+    attribution: 'NASA JPL / GHRSST MUR Sea Surface Temperature',
+  },
+  snow: {
+    label: 'Snow & Ice Cover Index (NDSI)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_NDSI_Snow_Cover/default/{date}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
+    maxzoom: 8,
+    attribution: 'NASA GIBS / MODIS Terra NDSI Snow Cover',
+  },
+  aerosol: {
+    label: 'Smoke, Dust & Aerosol Optical Depth (AOD)',
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Combined_Value_Added_AOD/default/{date}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png',
+    maxzoom: 6,
+    attribution: 'NASA GIBS / MODIS Aerosol Optical Depth',
+  },
+};
+
 export const DEFAULT_VIEW = { center: [-77.04, 38.85], zoom: 10, bearing: 0, pitch: 0, basemap: 'streets', markers: [], layers: [] };
 
 export const PALETTE = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];

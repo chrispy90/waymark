@@ -1,5 +1,5 @@
 // Story renderer. Takes a story JSON document (see docs/SCHEMA.md) and builds the reading experience.
-import { createMap, applyView, DEFAULT_VIEW, layerFeatures, PALETTE } from './maps.js';
+import { createMap, applyView, DEFAULT_VIEW, layerFeatures, PALETTE, SATELLITE_SENSORS } from './maps.js';
 import { sanitize, safeUrl } from './sanitize.js';
 import { track, reveal, countUp, viewProgress, pinProgress, exitProgress, reducedMotion } from './effects.js';
 import { BRAND } from './brand.js';
@@ -536,14 +536,17 @@ const BLOCKS = {
     return h('section', { class: 'sm-stops size-full' }, h('div', { class: 'sm-stops-grid' }, panel, mapEl), caption(b.caption));
   },
 
-  // Before & after: compare two basemaps or layer sets with a draggable divider.
+  // Before & after: compare two basemaps, layer sets, or multi-date satellite imagery with a draggable divider.
   compare: (b, ctx) => {
     const leftEl = h('div', { class: 'sm-map' });
     const rightEl = h('div', { class: 'sm-map sm-compare-top' });
     const handle = h('div', { class: 'sm-compare-handle', role: 'slider', tabindex: 0, 'aria-label': 'Divider position', 'aria-valuemin': 0, 'aria-valuemax': 100 });
+    const sensor = b.satSensor && SATELLITE_SENSORS[b.satSensor];
+    const leftText = b.leftLabel || (sensor && b.leftDate ? b.leftDate : '');
+    const rightText = b.rightLabel || (sensor && b.rightDate ? b.rightDate : '');
     const wrap = h('div', { class: 'sm-compare' }, leftEl, rightEl, handle,
-      h('span', { class: 'sm-compare-label left' }, b.leftLabel || ''),
-      h('span', { class: 'sm-compare-label right' }, b.rightLabel || ''));
+      h('span', { class: 'sm-compare-label left' }, leftText),
+      h('span', { class: 'sm-compare-label right' }, rightText));
     let pos = 50;
     const setPos = (p) => {
       pos = Math.max(0, Math.min(100, p));
@@ -566,8 +569,39 @@ const BLOCKS = {
       if (!entries.some((e) => e.isIntersecting)) return;
       io.disconnect();
       const view = b.view || DEFAULT_VIEW;
-      const a = createMap(leftEl, { ...view, basemap: b.left || 'streets', layers: b.leftLayers || [] }, { library: ctx.library });
-      const c = createMap(rightEl, { ...view, basemap: b.right || 'dark', layers: b.rightLayers || [], legend: false }, { interactive: false, library: ctx.library });
+      let leftLayers = [...(b.leftLayers || [])];
+      let rightLayers = [...(b.rightLayers || [])];
+      const lib = [...(ctx.library || [])];
+      if (sensor) {
+        if (b.leftDate) {
+          const lid = `_sat_l_${b.satSensor}_${b.leftDate}`;
+          lib.push({
+            id: lid,
+            name: `${sensor.label} (${b.leftDate})`,
+            type: 'raster',
+            tiles: sensor.tiles.replace('{date}', b.leftDate),
+            maxzoom: sensor.maxzoom,
+            attribution: sensor.attribution,
+            style: { opacity: 1 },
+          });
+          leftLayers = [lid, ...leftLayers];
+        }
+        if (b.rightDate) {
+          const rid = `_sat_r_${b.satSensor}_${b.rightDate}`;
+          lib.push({
+            id: rid,
+            name: `${sensor.label} (${b.rightDate})`,
+            type: 'raster',
+            tiles: sensor.tiles.replace('{date}', b.rightDate),
+            maxzoom: sensor.maxzoom,
+            attribution: sensor.attribution,
+            style: { opacity: 1 },
+          });
+          rightLayers = [rid, ...rightLayers];
+        }
+      }
+      const a = createMap(leftEl, { ...view, basemap: b.left || 'streets', layers: leftLayers }, { library: lib });
+      const c = createMap(rightEl, { ...view, basemap: b.right || 'dark', layers: rightLayers, legend: false }, { interactive: false, library: lib });
       ctx.maps.push(a, c);
       a.on('move', () => c.jumpTo({ center: a.getCenter(), zoom: a.getZoom(), bearing: a.getBearing(), pitch: a.getPitch() }));
     }, { rootMargin: '200px' });

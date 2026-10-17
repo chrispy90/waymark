@@ -1,5 +1,5 @@
 // Waymark editor: block outline + settings on the left, live preview on the right.
-import { BASEMAPS, DEFAULT_VIEW, createMap, readView, applyView, setEnvironment, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
+import { BASEMAPS, SATELLITE_SENSORS, DEFAULT_VIEW, createMap, readView, applyView, setEnvironment, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
 import { layerStats } from './analysis.js';
 import { normalizeStory } from './story-format.js';
 import { csvToGeoJSON } from './csv.js';
@@ -83,11 +83,12 @@ const CATALOG = {
   stops: { label: 'Stop by stop', icon: 'route', group: 'Maps', desc: 'Readers step through numbered places with photos',
     make: () => ({ basemap: 'streets', zoom: 14, places: [] }),
     fields: [{ k: 'places', t: 'tour' }, { k: 'basemap', t: 'select', label: 'Basemap', opts: BASEMAP_OPTS }, { k: 'zoom', t: 'number', label: 'Zoom level at each place' }, { k: 'layers', t: 'layerset', label: 'Data layers' }] },
-  compare: { label: 'Before & after', icon: 'compare', group: 'Maps', desc: 'Two maps, one view: drag the divider to compare',
+  compare: { label: 'Before & after', icon: 'compare', group: 'Maps', desc: 'Two maps or multi-date satellite imagery: drag the divider to compare',
     make: () => ({ left: 'streets', right: 'dark', leftLabel: 'Before', rightLabel: 'After', view: view(), caption: '' }),
     fields: [{ k: 'view', t: 'view', label: 'Map', noMarkers: true, noLayers: true },
       { row: [{ k: 'leftLabel', label: 'Left label' }, { k: 'rightLabel', label: 'Right label' }] },
       { row: [{ k: 'left', t: 'select', label: 'Left basemap', opts: BASEMAP_OPTS }, { k: 'right', t: 'select', label: 'Right basemap', opts: BASEMAP_OPTS }] },
+      { t: 'satCompare' },
       { k: 'leftLayers', t: 'layerset', label: 'Left data layers' }, { k: 'rightLayers', t: 'layerset', label: 'Right data layers' }, { k: 'caption', label: 'Caption' }] },
 };
 const GROUPS = ['Write', 'Media', 'Maps', 'Scroll effects'];
@@ -659,10 +660,39 @@ function field(obj, spec) {
     case 'stats': return listField(obj, 'items', { noun: 'Number', make: () => ({ value: '100', label: '' }), summary: (it) => `${it.value} ${it.label || ''}`,
       form: (it) => fields(it, [{ row: [{ k: 'value', label: 'Number', placeholder: '1,200 or 98% or $3.4M' }, { k: 'label', label: 'What it means' }] }]) });
     case 'chartData': return chartDataField(obj);
+    case 'satCompare': return satCompareField(obj);
     case 'gallery': return listField(obj, 'images', { noun: 'Photo', make: () => ({ url: '', caption: '' }), summary: (im) => im.caption || (im.url ? 'Photo' : 'No image yet'),
       form: (im) => fields(im, [{ k: 'url', t: 'image', label: 'Photo' }, { k: 'caption', label: 'Caption' }, { k: 'alt', label: 'Alt text' }]) });
     default: return h('label', { class: 'field' }, labelEl(spec.label), h('input', { type: 'text', value: val, placeholder: spec.placeholder, oninput: (e) => set(e.target.value) }), hint);
   }
+}
+
+function satCompareField(block) {
+  const wrap = h('div', { class: 'field' });
+  const draw = () => {
+    const sensorSel = h('select', { onchange: (e) => {
+      block.satSensor = e.target.value || undefined;
+      if (block.satSensor) {
+        if (!block.leftDate) block.leftDate = '2023-08-01';
+        if (!block.rightDate) block.rightDate = '2024-08-01';
+      }
+      changed();
+      draw();
+    } },
+    h('option', { value: '', selected: !block.satSensor }, 'None (compare basemaps & layers only)'),
+    ...Object.entries(SATELLITE_SENSORS).map(([k, v]) => h('option', { value: k, selected: block.satSensor === k }, v.label)));
+
+    wrap.replaceChildren(
+      h('label', { class: 'field' }, labelEl('Satellite Time-Travel sensor (optional)'), sensorSel,
+        h('p', { class: 'field-hint' }, 'Overlay multi-date NASA Earth Observation imagery (True Color, False-Color IR, NDVI, SST, Snow) on both sides for instant change detection.')),
+      block.satSensor ? h('div', { class: 'grid-2' },
+        h('label', { class: 'field' }, labelEl('Left satellite date'), h('input', { type: 'date', value: block.leftDate || '', oninput: (e) => { block.leftDate = e.target.value; changed(); } })),
+        h('label', { class: 'field' }, labelEl('Right satellite date'), h('input', { type: 'date', value: block.rightDate || '', oninput: (e) => { block.rightDate = e.target.value; changed(); } })),
+      ) : null,
+    );
+  };
+  draw();
+  return wrap;
 }
 
 function chartDataField(block) {

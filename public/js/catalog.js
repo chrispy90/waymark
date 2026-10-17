@@ -1,6 +1,8 @@
 // Public data catalog: ready-to-use layers from government and open-data sources, plus ArcGIS Online search.
 // Every source here was checked to work straight from a browser (CORS) with no API key.
 import { h, icon, dialog, toast } from './ui.js';
+import { SATELLITE_SENSORS } from './maps.js';
+export { SATELLITE_SENSORS };
 
 const uid = () => 'l' + Math.random().toString(36).slice(2, 8);
 
@@ -68,7 +70,7 @@ export const CATALOG = [
     desc: 'Where the Earth\'s plates meet: ridges, trenches and transform faults.',
     layer: () => ({ name: 'Plate boundaries', url: `${NOAA_HAZ}/12`, attribution: 'NOAA NCEI / UTIG PLATES', style: { color: '#ea580c', width: 2 }, popup: { title: '{geogdesc}', fields: ['type'] } }) },
 
-  // ---- NASA
+  // ---- NASA & Remote Sensing
   { id: 'nasa-eonet', provider: 'NASA', title: 'Natural events happening now', kind: 'points', live: 'Updated daily',
     desc: 'Wildfires, storms, volcanoes, sea ice and more, tracked by NASA\'s Earth Observatory Natural Event Tracker.',
     options: [{ k: 'category', label: 'Type', dflt: '', choices: [['', 'All events'], ['wildfires', 'Wildfires'], ['severeStorms', 'Severe storms'], ['volcanoes', 'Volcanoes'],
@@ -79,13 +81,48 @@ export const CATALOG = [
   { id: 'nasa-modis', provider: 'NASA', title: 'Satellite image of the day', kind: 'imagery', live: 'New every day',
     desc: 'Yesterday\'s true-color view of the whole planet from the MODIS instrument on NASA\'s Terra satellite.',
     layer: () => ({ name: 'NASA satellite (MODIS true color)', type: 'raster', maxzoom: 9, style: { opacity: 1 },
-      tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
-      attribution: 'NASA GIBS / EOSDIS, MODIS Terra' }) },
+      tiles: SATELLITE_SENSORS['modis-true'].tiles,
+      attribution: SATELLITE_SENSORS['modis-true'].attribution }) },
+  { id: 'nasa-ndvi', provider: 'NASA', title: 'NDVI Vegetation Health Index', kind: 'imagery', live: 'Updated every 8 days',
+    desc: 'Normalized Difference Vegetation Index (NDVI) measuring crop vigor, forest density and drought stress from space.',
+    layer: () => ({ name: 'NDVI Vegetation Health Index', type: 'raster', maxzoom: 9, date: '2024-07-12', style: { opacity: 0.85 },
+      tiles: SATELLITE_SENSORS.ndvi.tiles,
+      attribution: SATELLITE_SENSORS.ndvi.attribution }) },
+  { id: 'nasa-false-ir', provider: 'NASA', title: 'False-Color Infrared (Bands 7-2-1)', kind: 'imagery', live: 'Daily',
+    desc: 'Shortwave & near-infrared reflectance that cuts through smoke: active burn scars glow red, floodwaters appear dark blue, and vegetation is bright green.',
+    layer: () => ({ name: 'False-Color Infrared (SWIR/NIR 7-2-1)', type: 'raster', maxzoom: 9, style: { opacity: 0.9 },
+      tiles: SATELLITE_SENSORS['modis-false-ir'].tiles,
+      attribution: SATELLITE_SENSORS['modis-false-ir'].attribution }) },
+  { id: 'nasa-sst', provider: 'NASA', title: 'Sea Surface Temperature (Infrared)', kind: 'imagery', live: 'Daily',
+    desc: 'Multi-scale Ultra-high Resolution (MUR) ocean thermal imagery showing currents, Gulf Stream eddies and marine heatwaves.',
+    layer: () => ({ name: 'Sea Surface Temperature (GHRSST)', type: 'raster', maxzoom: 7, style: { opacity: 0.85 },
+      tiles: SATELLITE_SENSORS.sst.tiles,
+      attribution: SATELLITE_SENSORS.sst.attribution }) },
+  { id: 'nasa-aerosol', provider: 'NASA', title: 'Smoke, Dust & Aerosol Plumes (AOD)', kind: 'imagery', live: 'Daily',
+    desc: 'Aerosol Optical Depth tracking wildfire smoke plumes, desert dust storms and air pollution transport.',
+    layer: () => ({ name: 'Aerosol Optical Depth (Smoke & Dust)', type: 'raster', maxzoom: 6, style: { opacity: 0.78 },
+      tiles: SATELLITE_SENSORS.aerosol.tiles,
+      attribution: SATELLITE_SENSORS.aerosol.attribution }) },
+  { id: 'nasa-snow', provider: 'NASA', title: 'Snow & Ice Cover Index (NDSI)', kind: 'imagery', live: 'Daily',
+    desc: 'Normalized Difference Snow Index showing mountain snowpack and cryosphere extent.',
+    layer: () => ({ name: 'Snow Cover Index (NDSI)', type: 'raster', maxzoom: 8, style: { opacity: 0.85 },
+      tiles: SATELLITE_SENSORS.snow.tiles,
+      attribution: SATELLITE_SENSORS.snow.attribution }) },
   { id: 'nasa-night', provider: 'NASA', title: 'Earth at night', kind: 'imagery',
     desc: 'City lights from space: the VIIRS Black Marble night-lights mosaic.',
     layer: () => ({ name: 'Earth at night (Black Marble)', type: 'raster', maxzoom: 8, date: '2016-01-01', style: { opacity: 0.95 },
       tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/{date}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
       attribution: 'NASA Earth Observatory / GIBS, VIIRS Black Marble' }) },
+  { id: 'usgs-relief', provider: 'USGS', title: '3D LiDAR / DEM Shaded Relief', kind: 'imagery',
+    desc: 'Bare-earth topographic hillshade from the USGS 3D Elevation Program (3DEP), revealing fault lines, ridges and river valleys.',
+    layer: () => ({ name: 'USGS 3DEP Shaded Relief', type: 'raster', maxzoom: 16, style: { opacity: 0.75 },
+      tiles: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'USGS 3D Elevation Program (3DEP)' }) },
+  { id: 'usgs-hydro', provider: 'USGS', title: 'National Hydrography (NHD)', kind: 'imagery',
+    desc: 'Detailed rivers, intermittent streams, canals and watersheds across the United States.',
+    layer: () => ({ name: 'USGS National Hydrography', type: 'raster', maxzoom: 16, style: { opacity: 0.85 },
+      tiles: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'USGS National Hydrography Dataset (NHD)' }) },
 
   // ---- Census
   { id: 'census-states', provider: 'Census', title: 'States', kind: 'areas',
@@ -139,9 +176,73 @@ export const CATALOG = [
     layer: () => ({ name: 'Rivers', url: `${NE}/ne_50m_rivers_lake_centerlines.geojson`, attribution: 'Natural Earth', style: { color: '#0284c7', width: 1.5 }, popup: { title: '{name}' } }) },
 ];
 
-const PROVIDERS = ['All', 'NOAA', 'NASA', 'USGS', 'Census', 'Interior', 'Agriculture', 'EPA', 'Wildfire', 'World'];
+const PROVIDERS = ['All', 'NASA', 'USGS', 'NOAA', 'Wildfire', 'Census', 'Interior', 'Agriculture', 'EPA', 'World'];
 const KIND_ICON = { points: 'pin', lines: 'line', areas: 'polygon', imagery: 'image' };
 const KIND_LABEL = { points: 'Points', lines: 'Lines', areas: 'Areas', imagery: 'Imagery' };
+
+/* ---------- STAC Satellite Scene Search (Copernicus Sentinel-2 L2A) ---------- */
+
+export function stacItemsToGeoJSON(items = []) {
+  return {
+    type: 'FeatureCollection',
+    metadata: { attribution: 'Copernicus Sentinel-2 L2A via Element84 Earth Search STAC' },
+    features: items.filter((it) => it && it.geometry).map((it) => {
+      const p = it.properties || {};
+      return {
+        type: 'Feature',
+        geometry: it.geometry,
+        properties: {
+          scene_id: it.id || '',
+          date: (p.datetime || '').slice(0, 10),
+          datetime: p.datetime || '',
+          cloud_cover_pct: p['eo:cloud_cover'] != null ? Math.round(p['eo:cloud_cover'] * 10) / 10 : null,
+          platform: p.platform || 'sentinel-2',
+          constellation: p.constellation || 'sentinel-2',
+          mgrs_tile: [p['mgrs:utm_zone'], p['mgrs:latitude_band'], p['mgrs:grid_square']].filter(Boolean).join('') || '',
+          sun_elevation: p['view:sun_elevation'] != null ? Math.round(p['view:sun_elevation'] * 10) / 10 : null,
+          thumbnail_url: it.assets?.thumbnail?.href || '',
+          visual_cog_url: it.assets?.visual?.href || '',
+        },
+      };
+    }),
+  };
+}
+
+async function searchStacScenes({ placeQuery = '', maxCloud = 20, days = 90 } = {}) {
+  let bbox = [-77.25, 38.75, -76.85, 39.05];
+  const liveMap = typeof document !== 'undefined' && document.querySelector('.maplibregl-map')?._smMap;
+  if (liveMap?.getBounds) {
+    const b = liveMap.getBounds();
+    bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => +n.toFixed(4));
+  }
+  if (placeQuery.trim()) {
+    const geo = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(placeQuery.trim())}`).then((r) => r.json()).catch(() => []);
+    if (geo[0]?.boundingbox) {
+      const [s, n, w, e] = geo[0].boundingbox.map(Number);
+      bbox = [w, s, e, n];
+    } else if (geo[0]) {
+      const lon = +geo[0].lon;
+      const lat = +geo[0].lat;
+      bbox = [lon - 0.25, lat - 0.25, lon + 0.25, lat + 0.25];
+    }
+  }
+  const end = new Date().toISOString();
+  const start = new Date(Date.now() - days * 864e5).toISOString();
+  const r = await fetch('https://earth-search.aws.element84.com/v1/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      collections: ['sentinel-2-l2a'],
+      bbox,
+      datetime: `${start}/${end}`,
+      limit: 16,
+      ...(maxCloud < 100 ? { query: { 'eo:cloud_cover': { lte: maxCloud } } } : {}),
+    }),
+  });
+  if (!r.ok) throw new Error(`STAC search failed (HTTP ${r.status})`);
+  const j = await r.json();
+  return { features: j.features || [], bbox };
+}
 
 /* ---------- ArcGIS Online search ---------- */
 
@@ -168,9 +269,11 @@ export function openCatalog({ onAdd }) {
   let provider = 'All';
   let query = '';
   let mode = 'featured';
+  let stacCloud = 20;
+  let stacDays = 90;
   const added = new Set();
   const body = h('div', { class: 'cat' });
-  const dlg = dialog({ title: 'Public data', cls: 'dlg-xl dlg-catalog', body,
+  const dlg = dialog({ title: 'Public data & Earth Observation', cls: 'dlg-xl dlg-catalog', body,
     actions: [h('span', { class: 'muted', style: 'margin-right:auto;font-size:12.5px' }, 'Live layers refresh each time the story is opened. Exporting a story can save a snapshot.'),
       h('button', { type: 'button', class: 'btn btn-primary', onclick: () => dlg.close() }, 'Done')] });
 
@@ -237,25 +340,125 @@ export function openCatalog({ onAdd }) {
     } catch (e) { results.replaceChildren(h('p', { class: 'form-error' }, e.message)); }
   };
 
+  const stacResults = h('div', { class: 'cat-results' });
+  const runStac = async () => {
+    stacResults.replaceChildren(h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Querying Sentinel-2 L2A STAC catalog…'));
+    try {
+      const { features } = await searchStacScenes({ placeQuery: query, maxCloud: stacCloud, days: stacDays });
+      if (!features.length) {
+        stacResults.replaceChildren(h('p', { class: 'muted' }, 'No Sentinel-2 scenes matched that cloud cover and date window. Try raising Max Cloud Cover or searching another place.'));
+        return;
+      }
+      const addAllBtn = h('button', {
+        type: 'button',
+        class: 'btn btn-sm',
+        style: 'margin-bottom:10px',
+        onclick: (e) => {
+          const fc = stacItemsToGeoJSON(features);
+          add({
+            name: `Sentinel-2 Footprints (${query.trim() || 'Map extent'})`,
+            data: fc,
+            attribution: 'Copernicus Sentinel-2 L2A via Element84 Earth Search STAC',
+            style: { color: '#0284c7', mode: 'graduated', field: 'cloud_cover_pct', opacity: 0.25 },
+            popup: { title: '{scene_id}', fields: ['date', 'cloud_cover_pct', 'platform', 'mgrs_tile', 'sun_elevation'] },
+          }, `stac-all-${Date.now()}`, e.currentTarget);
+        },
+      }, icon('layers', { size: 14 }), `Add all ${features.length} scene footprints as GeoJSON layer`);
+
+      stacResults.replaceChildren(
+        addAllBtn,
+        ...features.map((it) => {
+          const p = it.properties || {};
+          const date = (p.datetime || '').slice(0, 10);
+          const cloud = p['eo:cloud_cover'] != null ? `${Math.round(p['eo:cloud_cover'] * 10) / 10}% clouds` : '';
+          const thumb = it.assets?.thumbnail?.href;
+          const cog = it.assets?.visual?.href;
+          const footBtn = h('button', {
+            type: 'button',
+            class: 'btn btn-sm',
+            onclick: (e) => {
+              const fc = stacItemsToGeoJSON([it]);
+              add({
+                name: `S2 Footprint ${date} (${it.id})`,
+                data: fc,
+                attribution: 'Copernicus Sentinel-2 L2A via Earth Search STAC',
+                style: { color: '#0ea5e9', opacity: 0.22, width: 2 },
+                popup: { title: '{scene_id}', fields: ['date', 'cloud_cover_pct', 'platform', 'mgrs_tile', 'sun_elevation'] },
+              }, `stac-fp-${it.id}`, e.currentTarget);
+            },
+          }, icon('polygon', { size: 13 }), 'Footprint');
+          const imgBtn = cog ? h('button', {
+            type: 'button',
+            class: 'btn btn-sm btn-primary',
+            onclick: (e) => add({
+              name: `Sentinel-2 10m (${date})`,
+              type: 'raster',
+              tiles: `https://titiler.xyz/cog/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?url=${encodeURIComponent(cog)}`,
+              maxzoom: 16,
+              attribution: `Copernicus Sentinel-2 L2A (${date}, ${cloud})`,
+              style: { opacity: 0.95 },
+            }, `stac-cog-${it.id}`, e.currentTarget),
+          }, icon('plus', { size: 13 }), '10m Imagery') : null;
+          return h('article', { class: 'cat-row' },
+            thumb ? h('img', { src: thumb, alt: it.id, loading: 'lazy' }) : h('span', { class: 'cat-thumb' }, icon('globe')),
+            h('div', { class: 'cat-row-text' },
+              h('strong', {}, `Sentinel-2 L2A · ${date}`),
+              h('span', { class: 'muted' }, `${it.id} · ${cloud} · ${(p.platform || 'S2').toUpperCase()}`),
+              h('p', {}, `MGRS tile ${[p['mgrs:utm_zone'], p['mgrs:latitude_band'], p['mgrs:grid_square']].filter(Boolean).join('')} · Sun elev ${Math.round(p['view:sun_elevation'] || 0)}°`)),
+            h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, imgBtn, footBtn));
+        }),
+      );
+    } catch (e) {
+      stacResults.replaceChildren(h('p', { class: 'form-error' }, e.message));
+    }
+  };
+
   const searchInput = h('input', { type: 'search', placeholder: 'Search featured sources', 'aria-label': 'Search data', value: query,
     oninput: (e) => { query = e.target.value; if (mode === 'featured') redrawList(); },
-    onkeydown: (e) => { if (e.key === 'Enter' && mode === 'search') runSearch(query); } });
+    onkeydown: (e) => {
+      if (e.key === 'Enter' && mode === 'search') runSearch(query);
+      if (e.key === 'Enter' && mode === 'stac') runStac();
+    } });
   const listBox = h('div', { class: 'cat-main' });
-  const redrawList = () => listBox.replaceChildren(mode === 'featured' ? featured() : h('div', {},
-    h('p', { class: 'cat-note' }, 'Search thousands of public layers published by government agencies, cities and universities on ArcGIS Online. Check who published a layer before relying on it.'),
-    results));
+  const redrawList = () => {
+    if (mode === 'featured') { listBox.replaceChildren(featured()); return; }
+    if (mode === 'stac') {
+      listBox.replaceChildren(h('div', {},
+        h('p', { class: 'cat-note' }, 'Search live Copernicus Sentinel-2 L2A optical satellite scenes from the open Earth Search STAC API. Leave the search box blank to search the current map area, or type any place name and press Enter.'),
+        stacResults));
+      return;
+    }
+    listBox.replaceChildren(h('div', {},
+      h('p', { class: 'cat-note' }, 'Search thousands of public layers published by government agencies, cities and universities on ArcGIS Online. Check who published a layer before relying on it.'),
+      results));
+  };
 
   const draw = () => {
-    searchInput.placeholder = mode === 'featured' ? 'Search featured sources' : 'Search ArcGIS Online and press Enter';
+    searchInput.placeholder = mode === 'featured'
+      ? 'Search featured sources (NDVI, thermal, radar, earthquakes…)'
+      : mode === 'stac'
+        ? 'Place name (or leave blank for current map area) & press Enter'
+        : 'Search ArcGIS Online and press Enter';
     body.replaceChildren(
       h('aside', { class: 'cat-side' },
         h('div', { class: 'seg seg-block', style: 'margin-bottom:14px' },
           h('button', { type: 'button', class: mode === 'featured' ? 'is-on' : '', onclick: () => { mode = 'featured'; draw(); } }, 'Featured'),
-          h('button', { type: 'button', class: mode === 'search' ? 'is-on' : '', onclick: () => { mode = 'search'; draw(); runSearch(query); } }, 'Search more')),
+          h('button', { type: 'button', class: mode === 'stac' ? 'is-on' : '', onclick: () => { mode = 'stac'; draw(); runStac(); } }, 'STAC Scenes'),
+          h('button', { type: 'button', class: mode === 'search' ? 'is-on' : '', onclick: () => { mode = 'search'; draw(); runSearch(query); } }, 'ArcGIS')),
         mode === 'featured' ? PROVIDERS.map((p) => h('button', { type: 'button', class: `cat-prov ${provider === p ? 'is-on' : ''}`, onclick: () => { provider = p; draw(); } },
           h('span', {}, p === 'Interior' ? 'Interior (NPS)' : p === 'Agriculture' ? 'Agriculture (USFS)' : p),
           h('span', { class: 'muted' }, p === 'All' ? CATALOG.length : CATALOG.filter((e) => e.provider === p).length)))
-          : h('p', { class: 'field-hint', style: 'margin:0' }, 'Results come from ArcGIS Online\'s public catalog. Most US federal, state and city agencies publish there.')),
+          : mode === 'stac' ? [
+            h('label', { class: 'field' },
+              h('span', { class: 'field-label' }, 'Max cloud cover'),
+              h('select', { onchange: (e) => { stacCloud = +e.target.value; runStac(); } },
+                [[5, '< 5% (Crystal clear)'], [15, '< 15% (Low cloud)'], [20, '< 20%'], [40, '< 40%'], [100, 'Any cloud cover']].map(([v, l]) => h('option', { value: v, selected: stacCloud === v }, l)))),
+            h('label', { class: 'field', style: 'margin-top:8px' },
+              h('span', { class: 'field-label' }, 'Time window'),
+              h('select', { onchange: (e) => { stacDays = +e.target.value; runStac(); } },
+                [[30, 'Past 30 days'], [90, 'Past 90 days'], [180, 'Past 6 months'], [365, 'Past 1 year']].map(([v, l]) => h('option', { value: v, selected: stacDays === v }, l)))),
+            h('button', { type: 'button', class: 'btn btn-primary btn-block', style: 'margin-top:10px', onclick: runStac }, icon('search', { size: 15 }), 'Find satellite scenes'),
+          ] : h('p', { class: 'field-hint', style: 'margin:0' }, 'Results come from ArcGIS Online\'s public catalog. Most US federal, state and city agencies publish there.')),
       h('div', { class: 'cat-body' }, h('label', { class: 'search cat-search' }, icon('search', { size: 16 }), searchInput), listBox));
     redrawList();
     searchInput.focus();
