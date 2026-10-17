@@ -460,7 +460,7 @@ const SYMBOL = ['has', '__sym']; // a proportional symbol drawn at the center of
 // Themes whose maps draw data with a soft glow ("firefly" cartography).
 // Labels and text notes switch to light text on dark and imagery basemaps.
 const darkBase = (map) => ['dark', 'satellite', 'usgs-imagery'].includes(map._basemap);
-const glowing = () => typeof document !== 'undefined' && ['aurora', 'blueprint'].includes(document.documentElement.dataset.theme);
+const glowing = () => typeof document !== 'undefined' && ['aurora', 'blueprint', 'fog'].includes(document.documentElement.dataset.theme);
 
 // Arrowheads are extra points at the end of each line marked `arrow`, rotated to the last segment.
 function withArrows(fc) {

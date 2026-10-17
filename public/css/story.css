@@ -774,6 +774,159 @@ img, video, iframe { display: block; max-width: 100%; }
 [data-theme="blueprint"] .sm-chart-body { border-radius: 2px; border-color: var(--accent); background: rgba(6, 18, 34, .88); }
 [data-theme="blueprint"] .sm-chart-title { font-family: var(--display); text-transform: uppercase; color: var(--accent); }
 
+/* ---------- Fog theme: a thick fog storm that lifts as readers scroll (weather layers come from js/fog.js) ---------- */
+:root[data-theme="fog"] {
+  --bg: #12171b; --fg: #dfe6e9; --muted: #8d9aa1; --card: rgba(26, 33, 38, .62); --line: rgba(205, 220, 228, .14);
+  --accent: #ffb35c; --accent-fg: #1c1206; --mist: #b9c6cc;
+  --shadow: 0 24px 60px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .05);
+  --serif: 'Source Serif 4', Georgia, serif;
+  --sans: 'Inter', system-ui, sans-serif;
+  --display: 'Instrument Serif', 'Source Serif 4', Georgia, serif;
+  --mono: 'Space Mono', ui-monospace, monospace;
+  /* two fog textures: big rolling banks and finer wisps (fractal noise turned into soft grey alpha) */
+  --fog-banks: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700'%3E%3Cfilter id='f' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.0045' numOctaves='4' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .76 0 0 0 0 .81 0 0 0 0 .84 3.2 0 0 0 -1.35'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  --fog-wisps: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='f' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.0035 .012' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .84 0 0 0 0 .88 0 0 0 0 .9 2.8 0 0 0 -1.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  --fog-banks-far: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700'%3E%3Cfilter id='f' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.0045' numOctaves='4' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .07 0 0 0 0 .085 0 0 0 0 .1 3.2 0 0 0 -1.35'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  --fog-wisps-far: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='f' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.0035 .012' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .07 0 0 0 0 .085 0 0 0 0 .1 2.8 0 0 0 -1.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+[data-theme="fog"] body { background: transparent; font-size: 19px; line-height: 1.75; color: color-mix(in srgb, var(--fg) 90%, var(--muted)); }
+[data-theme="fog"] ::selection { background: rgba(255, 179, 92, .35); color: #fff; }
+
+/* Fog banks. Each layer holds two textures that drift at different speeds; the far one sits behind the story,
+   the near one drifts in front of it with a clearing around the pointer (the lantern). --fog runs from 1 to .25. */
+.sm-fog { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+.sm-fog::before, .sm-fog::after { content: ''; position: absolute; top: -10%; bottom: -10%; left: -1400px; right: 0; will-change: transform; }
+.sm-fog::before { background: var(--fog-banks) 0 0 / 1400px 1400px; animation: fog-drift-banks 120s linear infinite; }
+.sm-fog::after { left: -1200px; background: var(--fog-wisps) 0 0 / 1200px 1200px; animation: fog-drift-wisps 70s linear infinite; }
+@keyframes fog-drift-banks { to { transform: translate3d(1400px, 0, 0); } }
+@keyframes fog-drift-wisps { to { transform: translate3d(1200px, 0, 0); } }
+.sm-fog-far { z-index: -1; opacity: calc(.55 + .45 * var(--fog, 1));
+  background: radial-gradient(circle 420px at var(--mx, 50%) var(--my, 45%), rgba(255, 184, 104, .13), transparent 70%),
+    linear-gradient(to top, rgba(170, 186, 194, .2), transparent 55%), linear-gradient(color-mix(in srgb, var(--bg) 80%, #33404a), var(--bg)); }
+.sm-fog-far::before { background-image: var(--fog-banks-far); }
+.sm-fog-far::after { background-image: var(--fog-wisps-far); animation-duration: 95s; animation-direction: reverse; opacity: .7; }
+.sm-fog-near { z-index: 40; opacity: calc(.06 + .36 * var(--fog, 1)); transition: opacity 1.2s;
+  background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 35%, rgba(150, 166, 174, .45) 100%);
+  -webkit-mask: radial-gradient(circle at var(--mx, 50%) var(--my, 45%), transparent 0 150px, rgba(0, 0, 0, .5) 340px, #000 620px);
+  mask: radial-gradient(circle at var(--mx, 50%) var(--my, 45%), transparent 0 150px, rgba(0, 0, 0, .5) 340px, #000 620px); }
+.sm-fog-near::before { opacity: .7; animation-duration: 80s; }
+.sm-fog-near::after { animation-duration: 38s; }
+
+/* Lightning somewhere inside the fog, and gusts that tear wisps across the screen */
+.sm-fog-flash { position: fixed; inset: 0; z-index: 41; pointer-events: none; opacity: 0;
+  background: radial-gradient(42vmax 30vmax at var(--fx, 50%) var(--fy, 20%), rgba(220, 232, 255, .3), rgba(180, 198, 228, .1) 45%, transparent 75%); }
+.sm-fog-flash.is-on { animation: fog-flash 1.8s ease-out; }
+@keyframes fog-flash { 0% { opacity: 0; } 4% { opacity: .9; } 10% { opacity: .12; } 16% { opacity: .65; } 45% { opacity: .08; } 100% { opacity: 0; } }
+.sm-fog-gust { position: fixed; left: 0; top: var(--gy, 30vh); width: 80vw; height: 45vh; z-index: 42; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse 45% 35% at 50% 50%, rgba(196, 210, 216, .4), transparent 75%), var(--fog-banks) 0 0 / 700px 700px; filter: blur(4px);
+  -webkit-mask: radial-gradient(ellipse 50% 38% at 50% 50%, #000 15%, transparent 70%); mask: radial-gradient(ellipse 50% 38% at 50% 50%, #000 15%, transparent 70%); }
+.sm-fog-gust.is-on { animation: fog-gust 3.2s cubic-bezier(.45, .05, .55, .95); }
+@keyframes fog-gust { 0% { opacity: 0; transform: translate3d(-90vw, 4vh, 0) skewX(-18deg) scaleX(1.4); } 25% { opacity: .7; } 75% { opacity: .5; } 100% { opacity: 0; transform: translate3d(130vw, -6vh, 0) skewX(-28deg) scaleX(2); } }
+
+/* Top bar: a weather station readout */
+[data-theme="fog"] .sm-topbar { background: rgba(14, 18, 21, .55); backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); font: 400 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--mist); }
+[data-theme="fog"] .sm-progress { height: 2px; background: var(--accent); box-shadow: 0 0 14px rgba(255, 179, 92, .9); }
+.sm-fog-vis { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 8px; font: 400 11px/1 var(--mono, monospace); letter-spacing: .14em; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sm-fog-vis::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: fog-blink 2.4s ease-in-out infinite; }
+@keyframes fog-blink { 50% { opacity: .25; } }
+@media (max-width: 560px) { .sm-fog-vis { font-size: 10px; letter-spacing: .08em; } [data-theme="fog"] .sm-topbar-title { display: none; } }
+
+/* Cover: a title glowing through the murk */
+[data-theme="fog"] .sm-cover-bg { filter: saturate(.45) brightness(.7) contrast(.9) blur(1px); }
+[data-theme="fog"] .sm-cover.has-image::before { background: linear-gradient(180deg, rgba(18, 23, 27, .35), rgba(18, 23, 27, .25) 40%, var(--bg) 100%); }
+[data-theme="fog"] .sm-cover h1 { font: 400 clamp(3.4rem, 10vw, 8rem)/.92 var(--display); letter-spacing: -.02em; color: #eef3f5;
+  text-shadow: 0 0 40px rgba(200, 215, 225, .35); animation: fog-breathe 9s ease-in-out infinite; }
+@keyframes fog-breathe { 50% { text-shadow: 0 0 70px rgba(200, 215, 225, .6), 0 0 8px rgba(255, 255, 255, .2); } }
+[data-theme="fog"] .sm-subtitle { font: italic 400 clamp(1.25rem, 2.3vw, 1.65rem)/1.45 var(--display); color: color-mix(in srgb, var(--fg) 80%, transparent); }
+[data-theme="fog"] .sm-kicker { font: 400 12px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--accent); opacity: 1; }
+[data-theme="fog"] .sm-cover.has-image .sm-kicker { color: var(--accent); }
+[data-theme="fog"] .sm-byline { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+
+/* Things come into focus out of the fog */
+[data-theme="fog"] .fog-blur { transition: filter 2.2s var(--ease), opacity 2.2s var(--ease), letter-spacing 2.8s var(--ease); }
+[data-theme="fog"] .fog-blur:not(.fog-clear) { filter: blur(12px); opacity: .2; letter-spacing: .14em; }
+[data-theme="fog"] .motion-expressive .fx-reveal { filter: blur(14px); transform: translateY(30px) scale(.985); transition: opacity 1.8s var(--ease), transform 1.8s var(--ease), filter 1.8s var(--ease); }
+[data-theme="fog"] .motion-subtle .fx-reveal { filter: blur(8px); transition: opacity 1.4s var(--ease), transform 1.4s var(--ease), filter 1.4s var(--ease); }
+[data-theme="fog"] .fx-reveal.is-in { filter: none; }
+[data-theme="fog"] .sm-img-wrap.fx-reveal { clip-path: none; opacity: .15; filter: blur(16px) brightness(1.5) saturate(.3); transition: opacity 2s var(--ease), filter 2.4s var(--ease); }
+[data-theme="fog"] .sm-img-wrap.fx-reveal.is-in { opacity: 1; filter: none; }
+
+/* Text */
+[data-theme="fog"] .sm-text h2 { font: 400 clamp(2.2rem, 4.6vw, 3.4rem)/1.05 var(--display); letter-spacing: -.01em; color: #eef3f5; text-shadow: 0 0 30px rgba(200, 215, 225, .25); }
+[data-theme="fog"] .sm-text h3 { font: italic 400 1.6rem/1.2 var(--display); color: var(--fg); }
+[data-theme="fog"] .sm-text a { color: var(--accent); text-decoration-color: rgba(255, 179, 92, .45); text-underline-offset: 3px; }
+[data-theme="fog"] .sm-text.is-large p { font: 400 clamp(1.45rem, 2.6vw, 1.85rem)/1.45 var(--display); color: var(--fg); }
+[data-theme="fog"] .sm-text.is-large p:first-child::first-letter { float: none; font: inherit; padding: 0; color: inherit; }
+[data-theme="fog"] .sm-quote { font: italic 400 clamp(1.9rem, 3.8vw, 2.9rem)/1.2 var(--display); color: #eef3f5; }
+[data-theme="fog"] .sm-quote::before { color: var(--accent); text-shadow: 0 0 20px rgba(255, 179, 92, .6); }
+[data-theme="fog"] .sm-quote cite { font: 400 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+[data-theme="fog"] .sm-separator::before { width: 180px; height: 1px; border-radius: 0; background: linear-gradient(90deg, transparent, var(--mist), transparent); box-shadow: 0 0 18px rgba(200, 215, 225, .7); }
+
+/* Photos and maps: desaturated, softened at the edges where the fog creeps in */
+[data-theme="fog"] .sm-figure img, [data-theme="fog"] .sm-hg-item img { filter: saturate(.7) contrast(.95) brightness(.92); }
+[data-theme="fog"] .sm-img-wrap, [data-theme="fog"] .sm-figure:not(.size-full) .sm-map, [data-theme="fog"] .sm-ratio iframe, [data-theme="fog"] .sm-ratio video { border-radius: 4px; box-shadow: var(--shadow); }
+[data-theme="fog"] .sm-caption { font: 400 12px/1.6 var(--mono); letter-spacing: .06em; color: var(--muted); }
+[data-theme="fog"] .sm-map { background: #12171b; }
+[data-theme="fog"] .sm-map .maplibregl-canvas { filter: saturate(.55) brightness(.88) contrast(.94); }
+[data-theme="fog"] .sm-map::after { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse 70% 65% at 50% 50%, transparent 40%, rgba(160, 175, 183, .5) 100%), var(--fog-wisps) 0 0 / 900px 900px;
+  opacity: calc(.3 + .4 * var(--fog, 1)); animation: fog-map-drift 60s linear infinite;
+  -webkit-mask: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 30%, #000 100%); mask: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 30%, #000 100%); }
+@keyframes fog-map-drift { to { background-position: 0 0, 900px 0; } }
+[data-theme="fog"] .sm-slide-card { border-radius: 4px; background: rgba(18, 24, 28, .62); backdrop-filter: blur(16px) saturate(.8); box-shadow: var(--shadow); color: var(--fg); }
+[data-theme="fog"] .sm-scrollmap.layout-overlay .sm-slide-card { background: rgba(18, 24, 28, .62); backdrop-filter: blur(16px) saturate(.8); }
+[data-theme="fog"] .sm-slide-card h2, [data-theme="fog"] .sm-slide-card h3 { font: 400 1.9rem/1.1 var(--display); }
+[data-theme="fog"] .sm-stops-panel { background: rgba(18, 24, 28, .7); backdrop-filter: blur(16px); }
+[data-theme="fog"] .sm-stops-body h3 { font: 400 2.2rem/1.05 var(--display); }
+[data-theme="fog"] .sm-stops-count { font-family: var(--mono); color: var(--accent); }
+[data-theme="fog"] .sm-stops-nav button { background: rgba(255, 255, 255, .05); border-color: var(--line); color: var(--fg); }
+[data-theme="fog"] .sm-stops-nav button:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); box-shadow: 0 0 24px rgba(255, 179, 92, .55); }
+
+/* Chapters: fog pools along the bottom of each one */
+[data-theme="fog"] .sm-chapter::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(to top, rgba(170, 186, 194, .32), transparent 50%), radial-gradient(70% 50% at 50% 100%, rgba(200, 214, 220, .18), transparent 70%); }
+[data-theme="fog"] .sm-chapter-bg { filter: saturate(.4) brightness(.65) blur(1.5px); }
+[data-theme="fog"] .sm-chapter h2 { font: 400 clamp(3rem, 9vw, 7rem)/.95 var(--display); letter-spacing: -.02em; text-shadow: 0 0 50px color-mix(in srgb, currentColor 35%, transparent); }
+[data-theme="fog"] .sm-chapter .sm-kicker { opacity: .85; color: inherit; }
+[data-theme="fog"] .sm-chapter-text { font: italic 400 1.35rem/1.5 var(--display); }
+
+/* Statement: words sharpen out of the fog as they light up */
+[data-theme="fog"] .sm-statement-text { font: 400 clamp(2.4rem, 6.4vw, 5.2rem)/1.04 var(--display); letter-spacing: -.015em; color: #eef3f5; }
+[data-theme="fog"] .sm-word { opacity: .16; filter: blur(5px); transition: opacity .6s var(--ease), filter .8s var(--ease), color .6s, text-shadow .6s; }
+[data-theme="fog"] .sm-word.is-lit { opacity: 1; filter: none; text-shadow: 0 0 30px rgba(200, 215, 225, .4); }
+[data-theme="fog"] .sm-word.is-lit:nth-child(7n + 4) { color: var(--accent); text-shadow: 0 0 30px rgba(255, 179, 92, .55); }
+[data-theme="fog"] .sm-statement-cite { font: 400 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+/* Big numbers read like instruments */
+[data-theme="fog"] .sm-stats-grid { border-color: var(--line); }
+[data-theme="fog"] .sm-stat { border-color: var(--line); }
+[data-theme="fog"] .sm-stat-num { font: 400 clamp(3.2rem, 6.5vw, 5.2rem)/1 var(--display); color: var(--accent); text-shadow: 0 0 34px rgba(255, 179, 92, .45); }
+[data-theme="fog"] .sm-stat-label { font: 400 12px/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+[data-theme="fog"] .sm-hg-intro h2 { font: 400 clamp(2.4rem, 5vw, 3.8rem)/1 var(--display); }
+[data-theme="fog"] .sm-hg-item img { border-radius: 4px; box-shadow: var(--shadow); }
+[data-theme="fog"] .sm-hg-item figcaption { font: 400 12px var(--mono); letter-spacing: .06em; color: var(--muted); }
+
+/* Map furniture: markers are lanterns pulsing in the fog */
+[data-theme="fog"] .sm-marker { background: radial-gradient(circle at 40% 35%, #fff3df, var(--accent) 50%, #d9822b); color: var(--accent-fg); border: 0;
+  box-shadow: 0 0 0 4px rgba(255, 179, 92, .2), 0 0 22px 4px rgba(255, 179, 92, .55); animation: fog-lantern 3.4s ease-in-out infinite; }
+@keyframes fog-lantern { 50% { box-shadow: 0 0 0 7px rgba(255, 179, 92, .08), 0 0 40px 10px rgba(255, 179, 92, .35); } }
+[data-theme="fog"] .maplibregl-popup-content { background: rgba(20, 26, 30, .9); backdrop-filter: blur(14px); color: var(--fg); border-radius: 4px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 16px 40px rgba(0, 0, 0, .5); }
+[data-theme="fog"] .maplibregl-popup-tip { border-top-color: rgba(20, 26, 30, .9) !important; border-bottom-color: rgba(20, 26, 30, .9) !important; }
+[data-theme="fog"] .sm-popup td { border-top-color: rgba(255, 255, 255, .1); }
+[data-theme="fog"] .sm-popup td:first-child { color: var(--muted); }
+[data-theme="fog"] .sm-legend { background: rgba(20, 26, 30, .8); backdrop-filter: blur(12px); color: var(--fg); border-radius: 4px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .1); }
+[data-theme="fog"] .sm-legend-src, [data-theme="fog"] .sm-legend-range, [data-theme="fog"] .sm-legend-note { color: var(--muted); }
+[data-theme="fog"] .maplibregl-ctrl-group { background: rgba(20, 26, 30, .8); box-shadow: 0 0 0 1px rgba(255, 255, 255, .12); }
+[data-theme="fog"] .maplibregl-ctrl-group button + button { border-top-color: rgba(255, 255, 255, .1); }
+[data-theme="fog"] .maplibregl-ctrl-group .maplibregl-ctrl-icon { filter: invert(1); }
+[data-theme="fog"] .sm-compare-handle::before { background: var(--accent); box-shadow: 0 0 16px var(--accent); }
+[data-theme="fog"] .sm-compare-handle::after { background: rgba(20, 26, 30, .9); color: var(--fg); box-shadow: 0 0 0 1px rgba(255, 255, 255, .2), 0 0 24px rgba(255, 179, 92, .45); }
+[data-theme="fog"] .sm-compare-label { font-family: var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+[data-theme="fog"] .sm-credits { border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; letter-spacing: .06em; }
+[data-theme="fog"] .sm-madewith::before { background: var(--accent); box-shadow: 0 0 10px rgba(255, 179, 92, .8); }
+
+@media (prefers-reduced-motion: reduce) { .sm-fog-flash, .sm-fog-gust { display: none; } }
+
 /* Builder preview: click a block to edit it */
 .sm-empty-media { display: none; }
 .is-editing .sm-empty-media { display: block; }

@@ -39,6 +39,11 @@ export const LOOKS = {
     theme: 'blueprint', motion: 'expressive', basemap: 'dark', cover: 'zoom',
     chapters: [['#050f1e', '#e0f7ff'], ['#0b2239', '#00e5ff'], ['#101b2b', '#ffb703']],
   },
+  fog: {
+    name: 'Fog', desc: 'A thick fog storm: drifting banks, gusts and lightning in the murk. A lantern clears the way, and the fog lifts as readers scroll.',
+    theme: 'fog', motion: 'expressive', basemap: 'dark', cover: 'zoom',
+    chapters: [['#151b20', '#e3e9ec'], ['#232c31', '#ffc27a'], ['#0d1216', '#c9d6dc']],
+  },
 };
 
 /** The kinds of story the wizard can set up. `places`: 'many' | 'one' | false. */

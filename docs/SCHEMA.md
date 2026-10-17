@@ -9,7 +9,7 @@ A story is a single JSON document.
   "subtitle": "…",
   "author": "…",
   "date": "October 2026",
-  "theme": "light",            // "light" | "dark" | "brutalist" | "atlas" | "aurora" | "editorial" | "blueprint"
+  "theme": "light",            // "light" | "dark" | "brutalist" | "atlas" | "aurora" | "editorial" | "blueprint" | "fog"
   "guide": { "kind": "journey", "look": "classic", "prompts": ["…"] },  // stories made with the New story wizard: drives the editor checklist; delete it to hide the checklist
   "motion": "subtle",          // scroll animations: "none" | "subtle" | "expressive"
   "cover": { "image": "https://…", "effect": "parallax", "kicker": "Small label" },  // effect: "none" | "parallax" | "zoom"

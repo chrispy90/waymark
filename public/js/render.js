@@ -4,6 +4,7 @@ import { sanitize, safeUrl } from './sanitize.js';
 import { track, reveal, countUp, viewProgress, pinProgress, exitProgress, reducedMotion } from './effects.js';
 import { BRAND } from './brand.js';
 import { normalizeStory } from './story-format.js';
+import { fogWeather } from './fog.js';
 
 const COLOR = /^#[0-9a-f]{3,8}$/i;
 const NO_REVEAL = new Set(['scrollmap', 'statement', 'gallery', 'chapter']);
@@ -27,7 +28,7 @@ const h = (tag, attrs = {}, ...kids) => {
  * Renders `story` into `root`. Returns a destroy() function.
  * opts.instant: show everything immediately (used when the builder re-renders the preview).
  */
-export const THEMES = ['light', 'dark', 'brutalist', 'atlas', 'aurora', 'editorial', 'blueprint'];
+export const THEMES = ['light', 'dark', 'brutalist', 'atlas', 'aurora', 'editorial', 'blueprint', 'fog'];
 
 export function renderStory(story, root, { instant = false, homeHref = '/' } = {}) {
   normalizeStory(story);
@@ -56,6 +57,7 @@ export function renderStory(story, root, { instant = false, homeHref = '/' } = {
     story.credits ? h('div', { html: story.credits }) : null,
     h(homeHref ? 'a' : 'span', { class: 'sm-madewith', href: homeHref || null }, `Made with ${BRAND.name}`)));
   root.append(body);
+  if (document.documentElement.dataset.theme === 'fog') ctx.cleanups.push(fogWeather(root));
 
   // Page colors follow whichever block crosses the middle of the screen (checked once per frame while scrolling).
   const hasChapters = (story.blocks || []).some((b) => b.type === 'chapter');

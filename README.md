@@ -229,7 +229,7 @@ Switch any story to **Brutalist** for raw monospace and heavy display type, hard
 | **A data story** | One big map ready for live or uploaded data, with numbers and context |
 | **Start from scratch** | A title and an empty page |
 
-Every kind comes in seven **looks**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
+Every kind comes in eight **looks**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
 
 <p align="center"><img src="docs/media/looks.png" alt="The same statement block in the Classic, Night, Brutalist, Atlas and Aurora looks" width="100%"></p>
 
@@ -242,6 +242,7 @@ Every kind comes in seven **looks**. Each one sets the type, colors, chapter col
 | **Aurora** | Dark glass and drifting light, glowing gradient type, frosted cards and bento-style numbers. Points and lines on its maps glow like fireflies |
 | **Editorial** | Magazine journalism: warm newsprint ivory, deep espresso ink, crimson double-rules, high-contrast *Playfair Display* headlines, drop-cap intros and pull-quotes |
 | **Blueprint** | Architectural CAD & telemetry: deep Prussian navy with a dual-scale coordinate grid, electric cyan and amber accents, *Space Mono* headers, corner reticle brackets and glowing map features |
+| **Fog** | A thick fog storm: banks of fog drift behind and in front of the story, gusts tear across the screen and lightning flickers inside the murk. The reader's pointer carries a lantern that clears the fog around it, headings and photos come into focus as they scroll in, statement words sharpen as they light up, and markers glow like lanterns. A weather readout in the top bar counts visibility up from 40 m to 10 km as the fog lifts toward the end of the story |
 
 Prefer to learn from something finished? **Explore an example** opens a complete story to take apart: the moving map, walk, essay, *Brutalist zine* and *Down the Potomac* samples. Any story can also use **Before & after**, a block with two maps in one view and a draggable divider, or **Chart & table**, an interactive breakdown of any layer or dataset.
 
@@ -366,6 +367,7 @@ server/brand.js        app name and tagline
 public/                the web app (plain ES modules, no build step)
   js/render.js         story → page; all block renderers
   js/effects.js        scroll-driven effects engine (one rAF loop, on-screen elements only)
+  js/fog.js            weather for the Fog look (fog layers, lantern, gusts, lightning, visibility readout)
   js/ui.js             icons, logo, toasts, menus, dialogs
   js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
   js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)

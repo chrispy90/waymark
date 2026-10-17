@@ -827,6 +827,16 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .look-blueprint .lm-map { background: #040d1a; border: 1px solid #00e5ff; border-radius: 1px; }
 .look-blueprint .lm-pin { background: #061222; border: 1.5px solid #00e5ff; border-radius: 1px; box-shadow: 0 0 8px #00e5ff; }
 .look-blueprint .lm-card { background: rgba(6, 18, 34, .9); border: 1px solid #00e5ff; border-radius: 1px; }
+.look-fog { color: #e6edf0; font-family: "Instrument Serif", Georgia, serif;
+  background: radial-gradient(60% 40% at 30% 35%, rgba(255, 184, 104, .16), transparent 70%), radial-gradient(90% 55% at 50% 100%, rgba(185, 198, 204, .5), transparent 70%), radial-gradient(70% 45% at 85% 20%, rgba(185, 198, 204, .25), transparent 70%), #151b1f; }
+.look-fog .lm-bar span { background: #ffb35c; height: 2px; box-shadow: 0 0 6px #ffb35c; }
+.look-fog .lm-kicker { justify-self: center; color: #ffb35c; font-family: "Space Mono", monospace; font-weight: 400; letter-spacing: .3em; }
+.look-fog .lm-cover { justify-items: center; text-align: center; }
+.look-fog .lm-title { font-weight: 400; font-size: 25px; letter-spacing: -.01em; text-shadow: 0 0 14px rgba(220, 230, 235, .6); filter: blur(.3px); }
+.look-fog .lm-line { background: rgba(220, 230, 235, .18); }
+.look-fog .lm-map { background: linear-gradient(90deg, rgba(185, 198, 204, .35), rgba(30, 38, 43, .9) 40%, rgba(185, 198, 204, .3)); border-radius: 3px; }
+.look-fog .lm-pin { background: #ffb35c; border: 0; box-shadow: 0 0 10px 4px rgba(255, 179, 92, .7); }
+.look-fog .lm-card { background: rgba(18, 24, 28, .7); border-radius: 3px; backdrop-filter: blur(3px); }
 
 /* Map links in moving-map cards */
 .rich-bar { flex-wrap: wrap; }

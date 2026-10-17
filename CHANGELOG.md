@@ -2,6 +2,11 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
+## Unreleased
+
+### Added
+- **Fog look.** A thick fog storm. Fog drifts behind and in front of the story, with gusts and faint lightning in the murk. The pointer carries a lantern that clears the fog around it. Headings, photos and statement words come into focus as they scroll in, and map markers glow like lanterns. A weather readout in the top bar counts visibility up as the fog lifts toward the end of the story. Motion and flashes switch off for readers who ask for reduced motion.
+
 ## 1.4.0 (2026-10-17)
 
 ### Added
