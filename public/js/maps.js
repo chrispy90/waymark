@@ -39,6 +39,7 @@ export function createMap(container, view = DEFAULT_VIEW, { interactive = true, 
     zoom: v.zoom,
     bearing: v.bearing,
     pitch: v.pitch,
+    maxPitch: 85,
     interactive,
     attributionControl: { compact: true },
   });
@@ -48,6 +49,9 @@ export function createMap(container, view = DEFAULT_VIEW, { interactive = true, 
   // Start the credits collapsed (one tap opens them) so long source lists don't cover the map.
   map.once('load', () => container.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
   map._basemap = v.basemap;
+  map._terrain = !!v.terrain;
+  map._terrainExaggeration = Number(v.terrainExaggeration) || 1.5;
+  map._buildings3d = !!v.buildings3d;
   map._markers = [];
   map._library = library;
   map._visible = v.layers || [];
@@ -84,10 +88,15 @@ export function setMarkers(map, markers = []) {
 export function applyView(map, view, { animate = true } = {}) {
   const v = { ...DEFAULT_VIEW, ...view };
   map._legend.enabled = v.legend !== false;
+  map._terrain = !!v.terrain;
+  map._terrainExaggeration = Number(v.terrainExaggeration) || 1.5;
+  map._buildings3d = !!v.buildings3d;
   setVisibleLayers(map, v.layers || []);
   if (v.basemap !== map._basemap) {
-    map.setStyle(styleUrl(v.basemap), { diff: false }); // style.load re-installs data layers
+    map.setStyle(styleUrl(v.basemap), { diff: false }); // style.load re-installs data layers & environment
     map._basemap = v.basemap;
+  } else if (map.isStyleLoaded()) {
+    syncEnvironment(map);
   }
   const cam = { center: v.center, zoom: v.zoom, bearing: v.bearing, pitch: v.pitch };
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -95,6 +104,13 @@ export function applyView(map, view, { animate = true } = {}) {
   else map.jumpTo(cam);
   setMarkers(map, v.markers);
   if ('time' in v || map._time) setTime(map, v.time);
+}
+
+export function setEnvironment(map, env = {}) {
+  if ('terrain' in env) map._terrain = !!env.terrain;
+  if ('terrainExaggeration' in env) map._terrainExaggeration = Number(env.terrainExaggeration) || 1.5;
+  if ('buildings3d' in env) map._buildings3d = !!env.buildings3d;
+  if (map.isStyleLoaded()) syncEnvironment(map);
 }
 
 export function readView(map) {
@@ -107,6 +123,8 @@ export function readView(map) {
     basemap: map._basemap,
     layers: [...map._visible],
     legend: map._legend.enabled,
+    ...(map._terrain ? { terrain: true, terrainExaggeration: map._terrainExaggeration || 1.5 } : {}),
+    ...(map._buildings3d ? { buildings3d: true } : {}),
     ...(map._time ? { time: { ...map._time } } : {}),
   };
 }
@@ -389,12 +407,83 @@ function rgba(hex, a) {
 }
 const heatStops = (color) => [[0, rgba(color, 0)], [0.15, rgba(color, 0.35)], [0.4, color], [0.7, mix(color, '#ffc64d', 0.6)], [1, '#fff4c2']];
 
+const DEM_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+
+function syncEnvironment(map) {
+  if (!map.isStyleLoaded()) return;
+  const beforeLabelOrData = map.getStyle().layers.find((l) => l.id.startsWith('dl-') || (l.type === 'symbol' && !l.id.startsWith('dl-')))?.id;
+  if (map._terrain) {
+    if (!map.getSource('wm-dem')) {
+      map.addSource('wm-dem', {
+        type: 'raster-dem',
+        tiles: [DEM_TILES],
+        encoding: 'terrarium',
+        tileSize: 256,
+        maxzoom: 15,
+        attribution: 'Terrain: Mapzen / AWS Open Data',
+      });
+    }
+    if (!map.getLayer('wm-hillshade')) {
+      map.addLayer({
+        id: 'wm-hillshade',
+        type: 'hillshade',
+        source: 'wm-dem',
+        paint: {
+          'hillshade-exaggeration': 0.35,
+          'hillshade-shadow-color': '#0f172a',
+          'hillshade-accent-color': '#334155',
+          'hillshade-highlight-color': '#ffffff',
+        },
+      }, beforeLabelOrData);
+    }
+    try { map.setTerrain?.({ source: 'wm-dem', exaggeration: map._terrainExaggeration || 1.5 }); } catch { /* ignore */ }
+    try {
+      map.setSky?.({
+        'sky-color': darkBase(map) ? '#090d16' : '#38bdf8',
+        'sky-horizon-blend': 0.45,
+        'horizon-color': darkBase(map) ? '#1e293b' : '#e0f2fe',
+        'horizon-fog-blend': 0.5,
+        'fog-color': darkBase(map) ? '#0f172a' : '#f8fafc',
+        'fog-ground-blend': 0.35,
+      });
+    } catch { /* ignore */ }
+  } else {
+    try { if (map.getTerrain?.()) map.setTerrain(null); } catch { /* ignore */ }
+    if (map.getLayer('wm-hillshade')) map.removeLayer('wm-hillshade');
+  }
+
+  if (map._buildings3d) {
+    const bldSrc = map.getSource('openmaptiles') ? 'openmaptiles' : 'wm-openmaptiles';
+    if (bldSrc === 'wm-openmaptiles' && !map.getSource('wm-openmaptiles')) {
+      map.addSource('wm-openmaptiles', { type: 'vector', url: 'https://tiles.openfreemap.org/planet' });
+    }
+    if (!map.getLayer('wm-3d-buildings')) {
+      map.addLayer({
+        id: 'wm-3d-buildings',
+        type: 'fill-extrusion',
+        source: bldSrc,
+        'source-layer': 'building',
+        minzoom: 13,
+        paint: {
+          'fill-extrusion-color': darkBase(map) ? '#334155' : '#cbd5e1',
+          'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'render_height'], 12], 12],
+          'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'render_min_height'], 0], 0],
+          'fill-extrusion-opacity': 0.78,
+        },
+      }, beforeLabelOrData);
+    }
+  } else if (map.getLayer('wm-3d-buildings')) {
+    map.removeLayer('wm-3d-buildings');
+  }
+}
+
 /** Adds any library layers that a live map doesn't have yet (e.g. just added from the catalog). */
 export function refreshLayers(map) {
   if (map.isStyleLoaded()) installLayers(map);
 }
 
 function installLayers(map) {
+  syncEnvironment(map);
   map._legendInfo ||= {};
   map._library.forEach((layer) => {
     const src = `dl-${layer.id}`;

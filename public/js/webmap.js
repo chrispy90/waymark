@@ -40,11 +40,16 @@ export function concreteView(view, maps) {
   const bm = bookmark ? (m.bookmarks || []).find((b) => b.id === bookmark) : null;
   const cam = bm?.view || (own.center ? own : m.view || {});
   const visible = mapLayers ?? bm?.layers ?? m.view?.layers ?? m.layers.map((l) => l.id);
+  const terrain = cam.terrain ?? own.terrain ?? m.view?.terrain;
+  const terrainExaggeration = cam.terrainExaggeration ?? own.terrainExaggeration ?? m.view?.terrainExaggeration;
+  const buildings3d = cam.buildings3d ?? own.buildings3d ?? m.view?.buildings3d;
   return {
     ...own,
     center: cam.center, zoom: cam.zoom, bearing: cam.bearing ?? 0, pitch: cam.pitch ?? 0,
     basemap: m.view?.basemap || own.basemap || 'streets',
     legend: own.legend ?? m.view?.legend ?? true,
+    ...(terrain ? { terrain: true, terrainExaggeration: terrainExaggeration || 1.5 } : {}),
+    ...(buildings3d ? { buildings3d: true } : {}),
     // a bookmark brings its own time setting (none = all dates); otherwise the view's, else the map's
     ...((bm ? bm.time : own.time ?? m.view?.time) ? { time: bm ? bm.time : own.time ?? m.view?.time } : {}),
     layers: [...visible.filter((lid) => m.layers.some((l) => l.id === lid)).map((lid) => layerKey(id, lid)), ...(own.layers || [])],
@@ -94,7 +99,11 @@ export async function withMaps(story, getMap) {
 
 /** A new story built on a saved map: a moving map through its bookmarks if it has any, otherwise one big map. */
 export function storyFromMap(map, mapId) {
-  const camera = { center: map.view?.center, zoom: map.view?.zoom, bearing: map.view?.bearing || 0, pitch: map.view?.pitch || 0 };
+  const camera = {
+    center: map.view?.center, zoom: map.view?.zoom, bearing: map.view?.bearing || 0, pitch: map.view?.pitch || 0,
+    ...(map.view?.terrain ? { terrain: true, terrainExaggeration: map.view.terrainExaggeration || 1.5 } : {}),
+    ...(map.view?.buildings3d ? { buildings3d: true } : {}),
+  };
   const blocks = [{ type: 'text', style: 'large', html: '<p>Introduce the map: what it shows and why it matters.</p>' }];
   if ((map.bookmarks || []).length) blocks.push({ type: 'scrollmap', layout: 'overlay', slides: cardsFromBookmarks(map, mapId) });
   else blocks.push({ type: 'map', size: 'full', caption: map.summary || '', view: { map: mapId, ...camera, markers: [], layers: [] } });

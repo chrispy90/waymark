@@ -1,5 +1,5 @@
 // Waymark editor: block outline + settings on the left, live preview on the right.
-import { BASEMAPS, DEFAULT_VIEW, createMap, readView, applyView, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
+import { BASEMAPS, DEFAULT_VIEW, createMap, readView, applyView, setEnvironment, setMarkers, setVisibleLayers, fitToLayer, loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFilters, refreshLayers } from './maps.js';
 import { layerStats } from './analysis.js';
 import { normalizeStory } from './story-format.js';
 import { csvToGeoJSON } from './csv.js';
@@ -798,6 +798,9 @@ function openLibrary(onPick) {
 
 const viewSummary = (v = {}) => {
   const bits = [`Zoom ${Math.round((v.zoom ?? 0) * 10) / 10}`];
+  if (v.terrain) bits.push('3D terrain');
+  else if ((v.pitch || 0) >= 20) bits.push(`${Math.round(v.pitch)}° tilt`);
+  if (v.buildings3d) bits.push('3D buildings');
   if ((v.markers || []).length) bits.push(`${v.markers.length} marker${v.markers.length > 1 ? 's' : ''}`);
   if ((v.layers || []).length) bits.push(`${v.layers.length} layer${v.layers.length > 1 ? 's' : ''}`);
   return bits.join(' · ');
@@ -825,7 +828,11 @@ function viewField(obj, spec) {
 
 /* ---------- Saved maps in stories ---------- */
 
-const pickCamera = (v = {}) => ({ center: v.center, zoom: v.zoom, bearing: v.bearing || 0, pitch: v.pitch || 0 });
+const pickCamera = (v = {}) => ({
+  center: v.center, zoom: v.zoom, bearing: v.bearing || 0, pitch: v.pitch || 0,
+  ...(v.terrain ? { terrain: true, terrainExaggeration: v.terrainExaggeration || 1.5 } : {}),
+  ...(v.buildings3d ? { buildings3d: true } : {}),
+});
 
 async function chooseSavedMap(done) {
   const body = h('div', { class: 'mapchoose' }, h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Loading your maps…'));
@@ -1217,9 +1224,50 @@ function openPicker({ mode, value, noMarkers, noLayers, title }, done) {
       : [h('p', { class: 'field-hint', style: 'margin:0' }, 'Click the map to drop a marker.')]));
   };
 
+  const envBox = h('div');
+  const drawEnv = () => {
+    const tOn = pickerMap ? !!pickerMap._terrain : !!v.terrain;
+    const exag = pickerMap ? (pickerMap._terrainExaggeration || 1.5) : (Number(v.terrainExaggeration) || 1.5);
+    const bldOn = pickerMap ? !!pickerMap._buildings3d : !!v.buildings3d;
+    const curPitch = Math.round(pickerMap ? pickerMap.getPitch() : (v.pitch || 0));
+    envBox.replaceChildren(
+      h('label', { class: 'check' },
+        h('input', { type: 'checkbox', checked: tOn, onchange: (e) => {
+          setEnvironment(pickerMap, { terrain: e.target.checked, terrainExaggeration: exag });
+          if (e.target.checked && pickerMap.getPitch() < 25) pickerMap.easeTo({ pitch: 55, duration: 800 });
+          setTimeout(drawEnv, 820);
+        } }),
+        '3D Terrain, Hillshade & Sky'),
+      tOn ? h('div', { class: 'field', style: 'margin-top:6px' },
+        h('span', { class: 'field-label' }, 'Vertical exaggeration'),
+        h('div', { class: 'seg seg-block' }, [[1, '1×'], [1.5, '1.5×'], [2, '2×'], [3, '3×']].map(([val, lbl]) => h('button', {
+          type: 'button',
+          class: exag === val ? 'is-on' : '',
+          onclick: () => { setEnvironment(pickerMap, { terrain: true, terrainExaggeration: val }); drawEnv(); },
+        }, lbl)))) : null,
+      h('label', { class: 'check', style: 'margin-top:6px' },
+        h('input', { type: 'checkbox', checked: bldOn, onchange: (e) => {
+          setEnvironment(pickerMap, { buildings3d: e.target.checked });
+          if (e.target.checked && pickerMap.getPitch() < 25) pickerMap.easeTo({ pitch: 55, duration: 800 });
+          if (e.target.checked && pickerMap.getZoom() < 14) toast('Zoom in to street level (Z14+) to see 3D buildings', { duration: 3500 });
+          setTimeout(drawEnv, 820);
+        } }),
+        '3D City Buildings (street level)'),
+      h('div', { class: 'field', style: 'margin-top:8px' },
+        h('span', { class: 'field-label' }, `Camera tilt (${curPitch}°)`),
+        h('div', { class: 'seg seg-block' }, [[0, '2D Flat'], [45, '45°'], [60, '60°'], [72, 'Horizon']].map(([p, lbl]) => h('button', {
+          type: 'button',
+          class: Math.abs(curPitch - p) <= 7 ? 'is-on' : '',
+          onclick: () => { pickerMap.easeTo({ pitch: p, duration: 700 }); setTimeout(drawEnv, 720); },
+        }, lbl)))),
+    );
+  };
+  drawEnv();
+
   const side = h('div', { class: 'mp-side' },
     mode === 'point' ? h('p', { class: 'muted', style: 'margin:0' }, 'Click the map to place this stop, or search for it.') : [
       h('h4', {}, 'Basemap'), basemaps,
+      h('h4', {}, '3D & Terrain'), envBox,
       noMarkers ? null : [h('h4', {}, 'Markers'), markerList],
       noLayers ? null : [h('h4', {}, 'Data layers'), layersBox,
         h('button', { type: 'button', class: 'btn btn-sm', style: 'margin-top:8px', onclick: () => openPublicData({ onAdd: (l) => {
