@@ -3,8 +3,9 @@
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, setTitle } from './ui.js';
 import { BASEMAPS, createMap, readView, setTime, setVisibleLayers, refreshLayers, rebuildLayer, orderLayers, fitToLayer, layerFeatures, fieldNames, bbox } from './maps.js';
-import { initWorkbench, openAddData, openAnalysis, openDraw, openPublicData, rerunAnalysis } from './workbench.js';
+import { initWorkbench, openAddData, openAnalysis, openDraw, openPublicData, openHostedLayerPicker, rerunAnalysis } from './workbench.js';
 import { layerEditor } from './layer-form.js';
+import { renderAttributeTable, openNewHostedLayerDialog, isHostedLayer } from './table.js';
 import { TOOLS, TOOL_GROUPS, fmtDist, fmtArea } from './analysis.js';
 import { findPlaces } from './wizard.js';
 import { storyFromMap } from './webmap.js';
@@ -187,10 +188,10 @@ function layerMenu(btn, l) {
   const i = doc.layers.indexOf(l);
   menu(btn, [
     { label: 'Zoom to layer', icon: 'target', onClick: () => fitToLayer(map, l.id) },
-    l.type !== 'raster' ? { label: 'Show table', icon: 'list', onClick: () => openTable(l) } : null,
+    l.type !== 'raster' ? { label: 'Attribute table & schema', icon: 'list', onClick: () => openTable(l) } : null,
     { label: 'Settings', icon: 'sliders', onClick: () => selectLayer(l.id) },
     l.analysis ? { label: 'Re-run analysis', icon: 'refresh', onClick: () => rerunAnalysis(l) } : null,
-    l.drawn && l.data ? { label: 'Edit drawing', icon: 'pen', onClick: () => openDraw({ layer: l, view: currentView(), onSave: () => {} }) } : null,
+    (l.drawn && l.data) || isHostedLayer(l) ? { label: 'Edit shapes', icon: 'pen', onClick: () => openDraw({ layer: l, view: currentView(), onSave: () => {} }) } : null,
     { label: 'Duplicate', icon: 'copy', onClick: () => { const c = structuredClone(l); c.id = `l${Math.random().toString(36).slice(2, 8)}`; c.name = `${l.name} copy`; doc.layers.splice(i + 1, 0, c); doc.view.layers.push(c.id); changed(); } },
     'sep',
     { label: 'Remove', icon: 'trash', danger: true, onClick: () => {
@@ -205,6 +206,17 @@ function layerMenu(btn, l) {
 function addPanel() {
   const opt = (ic, title, text, fn) => h('button', { type: 'button', class: 'pick', onclick: fn }, h('span', { class: 'pick-icon' }, icon(ic, { size: 18 })), h('span', {}, h('strong', {}, title), h('span', {}, text)));
   return [...head('Add data'), h('div', { class: 'wb-tools' },
+    opt('database', 'Hosted feature layers', 'Create or pick a server-hosted GeoJSON layer with editable attributes and attribution', () => openHostedLayerPicker()),
+    opt('plus', 'New hosted layer', 'Define custom schema fields, source attribution and geometry', () => openNewHostedLayerDialog({
+      onCreated: (r) => {
+        const l = { id: `l${Math.random().toString(36).slice(2, 8)}`, hostedLayerId: r.id, name: r.title, url: r.url, attribution: r.attribution || '', style: r.style?.color ? r.style : { color: '#2563eb' }, popup: r.popup || {} };
+        doc.layers.push(l);
+        doc.view.layers.push(l.id);
+        changed();
+        showTool('layers');
+        selectLayer(l.id);
+      },
+    })),
     opt('globe', 'Browse public data', 'NOAA, NASA, USGS, Census, parks, wildfires, plus ArcGIS Online search', () => openPublicData({ onAdd: (l) => { doc.view.layers.push(l.id); changed(); showTool('layers'); } })),
     opt('upload', 'Your data', 'GeoJSON or CSV files, or a link to GeoJSON or an ArcGIS layer', () => openAddData()),
     opt('pen', 'Draw on the map', 'Points, lines, areas, circles and text, styled your way', () => startDraw()))];
@@ -264,12 +276,12 @@ function startDraw(layer) {
   openDraw({ layer, view: currentView(), onSave: (l) => { if (!doc.view.layers.includes(l.id)) doc.view.layers.push(l.id); changed(); } });
 }
 function drawPanel() {
-  const drawings = doc.layers.filter((l) => l.drawn && l.data);
+  const drawings = doc.layers.filter((l) => (l.drawn && l.data) || isHostedLayer(l));
   return [
     ...head('Draw', 'Sketch points, lines, freehand routes, areas, boxes, circles and text labels, and style each one.'),
     h('button', { type: 'button', class: 'btn btn-primary btn-block', onclick: () => startDraw() }, icon('pen', { size: 15 }), 'New drawing'),
-    drawings.length ? [h('div', { class: 'rail-section-title' }, 'Drawings'), h('div', { class: 'sub-list' }, drawings.map((l) => h('div', { class: 'me-result' },
-      h('span', {}, h('strong', {}, l.name), h('span', { class: 'muted' }, `${l.data.features.length} shapes`)),
+    drawings.length ? [h('div', { class: 'rail-section-title' }, 'Editable Layers & Drawings'), h('div', { class: 'sub-list' }, drawings.map((l) => h('div', { class: 'me-result' },
+      h('span', {}, h('strong', {}, l.name), h('span', { class: 'muted' }, isHostedLayer(l) ? 'Hosted layer' : `${l.data.features.length} shapes`)),
       h('button', { type: 'button', class: 'btn btn-sm', onclick: () => startDraw(l) }, icon('pen', { size: 14 }), 'Edit'))))] : null,
   ];
 }
@@ -403,34 +415,19 @@ function renderProps() {
 /* ---------- Attribute table ---------- */
 
 const table = $('#table');
-let tableState = null;
-async function openTable(l) {
-  tableState = { layer: l, sort: null, dir: 1, q: '' };
-  table.hidden = false;
-  table.replaceChildren(h('p', { class: 'muted', style: 'padding:14px' }, 'Loading…'));
-  try { tableState.fc = await layerFeatures(l); } catch (e) { table.replaceChildren(h('p', { class: 'form-error', style: 'padding:14px' }, e.message)); return; }
-  drawTable();
+function openTable(l) {
+  renderAttributeTable(table, l, {
+    map,
+    onZoom: zoomToFeature,
+    onClose: () => { table.hidden = true; },
+    onChange: () => {
+      delete LE.layerInfo[l.id];
+      changed();
+      renderProps();
+      renderPanel();
+    },
+  });
 }
-function drawTable() {
-  const { layer, fc } = tableState;
-  const cols = fieldNames(fc).slice(0, 14);
-  const q = tableState.q.toLowerCase();
-  let rows = fc.features.map((f, i) => [f, i]).filter(([f]) => !q || Object.values(f.properties || {}).some((v) => String(v ?? '').toLowerCase().includes(q)));
-  if (tableState.sort) {
-    const k = tableState.sort;
-    rows.sort(([a], [b]) => { const x = a.properties?.[k]; const y = b.properties?.[k]; return (x == null) - (y == null) || (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * tableState.dir; });
-  }
-  const shown = rows.slice(0, 1000);
-  const search = h('input', { class: 'input', type: 'search', placeholder: 'Search the table', value: tableState.q, oninput: (e) => { tableState.q = e.target.value; drawTable(); search.focus(); } });
-  table.replaceChildren(
-    h('div', { class: 'me-table-head' }, h('strong', {}, layer.name), h('span', { class: 'muted' }, `${rows.length.toLocaleString()} of ${fc.features.length.toLocaleString()} features${rows.length > 1000 ? ' · showing the first 1,000' : ''}`),
-      h('span', { class: 'spacer' }), search, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close table', onclick: () => { table.hidden = true; tableState = null; } }, icon('x', { size: 16 }))),
-    h('div', { class: 'me-table-scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, cols.map((c) => h('th', { onclick: () => { tableState.dir = tableState.sort === c ? -tableState.dir : 1; tableState.sort = c; drawTable(); } },
-        c, tableState.sort === c ? (tableState.dir > 0 ? ' ▲' : ' ▼') : '')))),
-      h('tbody', {}, shown.map(([f]) => h('tr', { onclick: () => zoomToFeature(f) }, cols.map((c) => h('td', {}, fmtCell(f.properties?.[c])))))))));
-}
-const fmtCell = (v) => (v == null ? '' : typeof v === 'number' ? (Math.abs(v) > 1e11 && Math.abs(v) < 4e12 ? new Date(v).toLocaleString() : v.toLocaleString()) : String(v).slice(0, 120));
 function zoomToFeature(f) {
   const b = bbox({ type: 'FeatureCollection', features: [f] });
   if (b) map.fitBounds(b, { padding: 80, maxZoom: 15, duration: 700 });
@@ -442,6 +439,29 @@ function zoomToFeature(f) {
     map.addLayer({ id: 'me-hl-line', type: 'line', source: 'me-hl', paint: { 'line-color': '#00e5ff', 'line-width': 4 } });
     map.addLayer({ id: 'me-hl-pt', type: 'circle', source: 'me-hl', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#00e5ff', 'circle-stroke-width': 3 } });
   }
+}
+
+/* ---------- Live Coordinate & Zoom HUD ---------- */
+{
+  const hud = h('button', {
+    type: 'button',
+    class: 'me-coords-hud',
+    title: 'Click to copy map center coordinates',
+    onclick: () => {
+      const c = map.getCenter();
+      const txt = `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
+      navigator.clipboard?.writeText(txt);
+      toast(`Copied coordinates: ${txt}`, { tone: 'ok' });
+    },
+  }, `${doc.view.center[1].toFixed(4)}°, ${doc.view.center[0].toFixed(4)}° · Z${(+doc.view.zoom).toFixed(1)}`);
+  $('#map').append(hud);
+  map.on('mousemove', (e) => {
+    hud.textContent = `${e.lngLat.lat.toFixed(4)}°, ${e.lngLat.lng.toFixed(4)}° · Z${map.getZoom().toFixed(1)}`;
+  });
+  map.on('zoom', () => {
+    const c = map.getCenter();
+    hud.textContent = `${c.lat.toFixed(4)}°, ${c.lng.toFixed(4)}° · Z${map.getZoom().toFixed(1)}`;
+  });
 }
 
 /* ---------- Place search ---------- */

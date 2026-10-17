@@ -162,3 +162,80 @@ test('static files cannot escape the public folder', async () => {
   assert.notEqual((await fetch(`${base}/..%2F..%2Fserver%2Fdb.js`)).status, 200);
   assert.equal((await fetch(`${base}/uploads/..%2Fwaymark.db`)).status, 404);
 });
+
+test('hosted feature layers CRUD, attribute table schema updates, and public sharing on publish', async () => {
+  const created = await alice('POST', '/api/layers', {
+    title: 'Regional Warehouses',
+    summary: 'Primary logistics distribution hubs',
+    attribution: 'Waymark Logistics GIS, 2026',
+    fields: [
+      { name: 'name', type: 'string', alias: 'Hub Name' },
+      { name: 'capacity', type: 'number', alias: 'Capacity' },
+      { name: 'temp_col', type: 'string', alias: 'Temporary' },
+    ],
+    data: {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [-74.0, 40.7] }, properties: { name: 'Newark Hub', capacity: 5000, temp_col: 'drop-me' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [-118.2, 34.0] }, properties: { name: 'LA Hub', capacity: 7200, temp_col: 'drop-me-2' } },
+      ],
+    },
+  });
+  assert.equal(created.status, 201);
+  const lid = created.body.id;
+  assert.equal(created.body.featureCount, 2);
+  assert.equal(created.body.geomType, 'Point');
+
+  // Private until shared
+  assert.equal((await bob('GET', `/api/layers/${lid}`)).status, 404);
+  assert.equal((await client()('GET', `/api/public/layers/${lid}`)).status, 404);
+
+  // Modify attribute table & remove `temp_col` from schema
+  const updated = await alice('PUT', `/api/layers/${lid}`, {
+    version: 1,
+    attribution: 'Waymark Supply Chain Division, 2026',
+    fields: [
+      { name: 'name', type: 'string', alias: 'Hub Name' },
+      { name: 'capacity', type: 'number', alias: 'Capacity' },
+    ],
+    data: {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [-74.0, 40.7] }, properties: { name: 'Newark Hub', capacity: 6500, temp_col: 'drop-me' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [-118.2, 34.0] }, properties: { name: 'LA Hub', capacity: 7200, temp_col: 'drop-me-2' } },
+      ],
+    },
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.version, 2);
+
+  // Version conflict check
+  assert.equal((await alice('PUT', `/api/layers/${lid}`, { version: 1, title: 'Stale' })).status, 409);
+
+  // GeoJSON service endpoint reflects modified attributes and stripped deleted column
+  const geo = await alice('GET', `/api/layers/${lid}/geojson`);
+  assert.equal(geo.status, 200);
+  assert.equal(geo.body.metadata.attribution, 'Waymark Supply Chain Division, 2026');
+  assert.equal(geo.body.features[0].properties.capacity, 6500);
+  assert.equal('temp_col' in geo.body.features[0].properties, false, 'removed schema field is stripped from features');
+
+  // Publishing a story that uses the hosted layer shares it publicly
+  await alice('PUT', `/api/stories/${storyId}`, {
+    version: 3,
+    story: {
+      title: 'Supply Chain Report',
+      layers: [{ id: 'l-hubs', name: 'Warehouses', hostedLayerId: lid, url: `/api/layers/${lid}/geojson` }],
+      blocks: [{ type: 'map', view: { center: [-95, 38], zoom: 4, layers: ['l-hubs'] } }],
+    },
+  });
+  await alice('POST', `/api/stories/${storyId}/publish`, { slug: 'supply-chain' });
+
+  const pubGeo = await client()('GET', `/api/public/layers/${lid}.geojson`);
+  assert.equal(pubGeo.status, 200);
+  assert.equal(pubGeo.body.features.length, 2);
+
+  const usage = await alice('GET', `/api/layers/${lid}/usage`);
+  assert.equal(usage.body.stories.length, 1);
+  assert.equal(usage.body.stories[0].id, storyId);
+});
+

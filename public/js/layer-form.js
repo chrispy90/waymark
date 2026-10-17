@@ -5,6 +5,7 @@ import { loadLayerData, fieldNames, colorRamp, FILTER_OPS, filterData, activeFil
 import { layerStats, TOOLS, kinds } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 import { openDraw, rerunAnalysis, insightsPanel } from './workbench.js';
+import { openAttributeTableDialog, isHostedLayer, publishLayerAsHosted, saveHostedLayer } from './table.js';
 
 /**
  * ctx: { doc() → the story or saved map whose .layers these are, changed(), rerender(), onInfo(layer)?, noun? }
@@ -35,9 +36,10 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
 
   const layerStatus = (l) => {
     if (l.type === 'raster') return 'Imagery';
+    const prefix = isHostedLayer(l) ? 'Hosted · ' : '';
     const i = layerInfo[l.id] || {};
-    if (i.count != null && activeFilters(l).length) return `${i.shown.toLocaleString()} of ${i.count.toLocaleString()} features`;
-    return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${i.count.toLocaleString()} ${i.count === 1 ? 'feature' : 'features'}` : 'No data yet';
+    if (i.count != null && activeFilters(l).length) return `${prefix}${i.shown.toLocaleString()} of ${i.count.toLocaleString()} features`;
+    return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${prefix}${i.count.toLocaleString()} ${i.count === 1 ? 'feature' : 'features'}` : 'No data yet';
   };
   const sourceKey = (l) => (l.data ? `data:${l.data.features?.length}` : `url:${l.url || ''}`);
 
@@ -47,19 +49,22 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
     if (!layer.data && !layer.url) { layerInfo[layer.id] = { key }; return; }
     layerInfo[layer.id] = { key, loading: true };
     const done = (info) => { if (layerInfo[layer.id]?.key === key) { layerInfo[layer.id] = { key, ...info }; onInfo?.(layer); } };
-    loadLayerData(layer).then((fc) => done({ count: fc.features.length, shown: filterData(layer, fc).features.length, fields: fieldNames(fc), fc })).catch((err) => done({ error: err.message }));
+    loadLayerData(layer).then((fc) => {
+      if (!layer.attribution && fc.metadata?.attribution) layer.attribution = fc.metadata.attribution;
+      done({ count: fc.features.length, shown: filterData(layer, fc).features.length, fields: fieldNames(fc), fc });
+    }).catch((err) => done({ error: err.message }));
   }
 
   function rasterForm(layer) {
     layer.style ||= {};
     return h('div', {},
       field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
+      field(layer, { k: 'attribution', label: 'Attribution / Source credits (shown in legend)', placeholder: 'e.g. NASA GIBS, USGS' }),
       h('p', { class: 'field-hint' }, 'An imagery layer: a picture of the map rather than individual features, so it can be shown but not filtered or analyzed.'),
       field(layer.style, { k: 'opacity', t: 'number', label: 'Opacity (0 to 1)', dflt: 0.85 }),
       /\{date\}/.test(layer.tiles || '') ? h('label', { class: 'field' }, labelEl('Date of the imagery'),
         h('input', { type: 'date', value: layer.date || '', max: new Date().toISOString().slice(0, 10), onchange: (e) => { layer.date = e.target.value || undefined; changed(); } }),
-        h('p', { class: 'field-hint' }, 'Leave blank to always show yesterday\'s image.')) : null,
-      layer.attribution ? h('p', { class: 'field-hint' }, `Source: ${layer.attribution}`) : null);
+        h('p', { class: 'field-hint' }, 'Leave blank to always show yesterday\'s image.')) : null);
   }
 
   function filtersField(layer, info) {
@@ -109,6 +114,7 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
     const st = layer.style;
     const info = layerInfo[layer.id] || {};
     const flds = info.fields || [];
+    const hosted = isHostedLayer(layer);
     const fieldSelect = (obj, k, label, empty = 'None') => h('label', { class: 'field' }, labelEl(label),
       h('select', { onchange: (e) => { obj[k] = e.target.value || undefined; changed(); renderRail(); } },
         h('option', { value: '' }, empty), flds.map((f) => h('option', { value: f, selected: obj[k] === f }, f))));
@@ -121,35 +127,69 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
         if (fc.type !== 'FeatureCollection') throw new Error('Expected a GeoJSON FeatureCollection');
         layer.data = fc;
         delete layer.url;
+        delete layer.hostedLayerId;
         if (layer.name === 'New layer') layer.name = file.name.replace(/\.\w+$/, '');
         const kb = Math.round(JSON.stringify(fc).length / 1024);
         if (kb > 3000) toast(`That file is ${kb.toLocaleString()} KB. Large files make stories slow; hosting it and using a link is better.`, { duration: 7000 });
+        delete layerInfo[layer.id];
         changed(); renderRail();
       } catch (err) { toast(`Could not read file: ${err.message}`, { tone: 'error' }); }
     } });
     const cats = st.mode === 'categorical' && st.field && info.fc ? colorRamp(layer, info.fc).legend.entries.filter(([v]) => v !== 'Other') : [];
     const status = info.loading ? h('span', { class: 'pill' }, 'Loading…') : info.error ? h('span', { class: 'pill is-error' }, info.error)
-      : info.count != null ? h('span', { class: 'pill is-live' }, `${info.count.toLocaleString()} features · ${flds.length} fields`) : null;
+      : info.count != null ? h('span', { class: 'pill is-live' }, `${hosted ? 'Hosted GeoJSON · ' : ''}${info.count.toLocaleString()} features · ${flds.length} fields`) : null;
 
     const isPoints = info.fc ? kinds(info.fc).has('point') : false;
     const a = layer.analysis;
     const inputNames = a ? Object.values(a.inputs).map((id) => (doc().layers || []).find((l) => l.id === id)?.name || 'a deleted layer').join(' and ') : '';
     return h('div', {},
+      hosted ? h('div', { class: 'provenance' }, icon('database', { size: 15 }),
+        h('span', {}, 'Hosted Feature Layer (GeoJSON)'),
+        h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openAttributeTableDialog(layer, { onChange: () => { delete layerInfo[layer.id]; changed(); renderRail(); } }) }, icon('list', { size: 14 }), 'Edit table'),
+        h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openDraw({ layer }) }, icon('pen', { size: 14 }), 'Edit shapes')) : null,
       a ? h('div', { class: 'provenance' }, icon('sparkle', { size: 15 }),
         h('span', {}, `${TOOLS[a.tool]?.name || 'Analysis'} of ${inputNames}`),
         h('button', { type: 'button', class: 'btn btn-sm', title: 'Run the analysis again with the latest data', onclick: () => rerunAnalysis(layer) }, icon('refresh', { size: 14 }), 'Re-run')) : null,
-      !a && layer.data?.features?.length <= 2000 ? h('div', { class: 'provenance' }, icon('pen', { size: 15 }),
+      !a && !hosted && layer.data?.features?.length <= 2000 ? h('div', { class: 'provenance' }, icon('pen', { size: 15 }),
         h('span', {}, layer.drawn ? 'Drawn on the map' : `Shapes stored in this ${noun}`),
         h('button', { type: 'button', class: 'btn btn-sm', title: 'Draw, move, restyle or delete shapes in this layer', onclick: () => openDraw({ layer }) }, icon('pen', { size: 14 }), 'Edit shapes')) : null,
       field(layer, { k: 'name', label: 'Name (shown in the legend)' }),
-      a || layer.catalog ? null : h('div', { class: 'field' }, labelEl('Data'),
+      h('label', { class: 'field' }, labelEl('Attribution / Credits (shown in legend)'),
+        h('input', {
+          class: 'input',
+          type: 'text',
+          value: layer.attribution || '',
+          placeholder: 'e.g. City GIS, US Census 2026, Field Survey',
+          oninput: (e) => { layer.attribution = e.target.value; changed(); },
+          onchange: () => { if (hosted && info.fc) saveHostedLayer(layer, info.fc, { attribution: layer.attribution }).catch(() => {}); },
+        })),
+      a || layer.catalog || hosted ? (status ? h('div', { style: 'margin:4px 0 8px' }, status) : null) : h('div', { class: 'field' }, labelEl('Data'),
         h('div', { class: 'row' },
           h('input', { class: 'input', type: 'text', value: layer.data ? '' : layer.url || '', placeholder: layer.data ? `Uploaded file (${layer.data.features.length} features)` : 'Paste a GeoJSON or ArcGIS layer link',
-            onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; changed(); renderRail(); } }),
+            onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; delete layerInfo[layer.id]; changed(); renderRail(); } }),
           h('button', { type: 'button', class: 'btn', title: 'Upload GeoJSON or CSV', onclick: () => fileInput.click() }, icon('upload', { size: 15 }), 'File'), fileInput),
         h('p', { class: 'field-hint' }, 'GeoJSON link, public ArcGIS FeatureServer layer, or a .geojson / .csv file (CSV needs lat and lon columns).'),
         status ? h('div', { style: 'margin-top:8px' }, status) : null),
-      layer.attribution ? h('p', { class: 'field-hint' }, `Source: ${layer.attribution}`) : null,
+      h('div', { class: 'row row-wrap', style: 'margin:8px 0 4px;gap:6px' },
+        h('button', {
+          type: 'button',
+          class: 'btn btn-sm',
+          onclick: () => openAttributeTableDialog(layer, { onChange: () => { delete layerInfo[layer.id]; changed(); renderRail(); } }),
+        }, icon('list', { size: 14 }), 'Attribute table & schema'),
+        !hosted && info.fc ? h('button', {
+          type: 'button',
+          class: 'btn btn-sm',
+          title: 'Save as a reusable Hosted Feature Layer on the server with editable attributes',
+          onclick: async () => {
+            try {
+              await publishLayerAsHosted(layer);
+              delete layerInfo[layer.id];
+              changed();
+              renderRail();
+              toast(`Published "${layer.name}" as a Hosted Feature Layer`, { tone: 'ok' });
+            } catch (err) { toast(err.message, { tone: 'error' }); }
+          },
+        }, icon('database', { size: 14 }), 'Publish as Hosted Layer') : null),
       info.fc ? [h('div', { class: 'rail-section-title' }, 'Filters'), filtersField(layer, info)] : null,
       info.fc ? [h('div', { class: 'rail-section-title' }, activeFilters(layer).length ? 'Insights (filtered)' : 'Insights'), insightsPanel(layer, filterData(layer, info.fc))] : null,
       h('div', { class: 'rail-section-title' }, 'Style'),

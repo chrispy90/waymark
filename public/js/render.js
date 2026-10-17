@@ -1,5 +1,5 @@
 // Story renderer. Takes a story JSON document (see docs/SCHEMA.md) and builds the reading experience.
-import { createMap, applyView, DEFAULT_VIEW } from './maps.js';
+import { createMap, applyView, DEFAULT_VIEW, layerFeatures, PALETTE } from './maps.js';
 import { sanitize, safeUrl } from './sanitize.js';
 import { track, reveal, countUp, viewProgress, pinProgress, exitProgress, reducedMotion } from './effects.js';
 import { BRAND } from './brand.js';
@@ -7,13 +7,15 @@ import { normalizeStory } from './story-format.js';
 
 const COLOR = /^#[0-9a-f]{3,8}$/i;
 const NO_REVEAL = new Set(['scrollmap', 'statement', 'gallery', 'chapter']);
+const SVG_TAGS = new Set(['svg', 'circle', 'path', 'rect', 'g', 'text']);
 
 const h = (tag, attrs = {}, ...kids) => {
-  const el = document.createElement(tag);
+  const isSvg = SVG_TAGS.has(tag);
+  const el = isSvg ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null || v === false) continue;
-    if (k === 'class') el.className = v;
-    else if (k === 'html') el.innerHTML = sanitize(v);
+    if (k === 'class') el.setAttribute('class', v);
+    else if (k === 'html' && !isSvg) el.innerHTML = sanitize(v);
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else el.setAttribute(k, v);
   }
@@ -25,7 +27,7 @@ const h = (tag, attrs = {}, ...kids) => {
  * Renders `story` into `root`. Returns a destroy() function.
  * opts.instant: show everything immediately (used when the builder re-renders the preview).
  */
-export const THEMES = ['light', 'dark', 'brutalist', 'atlas', 'aurora'];
+export const THEMES = ['light', 'dark', 'brutalist', 'atlas', 'aurora', 'editorial', 'blueprint'];
 
 export function renderStory(story, root, { instant = false, homeHref = '/' } = {}) {
   normalizeStory(story);
@@ -37,7 +39,7 @@ export function renderStory(story, root, { instant = false, homeHref = '/' } = {
   document.title = story.title || 'Untitled story';
   setPalette(null);
 
-  root.append(renderHeader(story), renderCover(story, ctx));
+  root.append(renderHeader(story, root), renderCover(story, ctx));
   const body = h('main', { class: 'sm-body' });
   let palette = null; // chapters recolor the page from that point on
   (story.blocks || []).forEach((block, i) => {
@@ -103,11 +105,25 @@ function setPalette(p) {
   s.setProperty('--line', `color-mix(in srgb, ${p.bg} 80%, ${fg})`);
 }
 
-function renderHeader(story) {
+function renderHeader(story, root) {
   // The brutalist theme runs the title as a ticker; its CSS shows two copies of this repeated string.
   const ticker = `${Array(6).fill(`\u2731  ${(story.title || '').toUpperCase()}`).join('      ')}      `;
+  const chapters = [];
+  (story.blocks || []).forEach((b, idx) => {
+    if (b.type === 'chapter' && b.title) chapters.push({ idx, title: b.title });
+  });
+  const nav = chapters.length ? h('nav', { class: 'sm-topbar-chapters', 'aria-label': 'Story sections' },
+    chapters.map((c) => h('button', {
+      type: 'button',
+      class: 'sm-chapter-pill',
+      onclick: () => {
+        const target = root.querySelector(`[data-block-index="${c.idx}"]`);
+        target?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      },
+    }, c.title))) : null;
   return h('header', { class: 'sm-topbar' },
     h('span', { class: 'sm-topbar-title', 'data-ticker': ticker }, story.title || ''),
+    nav,
     h('div', { class: 'sm-progress', 'aria-hidden': 'true' }));
 }
 
@@ -245,6 +261,139 @@ const BLOCKS = {
       return h('div', { class: 'sm-stat' }, num, h('div', { class: 'sm-stat-label' }, it.label || ''));
     })),
     caption(b.caption)),
+
+  // Interactive Chart & Executive Data Table block (manual items or live layer aggregation).
+  chart: (b, ctx) => {
+    const wrap = h('section', { class: 'sm-chart' });
+    const body = h('div', { class: 'sm-chart-body' });
+    let activeView = ['bar', 'column', 'donut', 'table'].includes(b.chartType) ? b.chartType : 'bar';
+    let sortKey = 'value';
+    let sortDir = -1;
+    let cachedFc = null;
+
+    const fmtVal = (v) => {
+      const pre = b.unitPrefix || '';
+      const suf = b.unitSuffix || '';
+      const numStr = typeof v === 'number' ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 1 }) : String(Math.round(v * 100) / 100)) : String(v ?? '');
+      return `${pre}${numStr}${suf}`;
+    };
+
+    const draw = () => {
+      const { series, total, max } = computeChartSeries(b, cachedFc);
+      if (!series.length) {
+        body.replaceChildren(h('div', { class: 'sm-empty-box' }, 'No chart data yet — add items or connect a data layer'));
+        return;
+      }
+      if (activeView === 'bar') {
+        body.replaceChildren(h('div', { class: 'sm-chart-bars' }, series.map((it) => {
+          const pct = Math.max(2, Math.round((Math.abs(it.value) / max) * 100));
+          const share = total > 0 ? `${Math.round((Math.abs(it.value) / total) * 100)}%` : '';
+          return h('div', { class: 'sm-bar-row' },
+            h('div', { class: 'sm-bar-meta' },
+              h('span', { class: 'sm-bar-label' }, it.label),
+              h('span', { class: 'sm-bar-val' }, fmtVal(it.value), share ? h('small', { class: 'sm-bar-share' }, ` (${share})`) : null)),
+            h('div', { class: 'sm-bar-track' },
+              h('div', { class: 'sm-bar-fill', style: `width:${pct}%;background:${it.color}` })),
+            it.note ? h('div', { class: 'sm-bar-note' }, it.note) : null);
+        })));
+        return;
+      }
+      if (activeView === 'column') {
+        body.replaceChildren(h('div', { class: 'sm-chart-cols' }, series.map((it) => {
+          const pct = Math.max(4, Math.round((Math.abs(it.value) / max) * 100));
+          return h('div', { class: 'sm-col-item' },
+            h('div', { class: 'sm-col-val' }, fmtVal(it.value)),
+            h('div', { class: 'sm-col-well' },
+              h('div', { class: 'sm-col-bar', style: `height:${pct}%;background:${it.color}` })),
+            h('div', { class: 'sm-col-label', title: it.label }, it.label));
+        })));
+        return;
+      }
+      if (activeView === 'donut') {
+        const r = 74;
+        const c = 2 * Math.PI * r;
+        let offset = 0;
+        const arcs = series.map((it) => {
+          const frac = total > 0 ? Math.max(0, it.value) / total : 0;
+          const len = frac * c;
+          const circle = h('circle', {
+            cx: '105', cy: '105', r: String(r),
+            fill: 'none', stroke: it.color, 'stroke-width': '26',
+            'stroke-dasharray': `${len} ${c - len}`,
+            'stroke-dashoffset': String(-offset),
+          });
+          offset += len;
+          return circle;
+        });
+        const svg = h('svg', { class: 'sm-donut-svg', viewBox: '0 0 210 210' },
+          h('circle', { cx: '105', cy: '105', r: String(r), fill: 'none', stroke: 'var(--line)', 'stroke-width': '26' }),
+          h('g', { transform: 'rotate(-90 105 105)' }, arcs),
+          h('text', { x: '105', y: '101', 'text-anchor': 'middle', class: 'sm-donut-total' }, fmtVal(Math.round(total * 100) / 100)),
+          h('text', { x: '105', y: '121', 'text-anchor': 'middle', class: 'sm-donut-sub' }, b.stat === 'avg' ? 'Combined' : 'Total'));
+        const legend = h('div', { class: 'sm-donut-legend' }, series.map((it) => {
+          const share = total > 0 ? `${Math.round((Math.max(0, it.value) / total) * 100)}%` : '0%';
+          return h('div', { class: 'sm-donut-item' },
+            h('span', { class: 'sm-donut-dot', style: `background:${it.color}` }),
+            h('span', { class: 'sm-donut-name' }, it.label),
+            h('strong', { class: 'sm-donut-val' }, fmtVal(it.value)),
+            h('span', { class: 'sm-donut-pct' }, share));
+        }));
+        body.replaceChildren(h('div', { class: 'sm-chart-donut' }, svg, legend));
+        return;
+      }
+      // Executive Data Table view
+      const sorted = [...series].sort((a, c) => (sortKey === 'label' ? a.label.localeCompare(c.label) : a.value - c.value) * sortDir);
+      body.replaceChildren(h('div', { class: 'sm-chart-table-wrap' },
+        h('table', { class: 'sm-chart-table' },
+          h('thead', {}, h('tr', {},
+            h('th', { style: 'width:42px' }, '#'),
+            h('th', { onclick: () => { sortDir = sortKey === 'label' ? -sortDir : 1; sortKey = 'label'; draw(); }, style: 'cursor:pointer' },
+              b.groupField || 'Category', sortKey === 'label' ? (sortDir > 0 ? ' ▲' : ' ▼') : ''),
+            h('th', { onclick: () => { sortDir = sortKey === 'value' ? -sortDir : -1; sortKey = 'value'; draw(); }, style: 'cursor:pointer;text-align:right' },
+              b.valueField || 'Value', sortKey === 'value' ? (sortDir > 0 ? ' ▲' : ' ▼') : ''),
+            h('th', { style: 'width:32%' }, 'Share'))),
+          h('tbody', {}, sorted.map((it, idx) => {
+            const pct = Math.max(2, Math.round((Math.abs(it.value) / max) * 100));
+            const share = total > 0 ? `${Math.round((Math.abs(it.value) / total) * 100)}%` : '—';
+            return h('tr', {},
+              h('td', { class: 'sm-td-rank' }, String(idx + 1)),
+              h('td', {}, h('strong', {}, it.label), it.note ? h('div', { class: 'sm-bar-note' }, it.note) : null),
+              h('td', { style: 'text-align:right;font-variant-numeric:tabular-nums' }, fmtVal(it.value)),
+              h('td', {}, h('div', { class: 'sm-td-share' },
+                h('div', { class: 'sm-td-bar', style: `width:${pct}%;background:${it.color}` }),
+                h('span', {}, share))));
+          })))));
+    };
+
+    const switcher = h('div', { class: 'sm-chart-switch', role: 'group', 'aria-label': 'View mode' },
+      [['bar', 'Bars'], ['column', 'Columns'], ['donut', 'Donut'], ['table', 'Table']].map(([k, lbl]) =>
+        h('button', {
+          type: 'button',
+          class: activeView === k ? 'is-on' : '',
+          onclick: (e) => {
+            activeView = k;
+            switcher.querySelectorAll('button').forEach((btn) => btn.classList.toggle('is-on', btn === e.currentTarget));
+            draw();
+          },
+        }, lbl)));
+
+    const headEl = h('div', { class: 'sm-chart-head' },
+      h('div', {},
+        b.title ? h('h3', { class: 'sm-chart-title' }, b.title) : null,
+        b.subtitle ? h('p', { class: 'sm-chart-subtitle' }, b.subtitle) : null),
+      switcher);
+
+    wrap.append(headEl, body, caption(b.caption));
+
+    const layer = b.layer ? (ctx.library || []).find((l) => l.id === b.layer) : null;
+    if (layer) {
+      body.replaceChildren(h('div', { class: 'sm-empty-box' }, 'Loading layer metrics…'));
+      layerFeatures(layer).then((fc) => { cachedFc = fc; draw(); }).catch(() => draw());
+    } else {
+      draw();
+    }
+    return wrap;
+  },
 
   // Horizontal gallery driven by vertical scrolling.
   gallery: (b, ctx) => {
@@ -427,5 +576,49 @@ const BLOCKS = {
     return h('figure', { class: 'sm-figure size-full' }, wrap, caption(b.caption));
   },
 };
+
+export function computeChartSeries(b, fc) {
+  let series = [];
+  if (fc && Array.isArray(fc.features) && fc.features.length) {
+    const gf = b.groupField || '';
+    const vf = b.valueField || '';
+    const stat = b.stat || (vf ? 'sum' : 'count');
+    const groups = new Map();
+    fc.features.forEach((f, idx) => {
+      const p = f.properties || {};
+      const key = gf ? String(p[gf] ?? 'Unspecified') : String(p.name || p.title || `#${idx + 1}`);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+    for (const [label, rows] of groups.entries()) {
+      let val = rows.length;
+      if (stat !== 'count' && vf) {
+        const nums = rows.map((r) => Number(String(r[vf] ?? '').replace(/[,$%\s]/g, ''))).filter((n) => Number.isFinite(n));
+        if (!nums.length) val = 0;
+        else if (stat === 'sum') val = nums.reduce((a, c) => a + c, 0);
+        else if (stat === 'avg') val = nums.reduce((a, c) => a + c, 0) / nums.length;
+        else if (stat === 'min') val = Math.min(...nums);
+        else if (stat === 'max') val = Math.max(...nums);
+      }
+      series.push({ label, value: Math.round(val * 100) / 100, count: rows.length });
+    }
+    series.sort((a, c) => c.value - a.value);
+    const lim = Math.max(1, +(b.limit || (b.chartType === 'table' ? 15 : 8)));
+    series = series.slice(0, lim).map((it, idx) => ({ ...it, color: PALETTE[idx % PALETTE.length] }));
+  } else if (Array.isArray(b.items)) {
+    series = b.items.map((it, idx) => {
+      const n = Number(String(it.value ?? 0).replace(/[,$%\s]/g, ''));
+      return {
+        label: String(it.label || `Item ${idx + 1}`),
+        value: Number.isFinite(n) ? n : 0,
+        color: COLOR.test(it.color || '') ? it.color : PALETTE[idx % PALETTE.length],
+        note: it.note || '',
+      };
+    });
+  }
+  const total = series.reduce((s, it) => s + (it.value > 0 ? it.value : 0), 0);
+  const max = series.length ? Math.max(...series.map((it) => Math.abs(it.value)), 1) : 1;
+  return { series, total, max };
+}
 
 export const BLOCK_TYPES = Object.keys(BLOCKS);

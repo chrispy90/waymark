@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { pathToFileURL } = require('url');
-const { db, UPLOAD_DIR } = require('./db');
+const { db, UPLOAD_DIR, LAYER_DIR } = require('./db');
 const auth = require('./auth');
 const brand = require('./brand');
 
@@ -30,9 +30,15 @@ function askHidden(question) {
 
 const MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
 
-// Resolves a site path ('/css/x.css', '/uploads/y.webp') to a file, refusing anything outside the app folders.
+// Resolves a site path ('/css/x.css', '/uploads/y.webp', '/api/layers/:id/geojson') to a file, refusing anything outside the app folders.
 function localFile(urlPath) {
   const clean = decodeURIComponent(urlPath.split('?')[0]);
+  const layerMatch = /^\/api\/(?:public\/)?layers\/([\w-]+?)(?:\/geojson|\.geojson)?$/.exec(clean);
+  if (layerMatch) {
+    const file = path.normalize(path.join(LAYER_DIR, `${layerMatch[1]}.geojson`));
+    if (!file.startsWith(path.normalize(LAYER_DIR))) throw new Error(`Refusing to read ${urlPath}`);
+    return file;
+  }
   const [root, rel] = clean.startsWith('/uploads/') ? [UPLOAD_DIR, clean.slice('/uploads/'.length)] : [PUBLIC, clean];
   const file = path.normalize(path.join(root, rel));
   if (!file.startsWith(path.normalize(root))) throw new Error(`Refusing to read ${urlPath}`);

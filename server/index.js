@@ -3,7 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { db, UPLOAD_DIR } = require('./db');
+const { db, UPLOAD_DIR, LAYER_DIR } = require('./db');
 const auth = require('./auth');
 const brand = require('./brand');
 const { sendMail, mailConfigured } = require('./mail');
@@ -126,6 +126,100 @@ const mapSummary = (r) => ({
 
 // Saved maps a story uses: views reference them as "map": "<id>".
 const mapIdsIn = (json) => [...new Set([...String(json).matchAll(/"map":"([\w-]{4,40})"/g)].map((m) => m[1]))];
+
+// Hosted layers referenced by URL or hostedLayerId in a story or map JSON.
+const layerIdsIn = (json) => [...new Set([
+  ...[...String(json).matchAll(/\/api\/(?:public\/)?layers\/([\w-]{4,40})(?:\/geojson|\.geojson)/g)].map((m) => m[1]),
+  ...[...String(json).matchAll(/"hostedLayerId":"([\w-]{4,40})"/g)].map((m) => m[1]),
+])];
+
+function ownLayer(user, id) {
+  const row = db.prepare('SELECT * FROM layers WHERE id = ?').get(id);
+  if (!row || row.owner_id !== user.id) throw new HttpError(404, 'Layer not found');
+  return row;
+}
+
+const layerFile = (id) => path.join(LAYER_DIR, `${String(id).replace(/[^\w-]/g, '')}.geojson`);
+
+function readLayerGeoJSON(id) {
+  const file = layerFile(id);
+  if (!fs.existsSync(file)) return { type: 'FeatureCollection', metadata: {}, features: [] };
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { type: 'FeatureCollection', metadata: {}, features: [] }; }
+}
+
+function normalizeFields(fields, features = []) {
+  const out = [];
+  const seen = new Set();
+  if (Array.isArray(fields)) {
+    for (const f of fields) {
+      const name = String(typeof f === 'string' ? f : f?.name || '').trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      const type = ['string', 'number', 'boolean', 'date'].includes(f?.type) ? f.type : 'string';
+      const entry = { name, type };
+      if (f?.alias) entry.alias = String(f.alias).trim().slice(0, 120);
+      if (f?.default !== undefined) entry.default = f.default;
+      out.push(entry);
+    }
+  }
+  for (const feat of features) {
+    const props = feat?.properties;
+    if (!props || typeof props !== 'object') continue;
+    for (const [k, v] of Object.entries(props)) {
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      const type = typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'string';
+      out.push({ name: k, type });
+    }
+  }
+  return out;
+}
+
+function detectGeomType(features = [], fallback = 'Point') {
+  for (const f of features) {
+    const t = f?.geometry?.type;
+    if (!t) continue;
+    if (t.includes('Point')) return 'Point';
+    if (t.includes('Line')) return 'LineString';
+    if (t.includes('Polygon')) return 'Polygon';
+  }
+  return ['Point', 'LineString', 'Polygon'].includes(fallback) ? fallback : 'Point';
+}
+
+function normalizeLayerData(data, meta = {}) {
+  const raw = data && typeof data === 'object' ? data : {};
+  const features = Array.isArray(raw.features) ? raw.features : raw.type === 'Feature' ? [raw] : [];
+  const cleanFeatures = features.filter((f) => f && typeof f === 'object').map((f, idx) => ({
+    type: 'Feature',
+    id: f.id ?? idx + 1,
+    properties: f.properties && typeof f.properties === 'object' && !Array.isArray(f.properties) ? { ...f.properties } : {},
+    geometry: f.geometry && typeof f.geometry === 'object' ? f.geometry : null,
+  }));
+  const existingMeta = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
+  return {
+    type: 'FeatureCollection',
+    metadata: { ...existingMeta, ...meta },
+    features: cleanFeatures,
+  };
+}
+
+const layerSummary = (r) => ({
+  id: r.id,
+  title: r.title,
+  summary: r.summary || '',
+  attribution: r.attribution || '',
+  geomType: r.geom_type || 'Point',
+  featureCount: r.feature_count ?? 0,
+  fields: typeof r.fields === 'string' ? JSON.parse(r.fields || '[]') : (r.fields || []),
+  style: typeof r.style === 'string' ? JSON.parse(r.style || '{}') : (r.style || {}),
+  popup: typeof r.popup === 'string' ? JSON.parse(r.popup || '{}') : (r.popup || {}),
+  version: r.version,
+  shared: !!r.shared,
+  url: `/api/layers/${r.id}/geojson`,
+  publicUrl: `/api/public/layers/${r.id}.geojson`,
+  updatedAt: r.updated_at,
+  createdAt: r.created_at,
+});
 
 const summary = (r) => ({
   id: r.id, title: r.title, version: r.version, updatedAt: r.updated_at, createdAt: r.created_at,
@@ -273,9 +367,17 @@ route('POST', '/api/stories/:id/publish', async (req, p) => {
   if (db.prepare('SELECT id FROM stories WHERE slug = ? AND id != ?').get(slug, row.id)) throw new HttpError(409, 'That link is already taken');
   const now = Math.max(Date.now(), row.updated_at);
   db.prepare('UPDATE stories SET published = draft, slug = ?, published_at = ? WHERE id = ?').run(slug, now, row.id);
-  // Readers need to load the saved maps this story uses.
-  const share = db.prepare('UPDATE maps SET shared = 1 WHERE id = ? AND owner_id = ?');
-  mapIdsIn(row.draft).forEach((id) => share.run(id, row.owner_id));
+  // Readers need to load the saved maps and hosted layers this story uses.
+  const shareMap = db.prepare('UPDATE maps SET shared = 1 WHERE id = ? AND owner_id = ?');
+  const shareLayer = db.prepare('UPDATE layers SET shared = 1 WHERE id = ? AND owner_id = ?');
+  const mapIds = mapIdsIn(row.draft);
+  mapIds.forEach((id) => shareMap.run(id, row.owner_id));
+  const layerIds = new Set(layerIdsIn(row.draft));
+  for (const mId of mapIds) {
+    const mRow = db.prepare('SELECT data FROM maps WHERE id = ? AND owner_id = ?').get(mId, row.owner_id);
+    if (mRow) layerIdsIn(mRow.data).forEach((lId) => layerIds.add(lId));
+  }
+  layerIds.forEach((id) => shareLayer.run(id, row.owner_id));
   return [200, summary(db.prepare('SELECT * FROM stories WHERE id = ?').get(row.id))];
 });
 
@@ -322,7 +424,12 @@ route('PUT', '/api/maps/:id', async (req, p) => {
   if (version !== row.version) throw new HttpError(409, 'This map was changed somewhere else', { version: row.version, updatedAt: row.updated_at });
   const title = validateMap(map);
   const now = Math.max(Date.now(), row.updated_at + 1);
-  db.prepare('UPDATE maps SET title = ?, data = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?').run(title, JSON.stringify({ ...map, id: row.id }), now, row.id, version);
+  const json = JSON.stringify({ ...map, id: row.id });
+  db.prepare('UPDATE maps SET title = ?, data = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?').run(title, json, now, row.id, version);
+  if (row.shared) {
+    const shareLayer = db.prepare('UPDATE layers SET shared = 1 WHERE id = ? AND owner_id = ?');
+    layerIdsIn(json).forEach((lId) => shareLayer.run(lId, user.id));
+  }
   return [200, mapSummary(db.prepare('SELECT * FROM maps WHERE id = ?').get(row.id))];
 });
 
@@ -345,6 +452,117 @@ route('GET', '/api/public/maps/:id', async (req, p) => {
   const row = db.prepare('SELECT data FROM maps WHERE id = ? AND shared = 1').get(p.id);
   if (!row) throw new HttpError(404, 'Map not found');
   return [200, JSON.parse(row.data), { 'Cache-Control': 'public, max-age=15' }]; // short, so map edits reach readers quickly
+});
+
+/* ---------------- Hosted Feature Layers ---------------- */
+
+route('GET', '/api/layers', async (req) => {
+  const user = requireUser(req);
+  const rows = db.prepare('SELECT * FROM layers WHERE owner_id = ? ORDER BY updated_at DESC').all(user.id);
+  return [200, { layers: rows.map(layerSummary) }];
+});
+
+route('POST', '/api/layers', async (req) => {
+  const user = requireUser(req);
+  const body = await readJson(req, MAX_STORY);
+  const raw = body.layer && typeof body.layer === 'object' ? body.layer : body;
+  const title = String(raw.title || raw.name || 'Untitled layer').trim().slice(0, 300) || 'Untitled layer';
+  const summaryText = String(raw.summary || '').trim().slice(0, 1000);
+  const attribution = String(raw.attribution ?? raw.data?.metadata?.attribution ?? '').trim().slice(0, 500);
+  const fc = normalizeLayerData(raw.data || { type: 'FeatureCollection', features: [] });
+  const fields = normalizeFields(raw.fields || fc.metadata?.fields, fc.features);
+  const geomType = detectGeomType(fc.features, raw.geomType || raw.geom_type || 'Point');
+  const style = raw.style && typeof raw.style === 'object' ? raw.style : {};
+  const popup = raw.popup && typeof raw.popup === 'object' ? raw.popup : {};
+  const shared = raw.shared ? 1 : 0;
+  const id = auth.newId();
+  const now = Date.now();
+  fc.metadata = { ...fc.metadata, id, title, summary: summaryText, attribution, geomType, fields, updatedAt: now };
+  fs.writeFileSync(layerFile(id), JSON.stringify(fc));
+  db.prepare(`INSERT INTO layers (id, owner_id, title, summary, attribution, geom_type, feature_count, fields, style, popup, version, shared, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+    .run(id, user.id, title, summaryText, attribution, geomType, fc.features.length, JSON.stringify(fields), JSON.stringify(style), JSON.stringify(popup), shared, now, now);
+  const row = db.prepare('SELECT * FROM layers WHERE id = ?').get(id);
+  return [201, { ...layerSummary(row), data: fc }];
+});
+
+route('GET', '/api/layers/:id', async (req, p) => {
+  const row = ownLayer(requireUser(req), p.id);
+  const data = readLayerGeoJSON(row.id);
+  return [200, { ...layerSummary(row), data }];
+});
+
+route('PUT', '/api/layers/:id', async (req, p) => {
+  const user = requireUser(req);
+  const row = ownLayer(user, p.id);
+  const body = await readJson(req, MAX_STORY);
+  const raw = body.layer && typeof body.layer === 'object' ? body.layer : body;
+  if (body.version != null && body.version !== row.version) {
+    throw new HttpError(409, 'This layer was changed somewhere else', { version: row.version, updatedAt: row.updated_at });
+  }
+  const existingFc = readLayerGeoJSON(row.id);
+  const fc = raw.data !== undefined ? normalizeLayerData(raw.data, existingFc.metadata) : existingFc;
+  const title = raw.title !== undefined ? (String(raw.title || '').trim().slice(0, 300) || 'Untitled layer') : row.title;
+  const summaryText = raw.summary !== undefined ? String(raw.summary || '').trim().slice(0, 1000) : row.summary;
+  const attribution = raw.attribution !== undefined ? String(raw.attribution || '').trim().slice(0, 500) : row.attribution;
+  const currentFields = JSON.parse(row.fields || '[]');
+  if (Array.isArray(raw.fields)) {
+    const nextNames = new Set(raw.fields.map((f) => String(typeof f === 'string' ? f : f?.name || '').trim()).filter(Boolean));
+    const removed = currentFields.map((f) => f.name).filter((n) => n && !nextNames.has(n));
+    if (removed.length) {
+      for (const feat of fc.features) {
+        if (feat?.properties) for (const k of removed) delete feat.properties[k];
+      }
+    }
+  }
+  const fields = normalizeFields(raw.fields !== undefined ? raw.fields : currentFields, fc.features);
+  const geomType = detectGeomType(fc.features, raw.geomType || raw.geom_type || row.geom_type || 'Point');
+  const style = raw.style !== undefined && typeof raw.style === 'object' ? raw.style : JSON.parse(row.style || '{}');
+  const popup = raw.popup !== undefined && typeof raw.popup === 'object' ? raw.popup : JSON.parse(row.popup || '{}');
+  const shared = raw.shared !== undefined ? (raw.shared ? 1 : 0) : row.shared;
+  const now = Math.max(Date.now(), row.updated_at + 1);
+  fc.metadata = { ...fc.metadata, id: row.id, title, summary: summaryText, attribution, geomType, fields, updatedAt: now };
+  fs.writeFileSync(layerFile(row.id), JSON.stringify(fc));
+  db.prepare(`UPDATE layers SET title = ?, summary = ?, attribution = ?, geom_type = ?, feature_count = ?, fields = ?, style = ?, popup = ?, shared = ?, version = version + 1, updated_at = ? WHERE id = ?`)
+    .run(title, summaryText, attribution, geomType, fc.features.length, JSON.stringify(fields), JSON.stringify(style), JSON.stringify(popup), shared, now, row.id);
+  const updated = db.prepare('SELECT * FROM layers WHERE id = ?').get(row.id);
+  return [200, { ...layerSummary(updated), data: fc }];
+});
+
+route('DELETE', '/api/layers/:id', async (req, p) => {
+  const row = ownLayer(requireUser(req), p.id);
+  db.prepare('DELETE FROM layers WHERE id = ?').run(row.id);
+  fs.rmSync(layerFile(row.id), { force: true });
+  return [200, { ok: true }];
+});
+
+route('GET', '/api/layers/:id/usage', async (req, p) => {
+  const user = requireUser(req);
+  const row = ownLayer(user, p.id);
+  const needle = `/api/layers/${row.id}`;
+  const stories = db.prepare('SELECT id, title, slug, published FROM stories WHERE owner_id = ? AND (instr(draft, ?) > 0 OR instr(draft, ?) > 0) ORDER BY updated_at DESC')
+    .all(user.id, needle, `"hostedLayerId":"${row.id}"`).map((s) => ({ id: s.id, title: s.title, url: s.slug && s.published ? `/s/${s.slug}` : null }));
+  const maps = db.prepare('SELECT id, title FROM maps WHERE owner_id = ? AND (instr(data, ?) > 0 OR instr(data, ?) > 0) ORDER BY updated_at DESC')
+    .all(user.id, needle, `"hostedLayerId":"${row.id}"`).map((m) => ({ id: m.id, title: m.title }));
+  return [200, { stories, maps }];
+});
+
+route('GET', '/api/layers/:id/geojson', async (req, p) => {
+  const id = String(p.id || '').replace(/\.geojson$/i, '');
+  const row = db.prepare('SELECT * FROM layers WHERE id = ?').get(id);
+  if (!row) throw new HttpError(404, 'Layer not found');
+  const user = auth.currentUser(req);
+  if (!row.shared && (!user || user.id !== row.owner_id)) throw new HttpError(404, 'Layer not found');
+  const data = readLayerGeoJSON(row.id);
+  return [200, data, { 'Content-Type': 'application/geo+json; charset=utf-8', 'Cache-Control': 'no-cache' }];
+});
+
+route('GET', '/api/public/layers/:id', async (req, p) => {
+  const id = String(p.id || '').replace(/\.geojson$/i, '');
+  const row = db.prepare('SELECT * FROM layers WHERE id = ? AND shared = 1').get(id);
+  if (!row) throw new HttpError(404, 'Layer not found');
+  const data = readLayerGeoJSON(row.id);
+  return [200, data, { 'Content-Type': 'application/geo+json; charset=utf-8', 'Cache-Control': 'public, max-age=15' }];
 });
 
 route('POST', '/api/uploads', async (req) => {

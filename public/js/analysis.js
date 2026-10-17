@@ -2,12 +2,52 @@
 // Every tool turns input layers into a new FeatureCollection that is saved as an ordinary layer.
 
 const T = () => {
-  if (!window.turf) throw new Error('The analysis library did not load. Check your connection and reload.');
-  return window.turf;
+  const t = globalThis.turf || (typeof window !== 'undefined' ? window.turf : null);
+  if (!t) throw new Error('The analysis library did not load. Check your connection and reload.');
+  return t;
 };
 const fc = (features) => ({ type: 'FeatureCollection', features });
 const round = (n, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
 const UNIT_LABEL = { kilometers: 'km', miles: 'mi', meters: 'm' };
+
+// Geodesic Haversine distance in kilometers between two [lng, lat] coordinates (pure JS fallback).
+function haversineKm([lon1, lat1], [lon2, lat2]) {
+  const R = 6371.0088;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// Geodesic circle ring around [lng, lat] at radiusKm (pure JS).
+function geodesicCircleRing([lon, lat], radiusKm, steps = 48) {
+  const R = 6371.0088;
+  const latRad = (lat * Math.PI) / 180;
+  const lonRad = (lon * Math.PI) / 180;
+  const d = radiusKm / R;
+  const ring = [];
+  for (let i = 0; i <= steps; i++) {
+    const brng = (2 * Math.PI * (i % steps)) / steps;
+    const lat2 = Math.asin(Math.sin(latRad) * Math.cos(d) + Math.cos(latRad) * Math.sin(d) * Math.cos(brng));
+    const lon2 = lonRad + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(latRad), Math.cos(d) - Math.sin(latRad) * Math.sin(lat2));
+    ring.push([round((lon2 * 180) / Math.PI, 6), round((lat2 * 180) / Math.PI, 6)]);
+  }
+  return ring;
+}
+
+function centerCoordsOf(f) {
+  const g = f?.geometry;
+  if (!g) return [0, 0];
+  if (g.type === 'Point') return g.coordinates;
+  const t = globalThis.turf || (typeof window !== 'undefined' ? window.turf : null);
+  if (t) return t.centroid(f).geometry.coordinates;
+  const flat = [];
+  const walk = (c) => (typeof c?.[0] === 'number' ? flat.push(c) : Array.isArray(c) && c.forEach(walk));
+  walk(g.coordinates);
+  if (!flat.length) return [0, 0];
+  return [flat.reduce((s, c) => s + c[0], 0) / flat.length, flat.reduce((s, c) => s + c[1], 0) / flat.length];
+}
 
 export const geomKind = (f) => {
   const t = f?.geometry?.type || '';
@@ -82,6 +122,203 @@ export const TOOLS = {
       return { data: fc(merged ? [{ ...merged, properties: { buffer: `${d} ${UNIT_LABEL[p.units]}`, zones: parts } }] : []) };
     },
     style: (src) => ({ color: src.style?.color || '#2563eb', opacity: 0.2, width: 2 }),
+  },
+
+  rings: {
+    name: 'Multi-ring trade areas', icon: 'target', group: 'Proximity', desc: 'Concentric distance bands (e.g. 1, 3, 5 km/mi) around stores, sites or transit stops for catchment analysis.',
+    inputs: [{ k: 'input', label: 'Sites or locations' }],
+    params: [
+      { k: 'radii', label: 'Ring distances (comma-separated)', dflt: '1, 3, 5' },
+      { k: 'units', t: 'units', dflt: 'kilometers' },
+      { k: 'donuts', t: 'check', label: 'Non-overlapping donut bands (hollow out inner rings)', dflt: true },
+    ],
+    name_: (p, a) => `${a.input} trade rings (${p.radii} ${UNIT_LABEL[p.units]})`,
+    run({ input }, p) {
+      guard(input.features.length, 1000, 'sites');
+      const u = p.units || 'kilometers';
+      const uLabel = UNIT_LABEL[u] || 'km';
+      const radii = String(p.radii || '1, 3, 5').split(/[\s,;]+/).map(Number).filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+      if (!radii.length) throw new Error('Enter at least one positive ring distance (for example: 1, 3, 5).');
+      const out = [];
+      // Render from largest ring to smallest so smaller rings draw on top if overlapping
+      input.features.filter((f) => f.geometry).forEach((f, idx) => {
+        const c = centerCoordsOf(f);
+        const siteName = featureName(f.properties) || `Site ${idx + 1}`;
+        for (let rIdx = radii.length - 1; rIdx >= 0; rIdx--) {
+          const rOuter = radii[rIdx];
+          const rInner = rIdx > 0 && p.donuts ? radii[rIdx - 1] : 0;
+          const outerRing = geodesicCircleRing(c, toKm(rOuter, u), 48);
+          const coords = rInner > 0 ? [outerRing, geodesicCircleRing(c, toKm(rInner, u), 48).reverse()] : [outerRing];
+          const bandLabel = rInner > 0 ? `${rInner}–${rOuter} ${uLabel}` : `0–${rOuter} ${uLabel}`;
+          const areaKm2 = round(Math.PI * (toKm(rOuter, u) ** 2 - toKm(rInner, u) ** 2), 2);
+          out.push({
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: coords },
+            properties: {
+              ...f.properties,
+              site_name: siteName,
+              ring_distance: rOuter,
+              ring_band: bandLabel,
+              area_km2: areaKm2,
+            },
+          });
+        }
+      });
+      return { data: fc(out), field: 'ring_distance', note: `${out.length.toLocaleString()} trade area rings across ${radii.length} distance bands` };
+    },
+    style: () => ({ color: '#e4572e', mode: 'graduated', field: 'ring_distance', ramp: 'sunset', opacity: 0.35, width: 1.5 }),
+  },
+
+  spider: {
+    name: 'Hub & spoke desire lines', icon: 'route', group: 'Proximity', desc: 'Connect every origin point or site to its nearest hub with flow lines and distance metrics.',
+    inputs: [{ k: 'origins', label: 'Origins (customers, stores, incidents)' }, { k: 'hubs', label: 'Destination hubs (warehouses, clinics, stations)' }],
+    params: [
+      { k: 'units', t: 'units', dflt: 'kilometers' },
+      { k: 'maxDist', t: 'number', label: 'Max connection distance (optional, 0 = no limit)', dflt: 0 },
+    ],
+    name_: (p, a) => `${a.origins} → ${a.hubs} desire lines`,
+    run({ origins, hubs }, p) {
+      const hubList = hubs.features.filter((f) => f.geometry).map((f, i) => ({ f, c: centerCoordsOf(f), name: featureName(f.properties) || `Hub ${i + 1}` }));
+      if (!hubList.length) throw new Error('The hubs layer has no features.');
+      const origList = origins.features.filter((f) => f.geometry);
+      guard(origList.length * hubList.length, 3e6, 'comparisons');
+      const u = p.units || 'kilometers';
+      const uLabel = UNIT_LABEL[u] || 'km';
+      const distKey = `distance_${uLabel}`;
+      const maxKm = Number(p.maxDist) > 0 ? toKm(Number(p.maxDist), u) : Infinity;
+      const out = [];
+      origList.forEach((orig, idx) => {
+        const oc = centerCoordsOf(orig);
+        let bestHub = null;
+        let bestKm = Infinity;
+        for (const hItem of hubList) {
+          const dKm = haversineKm(oc, hItem.c);
+          if (dKm < bestKm) { bestKm = dKm; bestHub = hItem; }
+        }
+        if (!bestHub || bestKm > maxKm) return;
+        out.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [oc, bestHub.c] },
+          properties: {
+            ...orig.properties,
+            origin_name: featureName(orig.properties) || `Origin ${idx + 1}`,
+            hub_name: bestHub.name,
+            [distKey]: round(toUnits(bestKm, u), 3),
+          },
+        });
+      });
+      const avg = out.length ? out.reduce((s, f) => s + f.properties[distKey], 0) / out.length : 0;
+      return { data: fc(out), field: distKey, note: `${out.length.toLocaleString()} connections · avg distance ${round(avg, 2)} ${uLabel}` };
+    },
+    style: () => ({ color: '#0891b2', mode: 'categorical', field: 'hub_name', width: 2.2, opacity: 0.8 }),
+  },
+
+  clusters: {
+    name: 'Spatial density clusters', icon: 'sparkle', group: 'Summarize', desc: 'Discover natural spatial clusters of points (DBSCAN) and label each cluster or draw cluster footprints.',
+    inputs: [{ k: 'input', label: 'Points to cluster', kind: 'point' }],
+    params: [
+      { k: 'distance', t: 'number', label: 'Search radius', dflt: 2 },
+      { k: 'units', t: 'units', dflt: 'kilometers' },
+      { k: 'minPoints', t: 'number', label: 'Minimum points per cluster', dflt: 3 },
+      { k: 'keepNoise', t: 'check', label: 'Include unclustered outlier points', dflt: false },
+    ],
+    name_: (p, a) => `${a.input} clusters`,
+    run({ input }, p) {
+      const pts = input.features.filter((f) => f.geometry).map((f) => ({ f, c: centerCoordsOf(f) }));
+      if (!pts.length) throw new Error('This layer has no points.');
+      guard(pts.length, 15000, 'points');
+      const epsKm = toKm(Number(p.distance) || 1, p.units || 'kilometers');
+      const minPts = Math.max(2, Math.round(Number(p.minPoints) || 3));
+      const n = pts.length;
+      const labels = new Int32Array(n).fill(-1); // -1 = unvisited, 0 = noise, >0 = cluster_id
+      const visited = new Uint8Array(n);
+      const neighbors = (i) => {
+        const res = [];
+        const ci = pts[i].c;
+        for (let j = 0; j < n; j++) {
+          if (haversineKm(ci, pts[j].c) <= epsKm) res.push(j);
+        }
+        return res;
+      };
+      let clusterId = 0;
+      for (let i = 0; i < n; i++) {
+        if (visited[i]) continue;
+        visited[i] = 1;
+        const nb = neighbors(i);
+        if (nb.length < minPts) {
+          labels[i] = 0;
+          continue;
+        }
+        clusterId++;
+        labels[i] = clusterId;
+        const queue = [...nb];
+        const inQueue = new Set(nb);
+        for (let q = 0; q < queue.length; q++) {
+          const curr = queue[q];
+          if (!visited[curr]) {
+            visited[curr] = 1;
+            const nb2 = neighbors(curr);
+            if (nb2.length >= minPts) {
+              for (const m of nb2) if (!inQueue.has(m)) { inQueue.add(m); queue.push(m); }
+            }
+          }
+          if (labels[curr] <= 0) labels[curr] = clusterId;
+        }
+      }
+      const counts = new Map();
+      for (let i = 0; i < n; i++) {
+        if (labels[i] > 0) counts.set(labels[i], (counts.get(labels[i]) || 0) + 1);
+      }
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const cid = labels[i];
+        if (cid === 0 && !p.keepNoise) continue;
+        out.push({
+          ...pts[i].f,
+          properties: {
+            ...pts[i].f.properties,
+            cluster_id: cid > 0 ? `Cluster ${cid}` : 'Outlier',
+            cluster_size: cid > 0 ? counts.get(cid) : 1,
+          },
+        });
+      }
+      return { data: fc(out), field: 'cluster_id', note: `${clusterId} spatial ${clusterId === 1 ? 'cluster' : 'clusters'} found (${counts.size ? [...counts.values()].reduce((a, b) => a + b, 0) : 0} clustered points)` };
+    },
+    style: () => ({ color: '#2563eb', mode: 'categorical', field: 'cluster_id', radius: 7, opacity: 0.85 }),
+  },
+
+  tablejoin: {
+    name: 'Join attributes by field', icon: 'table', group: 'Manage data', desc: 'Enrich a layer with columns from another layer by matching a shared ID, code or name field.',
+    inputs: [{ k: 'input', label: 'Target layer (keeps its shapes)' }, { k: 'join', label: 'Join table layer (attributes to copy)' }],
+    params: [
+      { k: 'targetField', t: 'field', label: 'Key field in target layer', of: 'input' },
+      { k: 'joinField', t: 'field', label: 'Matching key field in join layer', of: 'join' },
+      { k: 'keepUnmatched', t: 'check', label: 'Keep target features with no match', dflt: true },
+    ],
+    name_: (p, a) => `${a.input} joined with ${a.join}`,
+    run({ input, join }, p) {
+      if (!p.targetField || !p.joinField) throw new Error('Choose the matching key fields in both layers.');
+      const lookup = new Map();
+      const norm = (v) => (v == null ? '' : String(v).trim().toLowerCase());
+      join.features.forEach((jf) => {
+        const key = norm(jf.properties?.[p.joinField]);
+        if (key && !lookup.has(key)) lookup.set(key, jf.properties || {});
+      });
+      let matched = 0;
+      const out = [];
+      input.features.forEach((f) => {
+        const key = norm(f.properties?.[p.targetField]);
+        const hit = key ? lookup.get(key) : null;
+        if (hit) {
+          matched++;
+          prefixed(hit, 'join_', (extra) => out.push({ ...f, properties: { ...f.properties, ...extra } }));
+        } else if (p.keepUnmatched) {
+          out.push(f);
+        }
+      });
+      return { data: fc(out), note: `Matched ${matched.toLocaleString()} of ${input.features.length.toLocaleString()} features on ${p.targetField} = ${p.joinField}` };
+    },
+    style: (src) => ({ ...src?.style }),
   },
 
   hexbin: {

@@ -5,9 +5,11 @@ import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime
 import { openWizard } from './wizard.js';
 import { newMap, storyFromMap } from './webmap.js';
 import { openExport } from './export.js';
+import { openNewHostedLayerDialog, openAttributeTableDialog } from './table.js';
 
-// "Your stories" and "Your maps" share the home screen. (Declared before start() runs, which uses it.)
-let tab = new URLSearchParams(location.search).get('tab') === 'maps' ? 'maps' : 'stories';
+// "Your stories", "Your maps", and "Your layers" share the home screen. (Declared before start() runs, which uses it.)
+const urlTab = new URLSearchParams(location.search).get('tab');
+let tab = urlTab === 'maps' ? 'maps' : urlTab === 'layers' ? 'layers' : 'stories';
 const { user, firstRun } = await api('GET', '/api/me');
 if (!user) location.replace(firstRun ? '/login.html' : '/welcome.html');
 else start();
@@ -31,8 +33,8 @@ function start() {
 
 const SAFE_IMG = /^(\/uploads\/|https?:\/\/)[^"'()\\\s]+$/;
 let query = '';
-const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
-  class: tab === k ? 'is-on' : '', 'aria-selected': tab === k ? 'true' : 'false', onclick: () => { tab = k; history.replaceState(null, '', k === 'maps' ? '?tab=maps' : '/'); skeleton(); load(); } }, l)));
+const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps'], ['layers', 'Layers']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
+  class: tab === k ? 'is-on' : '', 'aria-selected': tab === k ? 'true' : 'false', onclick: () => { tab = k; history.replaceState(null, '', k === 'stories' ? '/' : `?tab=${k}`); skeleton(); load(); } }, l)));
 let sort = (() => { try { return localStorage.getItem('wm.sort') || 'edited'; } catch { return 'edited'; } })();
 
 function skeleton() {
@@ -51,6 +53,7 @@ const sorters = {
 
 async function load() {
   if (tab === 'maps') return loadMaps();
+  if (tab === 'layers') return loadLayers();
   const { stories } = await api('GET', '/api/stories');
   const main = $('#gallery');
   main.removeAttribute('aria-busy');
@@ -199,6 +202,89 @@ function mapCard(m, i) {
     h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
       m.shared ? h('span', { class: 'pill is-live' }, 'In a live story') : h('span', { class: 'pill no-dot' }, 'Map'),
       h('span', { class: 'muted' }, `${m.layers} ${m.layers === 1 ? 'layer' : 'layers'} · ${m.bookmarks} ${m.bookmarks === 1 ? 'bookmark' : 'bookmarks'} · edited ${relTime(m.updatedAt)}`))));
+}
+
+/* ---------- Hosted Feature Layers ---------- */
+
+async function loadLayers() {
+  const { layers } = await api('GET', '/api/layers');
+  const main = $('#gallery');
+  main.removeAttribute('aria-busy');
+  const create = () => openNewHostedLayerDialog({
+    onCreated: (r) => {
+      load();
+      openAttributeTableDialog({ id: r.id, hostedLayerId: r.id, name: r.title, url: r.url, attribution: r.attribution }, { onChange: () => load() });
+    },
+  });
+  main.replaceChildren(
+    tabs(),
+    h('div', { class: 'gallery-head' },
+      h('div', {}, h('h1', {}, 'Your hosted layers'), h('p', {}, layers.length
+        ? `${layers.length} hosted GeoJSON ${layers.length === 1 ? 'layer' : 'layers'} · edit attributes, schema fields, and source attribution in one place`
+        : 'Create ArcGIS Online-style hosted GeoJSON layers with editable attribute tables and source attribution.')),
+      h('span', { class: 'spacer' }),
+      h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New hosted layer')),
+    layers.length ? h('div', { class: 'cards' }, layers.map((l, i) => layerCard(l, i)),
+      h('button', { type: 'button', class: 'card card-new', style: `--i:${layers.length}`, onclick: create }, h('span', { class: 'plus' }, icon('plus')), 'New hosted layer'))
+      : h('section', { class: 'empty' }, icon('database', { size: 40 }), h('h2', {}, 'Create a hosted feature layer'),
+        h('p', {}, 'Store GeoJSON feature layers on your server with custom attribute schemas, field calculations, inline table editing, and source attribution. Use them across any map or story.'),
+        h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New hosted layer')));
+}
+
+function layerCard(l, i) {
+  const openStudio = () => {
+    const dlg = openAttributeTableDialog({ id: l.id, hostedLayerId: l.id, name: l.title, url: l.url, attribution: l.attribution, style: l.style, popup: l.popup }, { onChange: () => load() });
+    dlg.addEventListener('close', () => load());
+  };
+  const openInNewMap = async () => {
+    const m = newMap();
+    m.title = `${l.title} Map`;
+    const lid = `l${Math.random().toString(36).slice(2, 8)}`;
+    m.layers.push({ id: lid, hostedLayerId: l.id, name: l.title, url: l.url, attribution: l.attribution || '', style: l.style?.color ? l.style : { color: '#2563eb' }, popup: l.popup || {} });
+    m.view.layers.push(lid);
+    const r = await api('POST', '/api/maps', { map: m });
+    location.href = `/map.html?id=${r.id}`;
+  };
+  const more = h('button', { type: 'button', class: 'icon-btn card-more', 'aria-label': `Options for ${l.title}`, onclick: (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu(e.currentTarget, [
+      { label: 'Edit attribute table & schema', icon: 'list', onClick: openStudio },
+      { label: 'Open in a new map', icon: 'map', onClick: openInNewMap },
+      { label: 'Copy GeoJSON service URL', icon: 'link', onClick: async () => { await copyText(location.origin + l.url); toast('GeoJSON service URL copied', { tone: 'ok' }); } },
+      { label: 'Duplicate layer', icon: 'copy', onClick: async () => {
+        const full = await api('GET', `/api/layers/${l.id}`);
+        await api('POST', '/api/layers', { title: `${l.title} (copy)`, summary: l.summary, attribution: l.attribution, geomType: l.geomType, fields: l.fields, style: l.style, popup: l.popup, data: full.data });
+        toast('Hosted layer duplicated', { tone: 'ok' });
+        load();
+      } },
+      'sep',
+      { label: 'Delete layer', icon: 'trash', danger: true, onClick: async () => {
+        const { stories, maps } = await api('GET', `/api/layers/${l.id}/usage`);
+        const usedCount = (stories?.length || 0) + (maps?.length || 0);
+        const ok = await confirmDialog({
+          title: `Delete "${l.title || 'Untitled layer'}"?`,
+          danger: true,
+          confirmLabel: 'Delete layer',
+          message: usedCount ? `Used in ${stories.length} stories and ${maps.length} maps. Deleting it will remove its GeoJSON data. This can't be undone.` : "This can't be undone.",
+        });
+        if (!ok) return;
+        await api('DELETE', `/api/layers/${l.id}`);
+        toast('Hosted layer deleted');
+        load();
+      } },
+    ]);
+  } }, icon('more'));
+
+  return h('div', { class: 'card', role: 'button', tabindex: '0', style: `--i:${i};cursor:pointer`, onclick: openStudio, onkeydown: (e) => { if (e.key === 'Enter') openStudio(); } },
+    h('div', { class: 'card-cover', style: `background-image:${coverGradient('layer-' + l.id + l.title)}` },
+      h('span', { class: 'card-cover-title' }, l.title || 'Untitled layer')),
+    more,
+    h('div', { class: 'card-body' },
+      h('div', { class: 'card-meta' },
+        l.shared ? h('span', { class: 'pill is-live' }, 'Public GeoJSON') : h('span', { class: 'pill no-dot' }, l.geomType || 'GeoJSON'),
+        h('span', { class: 'muted' }, `${(l.featureCount || 0).toLocaleString()} features · ${(l.fields || []).length} fields · edited ${relTime(l.updatedAt)}`)),
+      l.attribution ? h('div', { class: 'muted', style: 'font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }, `Attribution: ${l.attribution}`) : null));
 }
 
 function newStoryDialog() {

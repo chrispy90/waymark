@@ -9,7 +9,7 @@ A story is a single JSON document.
   "subtitle": "…",
   "author": "…",
   "date": "October 2026",
-  "theme": "light",            // "light" | "dark" | "brutalist" | "atlas" | "aurora"
+  "theme": "light",            // "light" | "dark" | "brutalist" | "atlas" | "aurora" | "editorial" | "blueprint"
   "guide": { "kind": "journey", "look": "classic", "prompts": ["…"] },  // stories made with the New story wizard: drives the editor checklist; delete it to hide the checklist
   "motion": "subtle",          // scroll animations: "none" | "subtle" | "expressive"
   "cover": { "image": "https://…", "effect": "parallax", "kicker": "Small label" },  // effect: "none" | "parallax" | "zoom"
@@ -43,7 +43,8 @@ and when `span` is more than 0 only the span before it. Leave it out to show all
 {
   "id": "landmarks",
   "name": "Landmarks",                        // legend title
-  "url": "data/landmarks.geojson",            // GeoJSON URL, or …/FeatureServer/0, or …/MapServer/0
+  "url": "data/landmarks.geojson",            // GeoJSON URL, or /api/public/layers/<id>/geojson, or …/FeatureServer/0
+  "hostedLayerId": "Lyr_abc123",              // set when pointing at a Waymark Hosted Feature Layer
   "data": { "type": "FeatureCollection" },    // inline data (from an upload), used instead of url
   "style": {
     "mode": "single",                         // single | categorical | graduated
@@ -135,6 +136,7 @@ Every block has a `type`. Rich-text fields (`html`) are sanitized at render time
 | `chapter` | `title`, `kicker?`, `text?`, `bg`, `fg` (hex colors), `align?` (`center` \| `left`), `image?`. A full-screen title. The page takes on `bg`/`fg` from here until the next chapter |
 | `statement` | `text`, `cite?`, `style?` (`sans`). Large text whose words light up as the reader scrolls |
 | `stats` | `items: [{ value, label }]`, `caption?`. `value` can include a prefix or suffix (`$3.4M`, `98%`, `1,200`) and counts up when it appears |
+| `chart` | `chartType` (`bar` \| `column` \| `donut` \| `table`), `title?`, `subtitle?`, `caption?`, `color?`, `prefix?`, `suffix?`, `size?`, `items: [{ label, value, color?, note? }]` |
 | `gallery` | `title?`, `text?`, `images: [{ url, caption?, alt? }]`. Scrolling down moves the row of images sideways |
 | `video` | `url` (YouTube, Vimeo or a video file), `caption?`, `size?` |
 | `embed` | `url`, `caption?`, `size?` |

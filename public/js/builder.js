@@ -6,7 +6,7 @@ import { csvToGeoJSON } from './csv.js';
 import { sanitize } from './sanitize.js';
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, setTitle } from './ui.js';
-import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile, openPublicData } from './workbench.js';
+import { initWorkbench, openAddData, openAnalysis, openDraw, rerunAnalysis, insightsPanel, addFromFile, openPublicData, openHostedLayerPicker } from './workbench.js';
 import { TOOLS, kinds } from './analysis.js';
 import { openExport } from './export.js';
 import { LOOKS, openPrompts, applyLook, lookOf } from './story-kit.js';
@@ -48,6 +48,17 @@ const CATALOG = {
   stats: { label: 'Big numbers', icon: 'sliders', group: 'Scroll effects', desc: 'Figures that count up when they appear', isNew: true,
     make: () => ({ items: [{ value: '120', label: 'What this number means' }, { value: '3.4M', label: 'Another fact' }, { value: '98%', label: 'And one more' }], caption: '' }),
     fields: [{ k: 'items', t: 'stats' }, { k: 'caption', label: 'Caption (optional)' }] },
+  chart: { label: 'Chart & table', icon: 'table', group: 'Maps', desc: 'Interactive bars, columns, donut or executive table from a layer or custom rows', isNew: true,
+    make: () => ({ title: 'Key breakdown', subtitle: '', chartType: 'bar', stat: 'sum', items: [{ label: 'North region', value: 420 }, { label: 'South region', value: 310 }, { label: 'Central hub', value: 265 }, { label: 'West corridor', value: 180 }], caption: '', size: 'wide' }),
+    fields: [
+      { k: 'title', label: 'Chart title' },
+      { k: 'subtitle', label: 'Subtitle (optional)' },
+      { k: 'chartType', t: 'seg', label: 'Display as', opts: [['bar', 'Bars'], ['column', 'Columns'], ['donut', 'Donut'], ['table', 'Table']] },
+      { t: 'chartData' },
+      { row: [{ k: 'unitPrefix', label: 'Prefix (e.g. $)' }, { k: 'unitSuffix', label: 'Suffix (e.g. %, km)' }] },
+      { k: 'size', t: 'seg', label: 'Width', opts: SIZE_OPTS },
+      { k: 'caption', label: 'Caption / source note (optional)' },
+    ] },
   gallery: { label: 'Scroll gallery', icon: 'compare', group: 'Scroll effects', desc: 'A row of photos that slides sideways as you scroll down', isNew: true,
     make: () => ({ title: 'Gallery title', text: '', images: [{ url: '', caption: '' }, { url: '', caption: '' }, { url: '', caption: '' }] }),
     fields: [{ k: 'title', label: 'Title' }, { k: 'text', label: 'Short intro (optional)' }, { k: 'images', t: 'gallery' }] },
@@ -565,6 +576,10 @@ function dataTab() {
       h('span', { class: 'public-cta-art' }, icon('globe', { size: 20 })),
       h('span', {}, h('strong', {}, 'Browse public data'), h('span', {}, 'NOAA, NASA, USGS, Census, parks, wildfires and thousands more')),
       icon('back', { size: 16, cls: 'rot' })),
+    h('button', { type: 'button', class: 'public-cta', style: 'margin-top:6px', onclick: () => openHostedLayerPicker({ onPick: (l) => openLayer(l.id) }) },
+      h('span', { class: 'public-cta-art' }, icon('database', { size: 20 })),
+      h('span', {}, h('strong', {}, 'Hosted feature layers'), h('span', {}, 'Your editable GeoJSON feature services with attribute schemas')),
+      icon('back', { size: 16, cls: 'rot' })),
     h('div', { class: 'data-actions' },
       h('button', { type: 'button', class: 'btn', onclick: openAddData }, icon('upload', { size: 16 }), 'Your data'),
       h('button', { type: 'button', class: 'btn', onclick: () => openAnalysis() }, icon('sparkle', { size: 16 }), 'Analyze'),
@@ -573,13 +588,14 @@ function dataTab() {
     return [actions, h('div', { class: 'data-empty' },
       h('span', { class: 'data-empty-art' }, icon('database', { size: 26 })),
       h('strong', {}, 'Bring data to your maps'),
-      h('p', {}, 'Start with live public data, drop in a GeoJSON or CSV file, or draw your own shapes. Then filter it, analyze it, and turn it on in any map.'))];
+      h('p', {}, 'Start with live public data, create an editable Hosted Feature Layer, drop in a GeoJSON or CSV file, or draw your own shapes.'))];
   }
   return [
     actions,
     h('div', { class: 'rail-section-title' }, `Your layers · ${lib.length}`),
     h('div', { class: 'sub-list' }, lib.map((layer, i) => subItem(lib, i, {
       title: h('span', { class: 'row' }, h('span', { class: 'swatch', style: `background:${layer.style?.color || '#2563eb'}` }), layer.name || 'Layer',
+        layer.hostedLayerId ? h('span', { class: 'pill no-dot', title: 'Hosted Feature Layer' }, 'Hosted') : null,
         layer.analysis ? h('span', { class: 'pill no-dot', title: 'Made with an analysis tool' }, TOOLS[layer.analysis.tool]?.name || 'Analysis') : null),
       summary: layerStatus(layer), body: () => layerForm(layer), noun: 'Layer' }))),
     h('p', { class: 'field-hint', style: 'margin:12px 2px 0' }, 'Tip: drop GeoJSON or CSV files anywhere on this panel to add them.'),
@@ -628,7 +644,7 @@ function field(obj, spec) {
       h('select', { onchange: (e) => set(e.target.value) }, spec.opts.map(([v, l]) => h('option', { value: v, selected: String(val) === v }, l))), hint);
     case 'seg': {
       const seg = h('div', { class: 'seg seg-block', role: 'group' }, spec.opts.map(([v, l]) => h('button', { type: 'button', class: String(val) === v ? 'is-on' : '',
-        onclick: (e) => { set(v); seg.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget)); if (spec.k === 'display' || spec.k === 'mode') renderRail(); } }, l)));
+        onclick: (e) => { set(v); seg.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget)); if (spec.k === 'display' || spec.k === 'mode' || spec.k === 'stat') renderRail(); } }, l)));
       return h('div', { class: 'field' }, labelEl(spec.label), seg, hint);
     }
     case 'color': return h('label', { class: 'field' }, labelEl(spec.label),
@@ -642,10 +658,61 @@ function field(obj, spec) {
     case 'bookmarkCards': return bookmarkCardsField(obj);
     case 'stats': return listField(obj, 'items', { noun: 'Number', make: () => ({ value: '100', label: '' }), summary: (it) => `${it.value} ${it.label || ''}`,
       form: (it) => fields(it, [{ row: [{ k: 'value', label: 'Number', placeholder: '1,200 or 98% or $3.4M' }, { k: 'label', label: 'What it means' }] }]) });
+    case 'chartData': return chartDataField(obj);
     case 'gallery': return listField(obj, 'images', { noun: 'Photo', make: () => ({ url: '', caption: '' }), summary: (im) => im.caption || (im.url ? 'Photo' : 'No image yet'),
       form: (im) => fields(im, [{ k: 'url', t: 'image', label: 'Photo' }, { k: 'caption', label: 'Caption' }, { k: 'alt', label: 'Alt text' }]) });
     default: return h('label', { class: 'field' }, labelEl(spec.label), h('input', { type: 'text', value: val, placeholder: spec.placeholder, oninput: (e) => set(e.target.value) }), hint);
   }
+}
+
+function chartDataField(block) {
+  const wrap = h('div', { class: 'field' });
+  const draw = async () => {
+    const lib = (story.layers || []).filter((l) => l.type !== 'raster');
+    const sourceSel = h('select', { onchange: (e) => {
+      block.layer = e.target.value || undefined;
+      changed();
+      draw();
+    } },
+    h('option', { value: '', selected: !block.layer }, 'Custom rows (enter values below)'),
+    ...lib.map((l) => h('option', { value: l.id, selected: block.layer === l.id }, `Layer: ${l.name || l.id}`)));
+
+    if (!block.layer) {
+      wrap.replaceChildren(
+        h('label', { class: 'field' }, labelEl('Data source'), sourceSel),
+        listField(block, 'items', {
+          noun: 'Row',
+          make: () => ({ label: 'Category', value: 100 }),
+          summary: (it) => `${it.label || ''}: ${it.value ?? 0}`,
+          form: (it) => fields(it, [
+            { row: [{ k: 'label', label: 'Category label' }, { k: 'value', t: 'number', label: 'Numeric value' }] },
+          ]),
+        }),
+      );
+      return;
+    }
+
+    const layer = lib.find((l) => l.id === block.layer);
+    let cols = [];
+    if (layer) {
+      try {
+        const fc = await loadLayerData(layer);
+        cols = fieldNames(fc);
+      } catch { /* ignore */ }
+    }
+    const colOpts = [['', '— Choose field —'], ...cols.map((c) => [c, c])];
+    wrap.replaceChildren(
+      h('label', { class: 'field' }, labelEl('Data source'), sourceSel),
+      fields(block, [
+        { k: 'groupField', t: 'select', label: 'Group by category field', opts: colOpts },
+        { k: 'stat', t: 'seg', label: 'Statistic', opts: [['count', 'Count'], ['sum', 'Sum'], ['avg', 'Average'], ['max', 'Max'], ['min', 'Min']] },
+        ...(block.stat && block.stat !== 'count' ? [{ k: 'valueField', t: 'select', label: 'Numeric field to measure', opts: colOpts }] : []),
+        { k: 'limit', t: 'number', label: 'Max categories to show', dflt: 10 },
+      ]),
+    );
+  };
+  draw();
+  return wrap;
 }
 
 function richEditor(obj, key, { mapLinks } = {}) {
@@ -1269,7 +1336,8 @@ function commands() {
   return [
     ...Object.entries(CATALOG).map(([type, c]) => ({ label: `Add ${c.label.toLowerCase()}`, hint: c.desc, icon: c.icon, group: 'Add a block', run: () => addBlockAt(insertIndex(), { type, ...c.make() }) })),
     { label: 'Browse public data…', hint: 'NOAA, NASA, USGS, Census, parks, wildfires and more', icon: 'globe', group: 'Data', run: () => openPublicData({ onAdd: (l) => openLayer(l.id) }) },
-    { label: 'Add your own data…', hint: 'Upload a file or paste a link', icon: 'database', group: 'Data', run: openAddData },
+    { label: 'Hosted feature layers…', hint: 'Create or add an editable GeoJSON feature layer with attribute schema', icon: 'database', group: 'Data', run: () => openHostedLayerPicker({ onPick: (l) => openLayer(l.id) }) },
+    { label: 'Add your own data…', hint: 'Upload a file or paste a link', icon: 'upload', group: 'Data', run: openAddData },
     { label: 'Draw & measure on a map', hint: 'Sketch and style points, lines, areas, circles and text', icon: 'pen', group: 'Data', run: () => openDraw() },
     ...Object.entries(TOOLS).map(([id, t]) => ({ label: `Analyze: ${t.name}`, hint: t.desc, icon: t.icon, group: 'Data', run: () => openAnalysis({ tool: id }) })),
     ...story.blocks.map((b, i) => ({ label: `${i + 1}. ${CATALOG[b.type]?.label || b.type}`, hint: peek(b), icon: CATALOG[b.type]?.icon || 'file', group: 'Go to block', run: () => { selected = null; select(i); } })),

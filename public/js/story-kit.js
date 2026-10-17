@@ -29,6 +29,16 @@ export const LOOKS = {
     theme: 'aurora', motion: 'expressive', basemap: 'dark', cover: 'zoom',
     chapters: [['#0d0b1f', '#eceaff'], ['#071a1c', '#e6fffb'], ['#1a0b1d', '#ffeaf5']],
   },
+  editorial: {
+    name: 'Editorial', desc: 'Salmon-ivory newsprint, high-contrast display serifs, crimson rules and drop-caps.',
+    theme: 'editorial', motion: 'subtle', basemap: 'light', cover: 'parallax',
+    chapters: [['#161210', '#fbf6ef'], ['#8c1d18', '#fdf8f2'], ['#f2e8dc', '#181311']],
+  },
+  blueprint: {
+    name: 'Blueprint', desc: 'Precision CAD telemetry: deep Prussian grid, cyan hairlines and glowing data.',
+    theme: 'blueprint', motion: 'expressive', basemap: 'dark', cover: 'zoom',
+    chapters: [['#050f1e', '#e0f7ff'], ['#0b2239', '#00e5ff'], ['#101b2b', '#ffb703']],
+  },
 };
 
 /** The kinds of story the wizard can set up. `places`: 'many' | 'one' | false. */

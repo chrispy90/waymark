@@ -120,9 +120,11 @@ export function toast(message, { tone = 'default', action, duration = 3800 } = {
 
 let openMenu = null;
 export function closeMenu() { openMenu?.remove(); openMenu = null; }
-addEventListener('pointerdown', (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); }, true);
-addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-addEventListener('resize', closeMenu);
+if (typeof addEventListener === 'function') {
+  addEventListener('pointerdown', (e) => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); }, true);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  addEventListener('resize', closeMenu);
+}
 
 /** items: [{ label, icon, onClick, danger, disabled }] or 'sep' */
 export function menu(anchor, items, { align = 'end' } = {}) {

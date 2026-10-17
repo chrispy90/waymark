@@ -4,10 +4,10 @@ const clamp = (n, a = 0, b = 1) => Math.min(b, Math.max(a, n));
 
 const visible = new Set();
 let frame = 0;
-const io = new IntersectionObserver((entries) => {
+const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((entries) => {
   for (const e of entries) e.isIntersecting ? visible.add(e.target._fx) : visible.delete(e.target._fx);
   schedule();
-}, { rootMargin: '25% 0px' });
+}, { rootMargin: '25% 0px' }) : null;
 
 function tick() {
   frame = 0;
@@ -15,14 +15,16 @@ function tick() {
   for (const item of visible) item.fn(item.el.getBoundingClientRect(), vh);
 }
 function schedule() { if (!frame) frame = requestAnimationFrame(tick); }
-addEventListener('scroll', schedule, { passive: true });
-addEventListener('resize', schedule);
+if (typeof addEventListener === 'function') {
+  addEventListener('scroll', schedule, { passive: true });
+  addEventListener('resize', schedule);
+}
 
 /** Calls fn(rect, viewportHeight) on every frame the element is near the viewport. Returns an untrack function. */
 export function track(el, fn) {
   const item = { el, fn };
   el._fx = item;
-  io.observe(el);
+  io?.observe(el);
   schedule();
   return () => { io.unobserve(el); visible.delete(item); };
 }

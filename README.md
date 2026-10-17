@@ -103,14 +103,14 @@ Live layers refresh every time someone opens the story, so a published map stays
 
 **Filters** narrow a layer with plain rules, like *magnitude ≥ 5*, *in the last 7 days* or *state = Texas*. They apply to the map, the insights, the analysis and the export.
 
-**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 18 tools are grouped the way desktop GIS toolboxes group them:
+**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 22 tools are grouped the way desktop GIS toolboxes group them:
 
 | Group | Tools |
 |---|---|
-| **Summarize** | Hex bins (count, sum or average) · Count in areas · Dissolve (by a field, e.g. counties into states) |
-| **Proximity** | Buffer · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
+| **Summarize** | Hex bins (count, sum or average) · Spatial density clusters (DBSCAN) · Count in areas · Dissolve (by a field, e.g. counties into states) |
+| **Proximity** | Buffer · Multi-ring trade areas (concentric catchment bands) · Hub & spoke desire lines · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
 | **Overlay** | Clip · Erase · Intersect · Join by location · Select by location (touch, inside, contain, stay clear) · Merge |
-| **Manage data** | Center points · Outline (convex hull) · Simplify · Add geometry attributes (area, length, coordinates) · Filter |
+| **Manage data** | Join attributes by field · Center points · Outline (convex hull) · Simplify · Add geometry attributes (area, length, coordinates) · Filter |
 
 <table>
   <tr>
@@ -123,15 +123,30 @@ Live layers refresh every time someone opens the story, so a published map stays
   </tr>
 </table>
 
-You can also show points as a **heatmap** or **clusters**, or use **proportional symbols**: size points, areas or lines by a number field (circle area grows with the value, and it works together with color). Give a layer a **time field** and its maps get a **time slider** with play, showing everything up to a moment or a trailing day, week or month. Readers can scrub it too, and bookmarks and story cards remember where it was set. Bring your own data: GeoJSON, CSV, or any public ArcGIS layer.
+You can also show points as a **heatmap** or **clusters**, or use **proportional symbols**: size points, areas or lines by a number field (circle area grows with the value, and it works together with color). Give a layer a **time field** and its maps get a **time slider** with play, showing everything up to a moment or a trailing day, week or month. Readers can scrub it too, and bookmarks and story cards remember where it was set. Bring your own data: GeoJSON, CSV, Hosted Feature Layers, or any public ArcGIS layer.
+
+### Hosted feature layers & editable attribute tables
+
+Create reusable, server-backed GeoJSON feature layers (like ArcGIS Online Hosted Feature Layers) from the **Layers** tab on the home screen, from inside the map or story editor, or by promoting any drawn, uploaded, or analyzed layer in one click.
+
+- **Editable attribute tables & schema studio:** click any cell to edit values inline, or add, rename, and delete columns (`string`, `number`, `date`, `boolean`). Add or delete feature rows and see live column statistics (`Sum`, `Avg`, `Min`, `Max`) in the header.
+- **Field Calculator:** compute values across all features using column math (`+`, `-`, `*`, `/`, `% of`, `% change`), automatic spatial geometry measurements (`$AREA_KM2`, `$AREA_ACRES`, `$LEN_KM`, `$LAT`, `$LON`), rankings (`1..N`), or text templates.
+- **Source attribution & live service URLs:** attach source attribution/credits to a hosted layer so it automatically appears on map legends and credits, copy its live `/api/layers/:id/geojson` endpoint, or export any table to **GeoJSON** or **CSV**.
+
+### Interactive charts & executive tables
+
+Add a **Chart & table** block to any story — or click **Add chart to story** directly from a layer's Insights histogram — to present data alongside your narrative:
+
+- **Four views:** horizontal **Bars**, vertical **Columns**, SVG **Donut** rings with total callouts, or sortable **Executive Tables**.
+- **Live layer aggregation or custom rows:** group and aggregate (`count`, `sum`, `avg`, `min`, `max`) any layer in your story on the fly, or enter custom rows with prefixes and suffixes (such as `$` or `%`).
 
 ### Make a map once, use it in every story
 
 **Maps** on the home screen are maps you build on their own, in a full-screen map editor, and then use in as many stories as you like. Edit the map once and every story that uses it updates, published stories included.
 
-- **Layers:** live public data, your files, or links. Reorder them by dragging, switch them on and off, and zoom to each.
-- **Per-layer settings:** color, proportional symbols, a time field for the time slider, labels, popups, filters, visible zoom range and insights, plus an **attribute table** you can sort and search. Click a row to zoom to that feature.
-- **Tools:** 18 analysis tools (clip, erase, intersect, dissolve, spatial join, buffer, hex bins, Voronoi and more), a time slider, drawing, measuring, place search, a basemap gallery and the legend.
+- **Layers:** live public data, hosted feature layers, your files, or links. Reorder them by dragging, switch them on and off, and zoom to each.
+- **Per-layer settings:** color, proportional symbols, a time field for the time slider, labels, popups, source attribution, filters, visible zoom range and insights, plus an **editable attribute table & schema studio** you can sort, search, calculate and edit. Click a row number to zoom to that feature.
+- **Tools:** 22 analysis tools (multi-ring trade areas, hub & spoke desire lines, spatial density clusters, attribute table joins, clip, erase, intersect, dissolve, spatial join, buffer, hex bins, Voronoi and more), a time slider, drawing, measuring, place search, a live coordinate & zoom HUD, a basemap gallery and the legend.
 - **Bookmarks:** named views that also remember which layers are on, with a note for each.
 
 Then **walk readers through it**: one click turns the bookmarks into moving-map cards, so a story can show the raw data, then the analysis, then the result, one card at a time. Any map in a story can also **use a saved map**, showing one of its bookmarks or a view you frame.
@@ -140,7 +155,7 @@ Then **walk readers through it**: one click turns the bookmarks into moving-map 
 
 ### Draw right on the map
 
-Press **Draw** on any map in the editor and sketch points, lines, freehand routes, areas, boxes, circles and text labels right on it. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing whenever you like.
+Press **Draw** on any map in the editor and sketch points, lines, freehand routes, areas, boxes, circles and text labels right on it. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing or Hosted Feature Layer whenever you like.
 
 <p align="center"><img src="docs/media/draw.png" alt="The Draw workspace with a selected area, a dashed arrow and the style panel" width="100%"></p>
 
@@ -180,7 +195,7 @@ Switch any story to **Brutalist** for raw monospace and heavy display type, hard
 | **A data story** | One big map ready for live or uploaded data, with numbers and context |
 | **Start from scratch** | A title and an empty page |
 
-Every kind comes in five **looks**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
+Every kind comes in seven **looks**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
 
 <p align="center"><img src="docs/media/looks.png" alt="The same statement block in the Classic, Night, Brutalist, Atlas and Aurora looks" width="100%"></p>
 
@@ -191,8 +206,10 @@ Every kind comes in five **looks**. Each one sets the type, colors, chapter colo
 | **Brutalist** | Raw type, hard edges, loud color and a ticker headline |
 | **Atlas** | An old atlas: parchment, engraved type and small caps, sepia maps in a double frame with a compass rose, and chapters numbered as plates |
 | **Aurora** | Dark glass and drifting light, glowing gradient type, frosted cards and bento-style numbers. Points and lines on its maps glow like fireflies |
+| **Editorial** | Magazine journalism: warm newsprint ivory, deep espresso ink, crimson double-rules, high-contrast *Playfair Display* headlines, drop-cap intros and pull-quotes |
+| **Blueprint** | Architectural CAD & telemetry: deep Prussian navy with a dual-scale coordinate grid, electric cyan and amber accents, *Space Mono* headers, corner reticle brackets and glowing map features |
 
-Prefer to learn from something finished? **Explore an example** opens a complete story to take apart: the moving map, walk, essay, *Brutalist zine* and *Down the Potomac* samples. Any story can also use **Before & after**, a block with two maps in one view and a draggable divider.
+Prefer to learn from something finished? **Explore an example** opens a complete story to take apart: the moving map, walk, essay, *Brutalist zine* and *Down the Potomac* samples. Any story can also use **Before & after**, a block with two maps in one view and a draggable divider, or **Chart & table**, an interactive breakdown of any layer or dataset.
 
 <br>
 
@@ -321,6 +338,7 @@ public/                the web app (plain ES modules, no build step)
   js/workbench.js      Add data, Analyze and Draw workspaces
   js/mapeditor.js      the saved-map editor (map.html)
   js/webmap.js         saved maps in stories: builds them into a story before it's shown or exported
+  js/table.js          hosted feature layers, editable attribute tables, schema studio and field calculator
   js/layer-form.js     layer settings, shared by the story editor and the map editor
   js/catalog.js        public data catalog (government sources + ArcGIS Online search)
   js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
@@ -334,7 +352,7 @@ public/                the web app (plain ES modules, no build step)
   welcome.html         landing page for signed-out visitors (itself a story)
   stories/, data/      sample story and sample GeoJSON
 docs/SCHEMA.md         the story and saved-map file formats
-test/                  API tests plus unit tests for saved maps, the wizard, photo locations and story formats (node:test)
+test/                  API tests plus unit tests for saved maps, hosted layers, the wizard, photo locations and story formats (node:test)
 ```
 
 </details>
@@ -355,6 +373,7 @@ Every request that changes data must send the header `X-Waymark: 1`. This guards
 | `POST /api/stories/:id/publish {slug?}` · `POST /api/stories/:id/unpublish` | Publish copies the draft to the public copy |
 | `GET /api/public/:slug` | A published story's JSON |
 | `GET /api/maps` · `POST /api/maps {map}` · `GET` `PUT {map, version}` `DELETE /api/maps/:id` · `GET /api/maps/:id/usage` · `GET /api/public/maps/:id` | Saved maps: list, create, read, save, delete, which stories use one, and the copy readers load once a published story uses it |
+| `GET /api/layers` · `POST /api/layers` · `GET` `PUT` `DELETE /api/layers/:id` · `GET /api/layers/:id/geojson` · `GET /api/layers/:id/usage` · `GET /api/public/layers/:id` | Hosted feature layers: list, create, edit schema/attributes/features, serve as GeoJSON, check story/map usage, and public GeoJSON service endpoint |
 | `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
 
 </details>

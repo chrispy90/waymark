@@ -1,9 +1,11 @@
 // Data workspaces for the editor: Add data, Analyze (with live map preview), and Draw & measure.
 import { h, icon, dialog, toast } from './ui.js';
+import { api } from './api.js';
 import { createMap, setVisibleLayers, reloadLayer, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
 import { openCatalog } from './catalog.js';
 import { TOOLS, TOOL_GROUPS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
+import { openNewHostedLayerDialog, isHostedLayer, saveHostedLayer } from './table.js';
 
 let ctx; // { story, changed, renderRail, openLayer, selectedIndex, insertBlock }
 export const initWorkbench = (c) => { ctx = c; };
@@ -19,6 +21,18 @@ function addLayer(layer, { open = true } = {}) {
   if (open) ctx.openLayer(layer.id);
   else ctx.renderRail();
   return layer;
+}
+
+export function addHostedLayerRef(r, { open = true } = {}) {
+  return addLayer({
+    id: uid('l'),
+    hostedLayerId: r.id,
+    name: r.title || 'Hosted layer',
+    url: r.url || `/api/layers/${r.id}/geojson`,
+    attribution: r.attribution || '',
+    style: r.style && Object.keys(r.style).length ? r.style : { color: '#2563eb' },
+    popup: r.popup || {},
+  }, { open });
 }
 
 /* ---------- Parsing uploads ---------- */
@@ -51,6 +65,43 @@ export function openPublicData({ onAdd } = {}) {
   openCatalog({ onAdd: (layer) => { addLayer(layer, { open: false }); onAdd?.(layer); } });
 }
 
+export async function openHostedLayerPicker() {
+  const listEl = h('div', { class: 'sub-list', style: 'max-height:320px;overflow:auto' }, h('p', { class: 'muted' }, 'Loading your hosted layers…'));
+  const dlg = dialog({
+    title: 'Your Hosted Feature Layers',
+    body: h('div', {},
+      h('p', { class: 'field-hint', style: 'margin:0 0 10px' }, 'Pick an existing hosted GeoJSON feature layer or create a new one with a custom attribute table schema.'),
+      listEl),
+    actions: [
+      h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Close'),
+      h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { dlg.close(); openNewHostedLayerDialog({ onCreated: (r) => addHostedLayerRef(r) }); } }, icon('plus', { size: 15 }), 'New Hosted Layer'),
+    ],
+  });
+  try {
+    const { layers } = await api('GET', '/api/layers');
+    if (!layers.length) {
+      listEl.replaceChildren(h('div', { class: 'data-empty', style: 'padding:20px 10px' },
+        h('strong', {}, 'No hosted feature layers yet'),
+        h('p', {}, 'Create a hosted GeoJSON layer with custom fields and source attribution.'),
+      ));
+      return;
+    }
+    listEl.replaceChildren(...layers.map((r) => h('button', {
+      type: 'button',
+      class: 'pick',
+      style: 'width:100%;text-align:left;margin-bottom:6px',
+      onclick: () => { dlg.close(); addHostedLayerRef(r); toast(`Added hosted layer "${r.title}"`, { tone: 'ok' }); },
+    },
+      h('span', { class: 'pick-icon' }, icon('database', { size: 18 })),
+      h('span', { style: 'flex:1' },
+        h('strong', {}, r.title),
+        h('span', {}, `${r.featureCount.toLocaleString()} ${r.geomType} features · ${(r.fields || []).length} fields${r.attribution ? ` · ${r.attribution}` : ''}`)),
+    )));
+  } catch (e) {
+    listEl.replaceChildren(h('p', { class: 'form-error' }, e.message));
+  }
+}
+
 /* ---------- Add data ---------- */
 
 export function openAddData() {
@@ -80,6 +131,8 @@ export function openAddData() {
       drop, fileInput,
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Or add by link'), h('div', { class: 'row' }, url, h('button', { type: 'button', class: 'btn btn-primary', onclick: addUrl }, 'Add'))),
       h('div', { class: 'ad-opts' },
+        option('database', 'Hosted feature layers', 'Create or pick a server-hosted GeoJSON layer with an editable attribute table', () => { dlg.close(); openHostedLayerPicker(); }),
+        option('plus', 'New hosted layer', 'Define custom attribute fields, source attribution and geometry', () => { dlg.close(); openNewHostedLayerDialog({ onCreated: (r) => addHostedLayerRef(r) }); }),
         option('globe', 'Public data', 'NOAA, NASA, USGS, Census, NPS and thousands more', () => { dlg.close(); openPublicData(); }),
         option('pen', 'Draw on the map', 'Sketch and style points, lines, areas, circles and text', () => { dlg.close(); openDraw(); }),
         option('map', 'Try sample data', 'Landmarks along the Potomac River', () => {
@@ -506,19 +559,38 @@ export function openDraw({ layer: editing, view: here, onSave } = {}) {
     add(geometry);
   };
 
-  const save = () => {
+  if (editing && !editing.data && isHostedLayer(editing)) {
+    loadLayerData(editing).then((fc) => {
+      if (fc?.features?.length) {
+        shapes.push(...structuredClone(fc.features));
+        st = styleOf(shapes.at(-1), st);
+        saved = JSON.stringify(shapes);
+        update();
+      }
+    }).catch(() => {});
+  }
+
+  const save = async () => {
     if (!shapes.length) return;
     const data = { type: 'FeatureCollection', features: structuredClone(shapes) };
     const name = nameInput.value.trim() || 'My drawing';
     saved = JSON.stringify(shapes);
     dlg.close();
     if (editing) {
-      Object.assign(editing, { name, data });
+      editing.name = name;
       editing.style = { ...(editing.style || {}), label: showNames ? 'name' : undefined };
+      if (isHostedLayer(editing)) {
+        try {
+          await saveHostedLayer(editing, data, { title: name });
+          toast('Hosted layer geometry updated', { tone: 'ok' });
+        } catch (err) { toast(err.message, { tone: 'error' }); }
+      } else {
+        editing.data = data;
+        toast('Drawing updated', { tone: 'ok' });
+      }
       if (onSave) onSave(editing);
       else ctx.openLayer(editing.id);
       ctx.changed();
-      toast('Drawing updated', { tone: 'ok' });
       return;
     }
     const layer = addLayer({ id: uid('l'), name, drawn: true, data, style: { color: st.color, opacity: 0.25, width: 3, radius: 7, label: showNames ? 'name' : undefined }, popup: { title: '{name}' } }, { open: !onSave });
@@ -684,6 +756,21 @@ export function insightsPanel(layer, data) {
     if (numeric[0]) items.push({ value: /year|yr$|date/i.test(numeric[0].name) ? String(Math.round(numeric[0].mean)) : fmtNum(numeric[0].mean), label: `average ${numeric[0].name}` });
     ctx.insertBlock({ type: 'stats', items: items.slice(0, 4), caption: `Source: ${layer.name}` });
   };
+  const toChart = () => {
+    const groupField = text[0]?.name || s.fields[0]?.name || '';
+    const valueField = numeric[0]?.name || '';
+    ctx.insertBlock({
+      type: 'chart',
+      chartType: 'bar',
+      title: `${layer.name} Breakdown`,
+      subtitle: valueField ? `${valueField} by ${groupField || 'feature'}` : `Count by ${groupField || 'category'}`,
+      layer: layer.id,
+      groupField,
+      valueField,
+      stat: valueField ? 'sum' : 'count',
+      caption: layer.attribution ? `Source: ${layer.attribution}` : `Source: ${layer.name}`,
+    });
+  };
   return h('div', { class: 'insights' },
     h('div', { class: 'ins-tiles' }, tiles.map(([k, v]) => h('div', { class: 'ins-tile' }, h('span', {}, k), h('strong', {}, v)))),
     numeric.map((f) => {
@@ -700,5 +787,6 @@ export function insightsPanel(layer, data) {
       h('div', { class: 'ins-top' }, f.top.map(([v, c]) => h('div', {}, h('span', {}, v), h('span', { class: 'muted' }, c.toLocaleString())))))),
     h('div', { class: 'row row-wrap', style: 'margin-top:12px' },
       h('button', { type: 'button', class: 'btn btn-sm', onclick: toStory }, icon('sliders', { size: 14 }), 'Add as big numbers'),
+      h('button', { type: 'button', class: 'btn btn-sm', onclick: toChart }, icon('chart', { size: 14 }), 'Add chart to story'),
       h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openAnalysis({ layerId: layer.id }) }, icon('sparkle', { size: 14 }), 'Analyze')));
 }

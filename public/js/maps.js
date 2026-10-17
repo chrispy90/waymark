@@ -25,7 +25,7 @@ export const BASEMAPS = {
 
 export const DEFAULT_VIEW = { center: [-77.04, 38.85], zoom: 10, bearing: 0, pitch: 0, basemap: 'streets', markers: [], layers: [] };
 
-const PALETTE = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];
+export const PALETTE = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];
 const OTHER = '#9ca3af';
 
 const styleUrl = (key) => (BASEMAPS[key] || BASEMAPS.streets).style;
@@ -133,6 +133,14 @@ export function loadLayerData(layer) {
   return cache.get(key);
 }
 
+/** Clears cached GeoJSON for a URL (or all URLs) after a hosted layer is edited. */
+export function invalidateLayerCache(url) {
+  if (!url) { cache.clear(); return; }
+  for (const k of [...cache.keys()]) {
+    if (k.startsWith(`${url}|`) || k.includes(url)) cache.delete(k);
+  }
+}
+
 const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
 // Relative paths are relative to the site root, so they work from /s/<slug> pages too.
 const absolute = (url) => (/^(https?:)?\/\//i.test(url) || url.startsWith('/') ? url : `/${url}`);
@@ -233,7 +241,11 @@ export function filterData(layer, fc) {
   const rules = activeFilters(layer);
   if (!rules.length) return fc;
   const any = layer.filterMatch === 'any';
-  return { type: 'FeatureCollection', features: fc.features.filter((f) => (any ? rules.some((r) => matchesFilter(f.properties, r)) : rules.every((r) => matchesFilter(f.properties, r)))) };
+  return {
+    type: 'FeatureCollection',
+    ...(fc.metadata ? { metadata: fc.metadata } : {}),
+    features: fc.features.filter((f) => (any ? rules.some((r) => matchesFilter(f.properties, r)) : rules.every((r) => matchesFilter(f.properties, r)))),
+  };
 }
 /** The features a layer actually shows: its data with its filters applied. */
 export const layerFeatures = async (layer) => filterData(layer, await loadLayerData(layer));
@@ -242,7 +254,13 @@ export const layerFeatures = async (layer) => filterData(layer, await loadLayerD
 export const tileUrl = (layer) => String(layer.tiles || '').replace('{date}', layer.date || new Date(Date.now() - 864e5).toISOString().slice(0, 10));
 
 function toFeatureCollection(json) {
-  if (json?.type === 'FeatureCollection') return { type: 'FeatureCollection', features: json.features.filter((f) => f.geometry) };
+  if (json?.type === 'FeatureCollection') {
+    return {
+      type: 'FeatureCollection',
+      ...(json.metadata ? { metadata: json.metadata } : {}),
+      features: json.features.filter((f) => f && f.geometry),
+    };
+  }
   if (json?.type === 'Feature') return { type: 'FeatureCollection', features: [json] };
   if (json?.type && json.coordinates) return { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: json }] };
   throw new Error('Not GeoJSON');
@@ -250,7 +268,8 @@ function toFeatureCollection(json) {
 
 export const fieldNames = (fc) => {
   const names = new Set();
-  fc.features.slice(0, 200).forEach((f) => Object.keys(f.properties || {}).forEach((k) => names.add(k)));
+  (fc?.metadata?.fields || []).forEach((f) => { const n = typeof f === 'string' ? f : f?.name; if (n) names.add(n); });
+  (fc?.features || []).slice(0, 200).forEach((f) => Object.keys(f.properties || {}).forEach((k) => names.add(k)));
   return [...names];
 };
 
@@ -329,7 +348,7 @@ const SYMBOL = ['has', '__sym']; // a proportional symbol drawn at the center of
 // Themes whose maps draw data with a soft glow ("firefly" cartography).
 // Labels and text notes switch to light text on dark and imagery basemaps.
 const darkBase = (map) => ['dark', 'satellite', 'usgs-imagery'].includes(map._basemap);
-const glowing = () => typeof document !== 'undefined' && document.documentElement.dataset.theme === 'aurora';
+const glowing = () => typeof document !== 'undefined' && ['aurora', 'blueprint'].includes(document.documentElement.dataset.theme);
 
 // Arrowheads are extra points at the end of each line marked `arrow`, rotated to the last segment.
 function withArrows(fc) {
@@ -487,6 +506,7 @@ function loadInto(map, layer) {
   if (layer.type === 'raster') return;
   layerFeatures(layer).then((fc) => {
     if (map.getSource(src) !== source) return; // style was swapped while loading
+    if (!layer.attribution && fc.metadata?.attribution) layer.attribution = fc.metadata.attribution;
     let data = fc;
     if (layer.time?.field) {
       data = withTime(data, layer.time.field);

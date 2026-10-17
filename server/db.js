@@ -5,7 +5,9 @@ const { DatabaseSync } = require('node:sqlite');
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, '..', 'data'));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const LAYER_DIR = path.join(DATA_DIR, 'layers');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(LAYER_DIR, { recursive: true });
 
 const DB_FILE = path.join(DATA_DIR, 'waymark.db');
 // One-time rename from the project's earlier name.
@@ -66,6 +68,24 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS maps_owner ON maps(owner_id, updated_at DESC);
+  -- Hosted feature layers: GeoJSON FeatureCollections stored on disk with schema, attribution and default styling.
+  CREATE TABLE IF NOT EXISTS layers (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    attribution TEXT NOT NULL DEFAULT '',
+    geom_type TEXT NOT NULL DEFAULT 'mixed',
+    feature_count INTEGER NOT NULL DEFAULT 0,
+    fields TEXT NOT NULL DEFAULT '[]',
+    style TEXT NOT NULL DEFAULT '{}',
+    popup TEXT NOT NULL DEFAULT '{}',
+    version INTEGER NOT NULL DEFAULT 1,
+    shared INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS layers_owner ON layers(owner_id, updated_at DESC);
   CREATE TABLE IF NOT EXISTS password_resets (
     token_hash TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -74,4 +94,4 @@ db.exec(`
   );
 `);
 
-module.exports = { db, DATA_DIR, UPLOAD_DIR };
+module.exports = { db, DATA_DIR, UPLOAD_DIR, LAYER_DIR };
