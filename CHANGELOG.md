@@ -2,12 +2,20 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
-## Unreleased
+## 1.4.0 (2026-10-17)
 
 ### Added
+- **Hosted feature layers.** Server-backed layers you can reuse across maps and stories, made from the **Layers** tab or by promoting any drawn, uploaded or analysis layer. Each has a live GeoJSON endpoint and its own source credit.
+- **Editable attribute tables.** Edit cells inline; add, rename and delete columns; add and delete rows; see column statistics; and fill columns with a **field calculator** (math, geometry measures such as `$AREA_KM2` and `$LEN_KM`, ranks, text templates and `$ELEVATION_M`). Export any table as GeoJSON or CSV.
+- **Chart & table block:** bars, columns, donuts or sortable tables, built from a layer or from your own rows.
+- **3D:** one-click terrain with hillshade, exaggeration and sky; 3D city buildings; a tilt readout; and polygons or hex bins extruded by a number field.
+- **Bivariate maps:** a 3×3 choropleth of two number fields, with a matrix legend.
+- **Remote sensing:** spectral overlays (NDVI, false-color infrared, sea surface temperature, aerosols, snow cover, shaded relief, hydrography), a Sentinel-2 scene finder with cloud-cover filtering, and before-and-after satellite comparisons.
+- **More file types:** KML and KMZ, GPX (with distance and elevation stats) and geotagged photos.
+- **Editorial** and **Blueprint** looks.
 - **Proportional symbols.** Size points, areas or lines by a number field ("Size by number"): circle area grows with the value, areas get a circle at their center, lines get wider, and big circles draw under small ones. The legend shows the sizes, and it works together with color by category or number.
 - **Time slider.** Pick a time field on a layer and every map showing it gets a time slider with play. Show everything up to a moment, or a trailing day, week or 30 days. It works in the map editor, in stories (readers can scrub and play) and in exported sites, and bookmarks and story cards remember the setting.
-- **Ten more analysis tools**, for 18 in all, now grouped into Summarize, Proximity, Overlay and Manage data: **Clip**, **Erase**, **Intersect**, **Join by location** (spatial join), **Select by location** (touch, inside, contain, stay clear), **Merge**, **Dissolve** (optionally by a field), **Voronoi areas** (Thiessen polygons), **Simplify** and **Add geometry attributes** (area, perimeter, length, coordinates).
+- **More analysis tools**, grouped into Summarize, Proximity, Overlay, Terrain and Manage data. New ones include multi-ring trade areas, hub & spoke lines, density clusters (DBSCAN), joins by field, an elevation profile and slope tool, **Clip**, **Erase**, **Intersect**, **Join by location** (spatial join), **Select by location** (touch, inside, contain, stay clear), **Merge**, **Dissolve** (optionally by a field), **Voronoi areas** (Thiessen polygons), **Simplify** and **Add geometry attributes** (area, perimeter, length, coordinates).
 
 ### Fixed
 - The legend and other bottom-left map controls move up out of the way of the time slider.
