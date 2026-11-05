@@ -517,3 +517,168 @@ export function traceLeastCostPaths(surface, destinations, { smooth = true } = {
   return { type: 'FeatureCollection', features: out };
 }
 
+/* ---------- 3D Viewshed & Radial Line-of-Sight Engine ---------- */
+
+function destinationLngLat([lon, lat], distKm, bearingDeg) {
+  const R = 6371.0088;
+  const d = distKm / R;
+  const brng = (bearingDeg * Math.PI) / 180;
+  const lat1 = (lat * Math.PI) / 180;
+  const lon1 = (lon * Math.PI) / 180;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
+  const lon2 = lon1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+  return [roundN((lon2 * 180) / Math.PI, 6), roundN((lat2 * 180) / Math.PI, 6)];
+}
+
+/**
+ * Computes 3D viewshed and line-of-sight analysis from observer points across DEM terrain,
+ * accounting for observer height, target height, and Earth curvature + atmospheric refraction.
+ */
+export async function computeViewshed({
+  observers,
+  radiusKm = 5,
+  observerHeightM = 1.8,
+  targetHeightM = 0,
+  rays = 36,
+  stepsPerRay = 16,
+  outputMode = 'sectors', // 'sectors' | 'rays'
+  zoom = 12,
+  elevSampler = sampleElevations,
+} = {}) {
+  const obsFeats = (observers?.features || []).filter((f) => f.geometry).slice(0, 15);
+  if (!obsFeats.length) throw new Error('Viewshed requires at least one observer point or site.');
+
+  const rKm = Math.max(0.2, Math.min(50, Number(radiusKm) || 5));
+  const obsH = Number.isFinite(Number(observerHeightM)) ? Number(observerHeightM) : 1.8;
+  const tgtH = Number.isFinite(Number(targetHeightM)) ? Number(targetHeightM) : 0;
+  const nRays = Math.max(12, Math.min(72, Math.round(Number(rays) || 36)));
+  const nSteps = Math.max(6, Math.min(32, Math.round(Number(stepsPerRay) || 16)));
+  // Effective Earth radius with standard atmospheric refraction k = 0.13
+  const R_EFF_M = (6371008.8 / (1 - 0.13)) * 2;
+
+  // Collect all sample coordinates in a single batch for fast parallel tile decoding
+  const sampleCoords = [];
+  const obsMeta = obsFeats.map((f, oi) => {
+    const center = featureCenter(f);
+    const p = f.properties || {};
+    const k = Object.keys(p).find((key) => /^(name|title|label|id)$/i.test(key));
+    const name = k && p[k] != null ? String(p[k]) : `Observer ${oi + 1}`;
+    const centerIdx = sampleCoords.length;
+    sampleCoords.push(center);
+    const rayIndices = [];
+    for (let r = 0; r < nRays; r++) {
+      const bearing = (r * 360) / nRays;
+      const stepIndices = [];
+      for (let s = 1; s <= nSteps; s++) {
+        const dKm = (rKm * s) / nSteps;
+        stepIndices.push({ dKm, pt: destinationLngLat(center, dKm, bearing), idx: sampleCoords.length });
+        sampleCoords.push(stepIndices.at(-1).pt);
+      }
+      rayIndices.push({ bearing, stepIndices });
+    }
+    return { name, center, centerIdx, rayIndices };
+  });
+
+  let elevs = new Array(sampleCoords.length).fill(0);
+  if (typeof elevSampler === 'function') {
+    try {
+      const raw = await elevSampler(sampleCoords, { zoom });
+      if (Array.isArray(raw) && raw.some((v) => v != null)) {
+        const fallback = raw.find((v) => v != null) || 0;
+        elevs = raw.map((v) => (v == null ? fallback : v));
+      }
+    } catch { /* fallback to 0m when offline */ }
+  }
+
+  const features = [];
+  let totalCells = 0;
+  let visibleCells = 0;
+  const stepAngle = 360 / nRays;
+
+  obsMeta.forEach((obs) => {
+    const baseElev = elevs[obs.centerIdx] + obsH;
+
+    obs.rayIndices.forEach((ray) => {
+      let maxHorizonAngle = -Infinity;
+      const b0 = ray.bearing - stepAngle / 2;
+      const b1 = ray.bearing + stepAngle / 2;
+      let prevD = 0;
+      let prevPt = obs.center;
+
+      ray.stepIndices.forEach((st, sIdx) => {
+        const distM = st.dKm * 1000;
+        const curvatureDropM = (distM * distM) / R_EFF_M;
+        const groundElev = elevs[st.idx] - curvatureDropM;
+        const targetElev = groundElev + tgtH;
+
+        const targetSlope = (targetElev - baseElev) / Math.max(1, distM);
+        const groundSlope = (groundElev - baseElev) / Math.max(1, distM);
+
+        const isVisible = targetSlope >= maxHorizonAngle - 1e-6;
+        // Clearance (m): positive means visible above horizon line-of-sight, negative means how many meters below horizon
+        const requiredElev = maxHorizonAngle === -Infinity ? targetElev : baseElev + maxHorizonAngle * distM;
+        const clearanceM = roundN(targetElev - requiredElev, 1);
+
+        if (groundSlope > maxHorizonAngle) maxHorizonAngle = groundSlope;
+
+        totalCells++;
+        if (isVisible) visibleCells++;
+
+        if (outputMode === 'rays') {
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [prevPt, st.pt] },
+            properties: {
+              observer: obs.name,
+              bearing_deg: roundN(ray.bearing, 1),
+              distance_km: roundN(st.dKm, 2),
+              visible: isVisible ? 'Visible' : 'Obstructed',
+              visibility_code: isVisible ? 1 : 0,
+              clearance_m: clearanceM,
+              elevation_m: roundN(elevs[st.idx], 1),
+            },
+          });
+        } else {
+          // Sector wedge polygon between prevD and st.dKm and bearings [b0, b1]
+          const pOuter0 = destinationLngLat(obs.center, st.dKm, b0);
+          const pOuter1 = destinationLngLat(obs.center, st.dKm, b1);
+          const ring = sIdx === 0
+            ? [obs.center, pOuter0, pOuter1, obs.center]
+            : [
+              destinationLngLat(obs.center, prevD, b0),
+              pOuter0,
+              pOuter1,
+              destinationLngLat(obs.center, prevD, b1),
+              destinationLngLat(obs.center, prevD, b0),
+            ];
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [ring] },
+            properties: {
+              observer: obs.name,
+              bearing_deg: roundN(ray.bearing, 1),
+              distance_km: roundN(st.dKm, 2),
+              visible: isVisible ? 'Visible' : 'Obstructed',
+              visibility_code: isVisible ? 1 : 0,
+              clearance_m: clearanceM,
+              elevation_m: roundN(elevs[st.idx], 1),
+              observer_elev_m: roundN(elevs[obs.centerIdx], 1),
+            },
+          });
+        }
+        prevD = st.dKm;
+        prevPt = st.pt;
+      });
+    });
+  });
+
+  const visiblePct = totalCells ? roundN((visibleCells / totalCells) * 100, 1) : 0;
+  return {
+    data: { type: 'FeatureCollection', features },
+    visiblePct,
+    totalCells,
+    visibleCells,
+  };
+}
+
+

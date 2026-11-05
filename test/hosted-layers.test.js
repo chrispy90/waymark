@@ -426,3 +426,75 @@ test('Phase 2: Geospatial Cost Surface, Tobler slope friction & Least-Cost Path 
   assert.ok(TOOLS.leastCostPath);
 });
 
+test('Phase 3: 3D Viewshed line-of-sight analysis & Getis-Ord Gi* / Local Moran\'s I spatial hot spots', async () => {
+  const { computeViewshed } = await load('terrain.js');
+  const { computeHotspots, TOOLS } = await load('analysis.js');
+
+  // 1. Test 3D Viewshed with a synthetic ridge blocking sightlines to the East (bearing ~90°)
+  const observers = {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [-120.0, 38.0] }, properties: { name: 'Fire Lookout' } }],
+  };
+  const ridgeElevSampler = async (coords) => coords.map(([lng]) => {
+    const dLng = lng - (-120.0);
+    // Sharp 500m ridge located ~0.015 deg East, flat elsewhere
+    if (dLng > 0.01 && dLng < 0.02) return 900;
+    return 400;
+  });
+
+  const vsSectors = await computeViewshed({
+    observers,
+    radiusKm: 4,
+    observerHeightM: 2,
+    targetHeightM: 0,
+    rays: 12,
+    stepsPerRay: 8,
+    outputMode: 'sectors',
+    elevSampler: ridgeElevSampler,
+  });
+  assert.equal(vsSectors.data.features.length, 12 * 8);
+  assert.ok(vsSectors.visiblePct > 0 && vsSectors.visiblePct < 100, 'Ridge should obstruct Eastern sectors behind it while leaving other directions visible');
+  const obstructed = vsSectors.data.features.filter((f) => f.properties.visible === 'Obstructed');
+  assert.ok(obstructed.length > 0);
+
+  // 2. Test Getis-Ord Gi* and Local Moran's I (LISA) hot-spot & outlier detection
+  const clusterPts = [];
+  // High-value cluster around (-74.0, 40.7)
+  for (let i = 0; i < 6; i++) {
+    clusterPts.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [-74.0 + i * 0.002, 40.7 + (i % 2) * 0.002] },
+      properties: { name: `High-${i}`, sales: 950 + i * 20 },
+    });
+  }
+  // Low-value cluster around (-73.5, 40.2)
+  for (let i = 0; i < 6; i++) {
+    clusterPts.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [-73.5 + i * 0.002, 40.2 + (i % 2) * 0.002] },
+      properties: { name: `Low-${i}`, sales: 40 + i * 5 },
+    });
+  }
+  // Moderate background points
+  for (let i = 0; i < 6; i++) {
+    clusterPts.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [-73.8 + i * 0.01, 40.45] },
+      properties: { name: `Mid-${i}`, sales: 450 + i * 10 },
+    });
+  }
+
+  const hs = computeHotspots({ type: 'FeatureCollection', features: clusterPts }, { field: 'sales', knn: 4 });
+  assert.equal(hs.data.features.length, 18);
+  assert.ok(hs.hotCount > 0, 'Should detect statistically significant Gi* hot spots');
+  assert.ok(hs.coldCount > 0, 'Should detect statistically significant Gi* cold spots');
+  assert.ok(hs.globalMoranI > 0.3, 'Clustered data should exhibit positive spatial autocorrelation (Moran\'s I)');
+  const firstHot = hs.data.features[0].properties;
+  assert.ok(firstHot.gi_zscore > 1.645);
+  assert.equal(firstHot.lisa_cluster, 'High-High Hot Spot');
+
+  assert.ok(TOOLS.viewshed);
+  assert.ok(TOOLS.hotspot);
+});
+
+

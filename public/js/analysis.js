@@ -1,6 +1,6 @@
 // Geospatial analysis for the editor, built on Turf.js (global `turf`, loaded only in the builder).
 // Every tool turns input layers into a new FeatureCollection that is saved as an ordinary layer.
-import { densifyLine, profileStats, sampleElevations, buildCostSurface, traceLeastCostPaths } from './terrain.js';
+import { densifyLine, profileStats, sampleElevations, buildCostSurface, traceLeastCostPaths, computeViewshed } from './terrain.js';
 
 const T = () => {
   const t = globalThis.turf || (typeof window !== 'undefined' ? window.turf : null);
@@ -814,7 +814,239 @@ export const TOOLS = {
     },
     style: () => ({ color: '#059669', width: 4, opacity: 0.92 }),
   },
+
+  viewshed: {
+    name: '3D viewshed & line of sight', icon: 'eye', group: 'Terrain',
+    desc: 'Computes radial 3D terrain visibility sectors or sightline rays from observer towers, viewpoints or sensors using global DEM elevation and Earth curvature.',
+    inputs: [{ k: 'observers', label: 'Observer viewpoints or towers' }],
+    params: [
+      { k: 'radius', t: 'number', label: 'Viewing radius', dflt: 5 },
+      { k: 'units', t: 'units', dflt: 'kilometers' },
+      { k: 'observerHeight', t: 'number', label: 'Observer height above ground (m)', dflt: 2 },
+      { k: 'targetHeight', t: 'number', label: 'Target height above ground (m)', dflt: 0 },
+      { k: 'rays', t: 'choice', label: 'Angular detail', dflt: '36', opts: [['24', '24 rays (15°)'], ['36', '36 rays (10°)'], ['60', '60 rays (6°)']] },
+      { k: 'outputMode', t: 'choice', label: 'Output geometry', dflt: 'sectors', opts: [['sectors', 'Viewshed sectors'], ['rays', 'Sightline rays']] },
+    ],
+    name_: (p, a) => `${a.observers} viewshed (${p.radius} ${UNIT_LABEL[p.units]})`,
+    async run({ observers }, p) {
+      const radiusKm = toKm(Number(p.radius) || 5, p.units || 'kilometers');
+      if (!(radiusKm > 0)) throw new Error('Enter a viewing radius greater than zero.');
+      const res = await computeViewshed({
+        observers,
+        radiusKm,
+        observerHeightM: Number(p.observerHeight) || 2,
+        targetHeightM: Number(p.targetHeight) || 0,
+        rays: Number(p.rays) || 36,
+        stepsPerRay: 16,
+        outputMode: p.outputMode || 'sectors',
+      });
+      return {
+        data: res.data,
+        field: 'visible',
+        note: `${res.visiblePct}% visible across ${res.totalCells.toLocaleString()} terrain sectors (${res.visibleCells.toLocaleString()} visible)`,
+      };
+    },
+    style: () => ({
+      color: '#10b981',
+      mode: 'categorical',
+      field: 'visible',
+      cats: [['Visible', '#10b981'], ['Obstructed', '#ef4444']],
+      opacity: 0.52,
+      width: 1.5,
+    }),
+  },
+
+  hotspot: {
+    name: 'Hot-spot & outlier analysis (Gi* / Moran\'s I)', icon: 'sparkle', group: 'Summarize',
+    desc: 'Finds statistically significant spatial hot spots, cold spots (Getis-Ord Gi* z-scores & p-values) and spatial outliers (Local Moran\'s I LISA clusters).',
+    inputs: [{ k: 'input', label: 'Features to analyze' }],
+    params: [
+      { k: 'field', t: 'field', of: 'input', numeric: true, label: 'Numeric value field (leave None to analyze point density)', optional: true },
+      { k: 'knn', t: 'number', label: 'Spatial neighbors (k-nearest)', dflt: 8 },
+      { k: 'bandwidth', t: 'number', label: 'Distance bandwidth (0 = automatic from k-nearest)', dflt: 0 },
+      { k: 'units', t: 'units', dflt: 'kilometers' },
+      { k: 'colorBy', t: 'choice', label: 'Color layer by', dflt: 'gi_bin', opts: [['gi_bin', 'Gi* Hot / Cold Spot'], ['lisa_cluster', 'Moran\'s I LISA Cluster']] },
+    ],
+    name_: (p, a) => `${a.input} hot spots${p.field ? ` (${p.field})` : ''}`,
+    run({ input }, p) {
+      const res = computeHotspots(input, {
+        field: p.field,
+        knn: Number(p.knn) || 8,
+        bandwidthKm: Number(p.bandwidth) > 0 ? toKm(Number(p.bandwidth), p.units || 'kilometers') : 0,
+      });
+      return {
+        data: res.data,
+        field: p.colorBy || 'gi_bin',
+        note: `${res.hotCount} hot spots · ${res.coldCount} cold spots · ${res.outlierCount} spatial outliers · Global Moran's I = ${res.globalMoranI}`,
+      };
+    },
+    style: (src, r) => {
+      if (r?.field === 'lisa_cluster') {
+        return {
+          color: '#dc2626',
+          mode: 'categorical',
+          field: 'lisa_cluster',
+          cats: [
+            ['High-High Hot Spot', '#dc2626'],
+            ['High-Low Outlier', '#f97316'],
+            ['Low-High Outlier', '#38bdf8'],
+            ['Low-Low Cold Spot', '#2563eb'],
+            ['Not Significant', '#94a3b8'],
+          ],
+          opacity: 0.78,
+        };
+      }
+      return {
+        color: '#dc2626',
+        mode: 'categorical',
+        field: 'gi_bin',
+        cats: [
+          ['Hot Spot (99% conf)', '#b91c1c'],
+          ['Hot Spot (95% conf)', '#ef4444'],
+          ['Hot Spot (90% conf)', '#fca5a5'],
+          ['Not Significant', '#cbd5e1'],
+          ['Cold Spot (90% conf)', '#93c5fd'],
+          ['Cold Spot (95% conf)', '#3b82f6'],
+          ['Cold Spot (99% conf)', '#1d4ed8'],
+        ],
+        opacity: 0.78,
+      };
+    },
+  },
 };
+
+/* ---------- Spatial Autocorrelation: Getis-Ord Gi* & Local Moran's I (LISA) ---------- */
+
+function normalTwoTailedP(z) {
+  const x = Math.abs(z) / Math.SQRT2;
+  // Abramowitz & Stegun 7.1.26 erfc approximation
+  const t = 1 / (1 + 0.3275911 * x);
+  const erfc = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x);
+  return Math.max(0, Math.min(1, erfc));
+}
+
+/**
+ * Computes Getis-Ord Gi* z-scores, p-values, confidence classes, and Local Moran's I (LISA)
+ * cluster / outlier classifications across a FeatureCollection.
+ */
+export function computeHotspots(input, { field = '', knn = 8, bandwidthKm = 0 } = {}) {
+  const feats = (input?.features || []).filter((f) => f.geometry);
+  if (feats.length < 3) throw new Error('Hot-spot analysis requires at least 3 features.');
+  guard(feats.length, 3500, 'features');
+
+  const n = feats.length;
+  const k = Math.max(1, Math.min(n - 1, Math.round(Number(knn) || 8)));
+  const centers = feats.map(centerCoordsOf);
+
+  // Pairwise geodesic distance matrix
+  const distMat = Array.from({ length: n }, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const d = haversineKm(centers[i], centers[j]);
+      distMat[i][j] = d;
+      distMat[j][i] = d;
+    }
+  }
+
+  // Extract attribute value or compute local k-nearest neighbor density when no field is chosen
+  const vals = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    if (field) {
+      const raw = Number(feats[i].properties?.[field]);
+      vals[i] = Number.isFinite(raw) ? raw : 0;
+    } else {
+      const sortedD = [...distMat[i]].filter((_, idx) => idx !== i).sort((a, b) => a - b);
+      const kthDist = Math.max(0.05, sortedD[Math.min(k - 1, sortedD.length - 1)] || 1);
+      vals[i] = k / (Math.PI * kthDist * kthDist);
+    }
+  }
+
+  const mean = vals.reduce((a, b) => a + b, 0) / n;
+  const variance = vals.reduce((a, v) => a + (v - mean) ** 2, 0) / n;
+  const s = Math.sqrt(Math.max(1e-12, variance));
+  const zVals = vals.map((v) => (v - mean) / s);
+
+  let hotCount = 0;
+  let coldCount = 0;
+  let outlierCount = 0;
+  let globalMoranNum = 0;
+  let globalWeightSum = 0;
+
+  const out = feats.map((f, i) => {
+    // Determine spatial weights w_ij (includes self w_ii = 1 for Gi*, excludes self for Moran's I)
+    const rowD = [];
+    for (let j = 0; j < n; j++) if (j !== i) rowD.push({ j, d: distMat[i][j] });
+    rowD.sort((a, b) => a.d - b.d);
+
+    const bw = bandwidthKm > 0 ? bandwidthKm : Math.max(1e-4, rowD[Math.min(k - 1, rowD.length - 1)]?.d || 1);
+    const neighborSet = new Set(rowD.slice(0, k).map((item) => item.j));
+    if (bandwidthKm > 0) {
+      rowD.forEach((item) => { if (item.d <= bandwidthKm) neighborSet.add(item.j); });
+    }
+
+    // Getis-Ord Gi* includes self weight = 1
+    let sumWX = vals[i];
+    let sumW = 1;
+    let sumW2 = 1;
+
+    // Local Moran's I excludes self and uses row-standardized weights
+    let lagZ = 0;
+    let lagW = 0;
+
+    for (const j of neighborSet) {
+      const d = distMat[i][j];
+      const w = bandwidthKm > 0 ? Math.max(0.15, Math.exp(-0.5 * (d / bw) ** 2)) : 1;
+      sumWX += w * vals[j];
+      sumW += w;
+      sumW2 += w * w;
+      lagZ += w * zVals[j];
+      lagW += w;
+    }
+
+    const denom = s * Math.sqrt(Math.max(1e-12, (n * sumW2 - sumW * sumW) / Math.max(1, n - 1)));
+    const giZ = denom > 1e-9 ? (sumWX - mean * sumW) / denom : 0;
+    const giP = normalTwoTailedP(giZ);
+
+    let giBin = 'Not Significant';
+    if (giZ >= 2.576) { giBin = 'Hot Spot (99% conf)'; hotCount++; }
+    else if (giZ >= 1.96) { giBin = 'Hot Spot (95% conf)'; hotCount++; }
+    else if (giZ >= 1.645) { giBin = 'Hot Spot (90% conf)'; hotCount++; }
+    else if (giZ <= -2.576) { giBin = 'Cold Spot (99% conf)'; coldCount++; }
+    else if (giZ <= -1.96) { giBin = 'Cold Spot (95% conf)'; coldCount++; }
+    else if (giZ <= -1.645) { giBin = 'Cold Spot (90% conf)'; coldCount++; }
+
+    const stdLagZ = lagW > 0 ? lagZ / lagW : 0;
+    const localI = zVals[i] * stdLagZ;
+    globalMoranNum += localI;
+    globalWeightSum += 1;
+
+    let lisaCluster = 'Not Significant';
+    const sig = Math.abs(giZ) >= 1.645 || Math.abs(localI) >= 0.65;
+    if (sig) {
+      if (zVals[i] >= 0 && stdLagZ >= 0) lisaCluster = 'High-High Hot Spot';
+      else if (zVals[i] < 0 && stdLagZ < 0) lisaCluster = 'Low-Low Cold Spot';
+      else if (zVals[i] >= 0 && stdLagZ < 0) { lisaCluster = 'High-Low Outlier'; outlierCount++; }
+      else if (zVals[i] < 0 && stdLagZ >= 0) { lisaCluster = 'Low-High Outlier'; outlierCount++; }
+    }
+
+    return {
+      ...f,
+      properties: {
+        ...f.properties,
+        analyzed_value: round(vals[i], 3),
+        gi_zscore: round(giZ, 3),
+        gi_pvalue: round(giP, 4),
+        gi_bin: giBin,
+        moran_i: round(localI, 3),
+        spatial_lag_z: round(stdLagZ, 3),
+        lisa_cluster: lisaCluster,
+      },
+    };
+  });
+
+  const globalMoranI = round(globalMoranNum / Math.max(1, globalWeightSum), 3);
+  return { data: fc(out), hotCount, coldCount, outlierCount, globalMoranI };
+}
 
 // A representative [lng,lat] for any feature, falling back to vertex averaging when Turf is missing.
 const pointOfSafe = (f) => centerCoordsOf(f);
