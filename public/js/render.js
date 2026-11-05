@@ -1,5 +1,5 @@
 // Story renderer. Takes a story JSON document (see docs/SCHEMA.md) and builds the reading experience.
-import { createMap, applyView, DEFAULT_VIEW, layerFeatures, PALETTE, SATELLITE_SENSORS } from './maps.js';
+import { createMap, applyView, DEFAULT_VIEW, layerFeatures, highlightMapFeatures, PALETTE, SATELLITE_SENSORS } from './maps.js';
 import { sanitize, safeUrl } from './sanitize.js';
 import { track, reveal, countUp, viewProgress, pinProgress, exitProgress, reducedMotion } from './effects.js';
 import { BRAND } from './brand.js';
@@ -8,7 +8,7 @@ import { fogWeather } from './fog.js';
 
 const COLOR = /^#[0-9a-f]{3,8}$/i;
 const NO_REVEAL = new Set(['scrollmap', 'statement', 'gallery', 'chapter']);
-const SVG_TAGS = new Set(['svg', 'circle', 'path', 'rect', 'g', 'text']);
+const SVG_TAGS = new Set(['svg', 'circle', 'path', 'rect', 'g', 'text', 'line', 'defs', 'linearGradient', 'stop', 'title', 'polygon']);
 
 const h = (tag, attrs = {}, ...kids) => {
   const isSvg = SVG_TAGS.has(tag);
@@ -264,14 +264,21 @@ const BLOCKS = {
     })),
     caption(b.caption)),
 
-  // Interactive Chart & Executive Data Table block (manual items or live layer aggregation).
+  // Interactive Chart, Sankey Flow, Network Graph & Executive Data Table block (with bi-directional Map brushing).
   chart: (b, ctx) => {
-    const wrap = h('section', { class: 'sm-chart' });
+    const wrap = h('section', { class: `sm-chart size-${b.size || 'wide'}` });
     const body = h('div', { class: 'sm-chart-body' });
-    let activeView = ['bar', 'column', 'donut', 'table'].includes(b.chartType) ? b.chartType : 'bar';
+    const statusStrip = h('div', { class: 'sm-chart-status', hidden: true });
+    const VALID_VIEWS = ['bar', 'column', 'donut', 'sankey', 'network', 'table'];
+    let activeView = VALID_VIEWS.includes(b.chartType) ? b.chartType : 'bar';
     let sortKey = 'value';
     let sortDir = -1;
     let cachedFc = null;
+    let viewportBounds = null;
+    let syncViewport = !!b.syncBounds;
+    let activeSelection = null; // { type: 'node' | 'link' | 'category', id, label, source, target, features }
+    let networkMode = b.networkLayout === 'geo' ? 'geo' : 'force';
+    const nodeOffsets = new Map(); // id -> { dx, dy } or { x, y }
 
     const fmtVal = (v) => {
       const pre = b.unitPrefix || '';
@@ -280,8 +287,413 @@ const BLOCKS = {
       return `${pre}${numStr}${suf}`;
     };
 
+    const getActiveFc = () => (syncViewport && viewportBounds && cachedFc ? filterFeaturesByBounds(cachedFc, viewportBounds) : cachedFc);
+
+    const broadcastToMaps = (features, fly = true) => {
+      (ctx.maps || []).forEach((m) => highlightMapFeatures(m, features || [], { fly }));
+    };
+
+    const clearSelection = () => {
+      activeSelection = null;
+      broadcastToMaps([], false);
+      draw();
+    };
+
+    const selectEntity = (sel, fly = true) => {
+      if (activeSelection && activeSelection.id === sel.id) {
+        clearSelection();
+        return;
+      }
+      activeSelection = sel;
+      if (sel.features?.length) broadcastToMaps(sel.features, fly);
+      draw();
+    };
+
+    const updateStatusStrip = (activeFc) => {
+      const pills = [];
+      if (b.layer) {
+        pills.push(h('button', {
+          type: 'button',
+          class: `sm-chart-pill${syncViewport ? ' is-on' : ''}`,
+          title: 'Recalculate chart/graph as you pan and zoom the map',
+          onclick: () => {
+            syncViewport = !syncViewport;
+            if (syncViewport && !viewportBounds && ctx.maps?.[0]?.getBounds) {
+              const mb = ctx.maps[0].getBounds();
+              viewportBounds = [mb.getWest(), mb.getSouth(), mb.getEast(), mb.getNorth()];
+            }
+            draw();
+          },
+        }, syncViewport ? '✓ Synced to map view' : 'Sync with map view'));
+      }
+      if (syncViewport && cachedFc && activeFc) {
+        pills.push(h('span', { class: 'sm-chart-pill is-info' }, `${activeFc.features.length} of ${cachedFc.features.length} features in view`));
+      }
+      if (activeSelection) {
+        pills.push(h('button', {
+          type: 'button',
+          class: 'sm-chart-pill is-active',
+          onclick: clearSelection,
+        }, `Selected: ${activeSelection.label} ×`));
+      } else if (b.layer) {
+        pills.push(h('span', { class: 'sm-chart-hint' }, 'Tip: click any map feature or chart node to isolate & locate it'));
+      }
+      statusStrip.hidden = !pills.length;
+      statusStrip.replaceChildren(...pills);
+    };
+
+    const drawSankey = (activeFc) => {
+      const graph = computeFlowGraph(b, activeFc);
+      if (!graph.links.length) {
+        body.replaceChildren(h('div', { class: 'sm-empty-box' }, 'No flow connections yet — choose Source & Target fields or add flow rows'));
+        return;
+      }
+      const W = 760;
+      const H = Math.max(340, Math.min(540, graph.maxStageNodes * 52 + 60));
+      const padX = 24;
+      const padY = 28;
+      const nodeW = 18;
+      const stages = graph.stages;
+      const numStages = Math.max(2, stages.length);
+      const colSpan = (W - padX * 2 - nodeW) / (numStages - 1);
+
+      // Position nodes within each stage column
+      stages.forEach((stageNodes, sIdx) => {
+        const x = padX + sIdx * colSpan;
+        const availH = H - padY * 2 - Math.max(0, stageNodes.length - 1) * 12;
+        const stageTotal = stageNodes.reduce((s, n) => s + Math.max(n.value, 0.001), 0) || 1;
+        let yCursor = padY;
+        stageNodes.forEach((n) => {
+          n.x = x;
+          n.w = nodeW;
+          n.h = Math.max(14, (Math.max(n.value, 0.001) / stageTotal) * availH);
+          const customY = nodeOffsets.get(`sankey:${n.id}`);
+          n.y = customY != null ? Math.max(8, Math.min(H - n.h - 8, customY)) : yCursor;
+          yCursor += n.h + 12;
+        });
+      });
+
+      const computeRibbonPaths = () => {
+        stages.forEach((st) => st.forEach((n) => { n._outY = n.y; n._inY = n.y; }));
+        // Sort links by target y to minimize crossings
+        const orderedLinks = [...graph.links].sort((a, c) => (a.sourceNode.y - c.sourceNode.y) || (a.targetNode.y - c.targetNode.y));
+        orderedLinks.forEach((lk) => {
+          const s = lk.sourceNode;
+          const t = lk.targetNode;
+          const sThick = Math.max(2, (lk.value / Math.max(s.value, 1e-6)) * s.h);
+          const tThick = Math.max(2, (lk.value / Math.max(t.value, 1e-6)) * t.h);
+          const thick = (sThick + tThick) / 2;
+          const y0 = s._outY + sThick / 2;
+          const y1 = t._inY + tThick / 2;
+          s._outY += sThick;
+          t._inY += tThick;
+          const x0 = s.x + s.w;
+          const x1 = t.x;
+          const cx = (x0 + x1) / 2;
+          lk._d = `M ${x0} ${y0} C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
+          lk._thick = Math.max(2.5, thick);
+        });
+      };
+      computeRibbonPaths();
+
+      const isLinkLit = (lk) => {
+        if (!activeSelection) return true;
+        if (activeSelection.type === 'link') return activeSelection.id === lk.id;
+        if (activeSelection.type === 'node') return lk.source === activeSelection.id || lk.target === activeSelection.id;
+        return lk.sourceLabel === activeSelection.label || lk.targetLabel === activeSelection.label;
+      };
+      const isNodeLit = (n) => {
+        if (!activeSelection) return true;
+        if (activeSelection.type === 'node') {
+          if (activeSelection.id === n.id) return true;
+          return graph.links.some((lk) => (lk.source === activeSelection.id && lk.target === n.id) || (lk.target === activeSelection.id && lk.source === n.id));
+        }
+        if (activeSelection.type === 'link') return n.id === activeSelection.source || n.id === activeSelection.target;
+        return n.label === activeSelection.label;
+      };
+
+      const linkEls = graph.links.map((lk) => {
+        const lit = isLinkLit(lk);
+        const pathEl = h('path', {
+          class: `sm-sankey-link${lit ? '' : ' is-dim'}${activeSelection?.id === lk.id ? ' is-selected' : ''}`,
+          d: lk._d,
+          fill: 'none',
+          stroke: lk.color,
+          'stroke-width': String(lk._thick),
+          'stroke-opacity': activeSelection ? (lit ? '0.78' : '0.1') : '0.52',
+          onclick: (e) => {
+            e.stopPropagation();
+            selectEntity({ type: 'link', id: lk.id, label: `${lk.sourceLabel} → ${lk.targetLabel} (${fmtVal(lk.value)})`, source: lk.source, target: lk.target, features: lk.features });
+          },
+        }, h('title', {}, `${lk.sourceLabel} → ${lk.targetLabel}: ${fmtVal(lk.value)}`));
+        lk._el = pathEl;
+        return pathEl;
+      });
+
+      const svg = h('svg', { class: 'sm-sankey-svg', viewBox: `0 0 ${W} ${H}` });
+      const nodeEls = graph.nodes.map((n) => {
+        const lit = isNodeLit(n);
+        const isRight = n.stage === numStages - 1 && numStages > 1;
+        const rectEl = h('rect', { x: String(n.x), y: String(n.y), width: String(n.w), height: String(n.h), rx: '4', fill: n.color, class: 'sm-sankey-rect' });
+        const labelEl = h('text', {
+          x: String(isRight ? n.x - 8 : n.x + n.w + 8),
+          y: String(n.y + n.h / 2),
+          'text-anchor': isRight ? 'end' : 'start',
+          'dominant-baseline': 'middle',
+          class: 'sm-sankey-label',
+        }, `${n.label} (${fmtVal(n.value)})`);
+        const gEl = h('g', {
+          class: `sm-sankey-node${lit ? '' : ' is-dim'}${activeSelection?.id === n.id ? ' is-selected' : ''}`,
+          style: 'cursor:grab',
+        }, rectEl, labelEl, h('title', {}, `${n.label}: ${fmtVal(n.value)} (drag to reorder, click to filter map)`));
+
+        // Drag vertically to untangle ribbons, or click to select & filter map
+        let moved = false;
+        let startY = 0;
+        let origY = 0;
+        gEl.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          moved = false;
+          startY = e.clientY;
+          origY = n.y;
+          gEl.setPointerCapture(e.pointerId);
+          const onMove = (ev) => {
+            const dy = ev.clientY - startY;
+            if (Math.abs(dy) > 3) moved = true;
+            if (!moved) return;
+            const rect = svg.getBoundingClientRect();
+            const scaleY = H / (rect.height || H);
+            n.y = Math.max(8, Math.min(H - n.h - 8, origY + dy * scaleY));
+            nodeOffsets.set(`sankey:${n.id}`, n.y);
+            rectEl.setAttribute('y', String(n.y));
+            labelEl.setAttribute('y', String(n.y + n.h / 2));
+            computeRibbonPaths();
+            graph.links.forEach((lk) => lk._el?.setAttribute('d', lk._d));
+          };
+          const onUp = () => {
+            gEl.removeEventListener('pointermove', onMove);
+            if (!moved) selectEntity({ type: 'node', id: n.id, label: n.label, features: n.features });
+          };
+          gEl.addEventListener('pointermove', onMove);
+          gEl.addEventListener('pointerup', onUp, { once: true });
+        });
+        return gEl;
+      });
+
+      svg.append(h('g', { class: 'sm-sankey-links' }, linkEls), h('g', { class: 'sm-sankey-nodes' }, nodeEls));
+      body.replaceChildren(h('div', { class: 'sm-sankey-wrap' }, svg));
+    };
+
+    const drawNetwork = (activeFc) => {
+      const graph = computeFlowGraph(b, activeFc);
+      if (!graph.nodes.length) {
+        body.replaceChildren(h('div', { class: 'sm-empty-box' }, 'No network nodes yet — choose Source & Target fields or add flow rows'));
+        return;
+      }
+      const W = 760;
+      const H = 430;
+      const hasGeo = graph.nodes.filter((n) => Array.isArray(n.lngLat)).length >= 2;
+      const mode = hasGeo && networkMode === 'geo' ? 'geo' : 'force';
+
+      // Position nodes via Geo-Pinned bounds or Force-Directed spring layout
+      if (mode === 'geo') {
+        const geoNodes = graph.nodes.filter((n) => Array.isArray(n.lngLat));
+        const lngs = geoNodes.map((n) => n.lngLat[0]);
+        const lats = geoNodes.map((n) => n.lngLat[1]);
+        const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+        const dLng = Math.max(1e-4, maxLng - minLng);
+        const dLat = Math.max(1e-4, maxLat - minLat);
+        const pad = 64;
+        graph.nodes.forEach((n, idx) => {
+          if (Array.isArray(n.lngLat)) {
+            n.x = pad + ((n.lngLat[0] - minLng) / dLng) * (W - pad * 2);
+            n.y = H - pad - ((n.lngLat[1] - minLat) / dLat) * (H - pad * 2);
+          } else {
+            const angle = (2 * Math.PI * idx) / graph.nodes.length;
+            n.x = W / 2 + Math.cos(angle) * 140;
+            n.y = H / 2 + Math.sin(angle) * 110;
+          }
+        });
+      } else {
+        // Deterministic circular seed followed by 80 iterations of Fruchterman-Reingold spring-charge layout
+        const N = graph.nodes.length;
+        graph.nodes.forEach((n, idx) => {
+          const angle = (2 * Math.PI * idx) / N - Math.PI / 2;
+          const rad = N <= 1 ? 0 : Math.min(W, H) * 0.34;
+          n.x = W / 2 + Math.cos(angle) * rad + (n.stage - 0.5) * 35;
+          n.y = H / 2 + Math.sin(angle) * rad;
+        });
+        const k = Math.sqrt((W * H) / Math.max(1, N)) * 0.65;
+        for (let iter = 0; iter < 75; iter++) {
+          const temp = (1 - iter / 75) * 28;
+          const disp = graph.nodes.map(() => [0, 0]);
+          for (let i = 0; i < N; i++) {
+            for (let j = i + 1; j < N; j++) {
+              const dx = graph.nodes[i].x - graph.nodes[j].x || 0.01;
+              const dy = graph.nodes[i].y - graph.nodes[j].y || 0.01;
+              const dist = Math.hypot(dx, dy) || 0.01;
+              const rep = (k * k) / dist;
+              const fx = (dx / dist) * rep;
+              const fy = (dy / dist) * rep;
+              disp[i][0] += fx; disp[i][1] += fy;
+              disp[j][0] -= fx; disp[j][1] -= fy;
+            }
+          }
+          graph.links.forEach((lk) => {
+            const u = graph.nodes.indexOf(lk.sourceNode);
+            const v = graph.nodes.indexOf(lk.targetNode);
+            if (u < 0 || v < 0 || u === v) return;
+            const dx = graph.nodes[u].x - graph.nodes[v].x;
+            const dy = graph.nodes[u].y - graph.nodes[v].y;
+            const dist = Math.hypot(dx, dy) || 0.01;
+            const att = (dist * dist) / k;
+            const fx = (dx / dist) * att * 0.5;
+            const fy = (dy / dist) * att * 0.5;
+            disp[u][0] -= fx; disp[u][1] -= fy;
+            disp[v][0] += fx; disp[v][1] += fy;
+          });
+          for (let i = 0; i < N; i++) {
+            // Subtle gravity toward center
+            disp[i][0] += (W / 2 - graph.nodes[i].x) * 0.08;
+            disp[i][1] += (H / 2 - graph.nodes[i].y) * 0.1;
+            const d = Math.hypot(disp[i][0], disp[i][1]) || 1;
+            graph.nodes[i].x = Math.max(54, Math.min(W - 54, graph.nodes[i].x + (disp[i][0] / d) * Math.min(d, temp)));
+            graph.nodes[i].y = Math.max(40, Math.min(H - 40, graph.nodes[i].y + (disp[i][1] / d) * Math.min(d, temp)));
+          }
+        }
+      }
+
+      // Apply user-dragged node positions if any
+      graph.nodes.forEach((n) => {
+        const saved = nodeOffsets.get(`net:${mode}:${n.id}`);
+        if (saved) { n.x = saved.x; n.y = saved.y; }
+      });
+
+      const maxNodeVal = Math.max(...graph.nodes.map((n) => n.value), 1);
+      const maxLinkVal = Math.max(...graph.links.map((l) => l.value), 1);
+      graph.nodes.forEach((n) => {
+        n.r = 9 + Math.sqrt(Math.max(0, n.value) / maxNodeVal) * 18;
+      });
+
+      const edgePath = (lk) => {
+        const s = lk.sourceNode, t = lk.targetNode;
+        const dx = t.x - s.x, dy = t.y - s.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const nx = -dy / dist, ny = dx / dist;
+        const curve = Math.min(34, dist * 0.16);
+        const cx = (s.x + t.x) / 2 + nx * curve;
+        const cy = (s.y + t.y) / 2 + ny * curve;
+        return `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`;
+      };
+
+      const isLinkLit = (lk) => {
+        if (!activeSelection) return true;
+        if (activeSelection.type === 'link') return activeSelection.id === lk.id;
+        if (activeSelection.type === 'node') return lk.source === activeSelection.id || lk.target === activeSelection.id;
+        return lk.sourceLabel === activeSelection.label || lk.targetLabel === activeSelection.label;
+      };
+      const isNodeLit = (n) => {
+        if (!activeSelection) return true;
+        if (activeSelection.type === 'node') {
+          if (activeSelection.id === n.id) return true;
+          return graph.links.some((lk) => (lk.source === activeSelection.id && lk.target === n.id) || (lk.target === activeSelection.id && lk.source === n.id));
+        }
+        if (activeSelection.type === 'link') return n.id === activeSelection.source || n.id === activeSelection.target;
+        return n.label === activeSelection.label;
+      };
+
+      const svg = h('svg', { class: 'sm-network-svg', viewBox: `0 0 ${W} ${H}` });
+      const edgeEls = graph.links.map((lk) => {
+        const lit = isLinkLit(lk);
+        const w = 1.5 + (lk.value / maxLinkVal) * 6.5;
+        const pEl = h('path', {
+          class: `sm-net-edge${lit ? '' : ' is-dim'}${activeSelection?.id === lk.id ? ' is-selected' : ''}`,
+          d: edgePath(lk),
+          fill: 'none',
+          stroke: lk.color,
+          'stroke-width': String(w),
+          'stroke-opacity': activeSelection ? (lit ? '0.85' : '0.1') : '0.55',
+          'stroke-linecap': 'round',
+          onclick: (e) => {
+            e.stopPropagation();
+            selectEntity({ type: 'link', id: lk.id, label: `${lk.sourceLabel} → ${lk.targetLabel} (${fmtVal(lk.value)})`, source: lk.source, target: lk.target, features: lk.features });
+          },
+        }, h('title', {}, `${lk.sourceLabel} → ${lk.targetLabel}: ${fmtVal(lk.value)}`));
+        lk._el = pEl;
+        return pEl;
+      });
+
+      const nodeEls = graph.nodes.map((n) => {
+        const lit = isNodeLit(n);
+        const circleEl = h('circle', {
+          cx: String(n.x), cy: String(n.y), r: String(n.r),
+          fill: n.color, stroke: 'var(--card)', 'stroke-width': '2.5',
+          class: 'sm-net-circle',
+        });
+        const textEl = h('text', {
+          x: String(n.x), y: String(n.y - n.r - 6),
+          'text-anchor': 'middle', class: 'sm-net-label',
+        }, n.label);
+        const gEl = h('g', {
+          class: `sm-net-node${lit ? '' : ' is-dim'}${activeSelection?.id === n.id ? ' is-selected' : ''}`,
+          style: 'cursor:grab',
+        }, circleEl, textEl, h('title', {}, `${n.label}: ${fmtVal(n.value)} · ${n.degree} connection${n.degree === 1 ? '' : 's'} (drag to move, click to isolate on map)`));
+
+        let moved = false;
+        let startX = 0, startY = 0, origX = 0, origY = 0;
+        gEl.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          moved = false;
+          startX = e.clientX; startY = e.clientY;
+          origX = n.x; origY = n.y;
+          gEl.setPointerCapture(e.pointerId);
+          const onMove = (ev) => {
+            const dx = ev.clientX - startX, dy = ev.clientY - startY;
+            if (Math.hypot(dx, dy) > 3) moved = true;
+            if (!moved) return;
+            const rect = svg.getBoundingClientRect();
+            n.x = Math.max(28, Math.min(W - 28, origX + dx * (W / (rect.width || W))));
+            n.y = Math.max(28, Math.min(H - 28, origY + dy * (H / (rect.height || H))));
+            nodeOffsets.set(`net:${mode}:${n.id}`, { x: n.x, y: n.y });
+            circleEl.setAttribute('cx', String(n.x));
+            circleEl.setAttribute('cy', String(n.y));
+            textEl.setAttribute('x', String(n.x));
+            textEl.setAttribute('y', String(n.y - n.r - 6));
+            graph.links.forEach((lk) => {
+              if (lk.sourceNode === n || lk.targetNode === n) lk._el?.setAttribute('d', edgePath(lk));
+            });
+          };
+          const onUp = () => {
+            gEl.removeEventListener('pointermove', onMove);
+            if (!moved) selectEntity({ type: 'node', id: n.id, label: n.label, features: n.features });
+          };
+          gEl.addEventListener('pointermove', onMove);
+          gEl.addEventListener('pointerup', onUp, { once: true });
+        });
+        return gEl;
+      });
+
+      svg.append(h('g', { class: 'sm-net-edges' }, edgeEls), h('g', { class: 'sm-net-nodes' }, nodeEls));
+
+      const netToolbar = h('div', { class: 'sm-net-bar' },
+        hasGeo ? h('div', { class: 'sm-chart-switch' },
+          [['force', 'Force-directed'], ['geo', 'Geo-pinned']].map(([k, lbl]) =>
+            h('button', { type: 'button', class: mode === k ? 'is-on' : '', onclick: () => { networkMode = k; draw(); } }, lbl))) : null,
+        h('span', { class: 'sm-chart-hint' }, `${graph.nodes.length} nodes · ${graph.links.length} flows · drag nodes to rearrange`),
+        nodeOffsets.size ? h('button', { type: 'button', class: 'sm-chart-pill', onclick: () => { nodeOffsets.clear(); draw(); } }, 'Reset positions') : null,
+      );
+
+      body.replaceChildren(h('div', { class: 'sm-network-wrap' }, netToolbar, svg));
+    };
+
     const draw = () => {
-      const { series, total, max } = computeChartSeries(b, cachedFc);
+      const activeFc = getActiveFc();
+      updateStatusStrip(activeFc);
+      if (activeView === 'sankey') { drawSankey(activeFc); return; }
+      if (activeView === 'network') { drawNetwork(activeFc); return; }
+
+      const { series, total, max } = computeChartSeries(b, activeFc);
       if (!series.length) {
         body.replaceChildren(h('div', { class: 'sm-empty-box' }, 'No chart data yet — add items or connect a data layer'));
         return;
@@ -290,7 +702,12 @@ const BLOCKS = {
         body.replaceChildren(h('div', { class: 'sm-chart-bars' }, series.map((it) => {
           const pct = Math.max(2, Math.round((Math.abs(it.value) / max) * 100));
           const share = total > 0 ? `${Math.round((Math.abs(it.value) / total) * 100)}%` : '';
-          return h('div', { class: 'sm-bar-row' },
+          const dim = activeSelection && activeSelection.label !== it.label;
+          return h('div', {
+            class: `sm-bar-row${dim ? ' is-dim' : ''}`,
+            style: 'cursor:pointer',
+            onclick: () => selectEntity({ type: 'category', id: `cat:${it.label}`, label: it.label, features: it.features }),
+          },
             h('div', { class: 'sm-bar-meta' },
               h('span', { class: 'sm-bar-label' }, it.label),
               h('span', { class: 'sm-bar-val' }, fmtVal(it.value), share ? h('small', { class: 'sm-bar-share' }, ` (${share})`) : null)),
@@ -303,7 +720,12 @@ const BLOCKS = {
       if (activeView === 'column') {
         body.replaceChildren(h('div', { class: 'sm-chart-cols' }, series.map((it) => {
           const pct = Math.max(4, Math.round((Math.abs(it.value) / max) * 100));
-          return h('div', { class: 'sm-col-item' },
+          const dim = activeSelection && activeSelection.label !== it.label;
+          return h('div', {
+            class: `sm-col-item${dim ? ' is-dim' : ''}`,
+            style: 'cursor:pointer',
+            onclick: () => selectEntity({ type: 'category', id: `cat:${it.label}`, label: it.label, features: it.features }),
+          },
             h('div', { class: 'sm-col-val' }, fmtVal(it.value)),
             h('div', { class: 'sm-col-well' },
               h('div', { class: 'sm-col-bar', style: `height:${pct}%;background:${it.color}` })),
@@ -323,6 +745,8 @@ const BLOCKS = {
             fill: 'none', stroke: it.color, 'stroke-width': '26',
             'stroke-dasharray': `${len} ${c - len}`,
             'stroke-dashoffset': String(-offset),
+            style: 'cursor:pointer',
+            onclick: () => selectEntity({ type: 'category', id: `cat:${it.label}`, label: it.label, features: it.features }),
           });
           offset += len;
           return circle;
@@ -334,7 +758,12 @@ const BLOCKS = {
           h('text', { x: '105', y: '121', 'text-anchor': 'middle', class: 'sm-donut-sub' }, b.stat === 'avg' ? 'Combined' : 'Total'));
         const legend = h('div', { class: 'sm-donut-legend' }, series.map((it) => {
           const share = total > 0 ? `${Math.round((Math.max(0, it.value) / total) * 100)}%` : '0%';
-          return h('div', { class: 'sm-donut-item' },
+          const dim = activeSelection && activeSelection.label !== it.label;
+          return h('div', {
+            class: `sm-donut-item${dim ? ' is-dim' : ''}`,
+            style: 'cursor:pointer',
+            onclick: () => selectEntity({ type: 'category', id: `cat:${it.label}`, label: it.label, features: it.features }),
+          },
             h('span', { class: 'sm-donut-dot', style: `background:${it.color}` }),
             h('span', { class: 'sm-donut-name' }, it.label),
             h('strong', { class: 'sm-donut-val' }, fmtVal(it.value)),
@@ -357,7 +786,12 @@ const BLOCKS = {
           h('tbody', {}, sorted.map((it, idx) => {
             const pct = Math.max(2, Math.round((Math.abs(it.value) / max) * 100));
             const share = total > 0 ? `${Math.round((Math.abs(it.value) / total) * 100)}%` : '—';
-            return h('tr', {},
+            const dim = activeSelection && activeSelection.label !== it.label;
+            return h('tr', {
+              class: dim ? 'is-dim' : '',
+              style: 'cursor:pointer',
+              onclick: () => selectEntity({ type: 'category', id: `cat:${it.label}`, label: it.label, features: it.features }),
+            },
               h('td', { class: 'sm-td-rank' }, String(idx + 1)),
               h('td', {}, h('strong', {}, it.label), it.note ? h('div', { class: 'sm-bar-note' }, it.note) : null),
               h('td', { style: 'text-align:right;font-variant-numeric:tabular-nums' }, fmtVal(it.value)),
@@ -368,7 +802,7 @@ const BLOCKS = {
     };
 
     const switcher = h('div', { class: 'sm-chart-switch', role: 'group', 'aria-label': 'View mode' },
-      [['bar', 'Bars'], ['column', 'Columns'], ['donut', 'Donut'], ['table', 'Table']].map(([k, lbl]) =>
+      [['bar', 'Bars'], ['column', 'Columns'], ['donut', 'Donut'], ['sankey', 'Sankey'], ['network', 'Network'], ['table', 'Table']].map(([k, lbl]) =>
         h('button', {
           type: 'button',
           class: activeView === k ? 'is-on' : '',
@@ -385,7 +819,45 @@ const BLOCKS = {
         b.subtitle ? h('p', { class: 'sm-chart-subtitle' }, b.subtitle) : null),
       switcher);
 
-    wrap.append(headEl, body, caption(b.caption));
+    wrap.append(headEl, statusStrip, body, caption(b.caption));
+
+    // Listen to map feature clicks & map viewport moves for bi-directional manipulation
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      const onMapClick = (ev) => {
+        const d = ev.detail || {};
+        if (!d.properties) {
+          if (activeSelection) { activeSelection = null; draw(); }
+          return;
+        }
+        if (b.layer && d.layerId && d.layerId !== b.layer) return;
+        const p = d.properties;
+        const candidateKeys = [b.groupField, b.sourceField, b.targetField, b.midField, 'origin_name', 'hub_name', 'name', 'title', 'category', 'cluster_id'].filter(Boolean);
+        let matchedVal = null;
+        for (const k of candidateKeys) {
+          if (p[k] != null && p[k] !== '') { matchedVal = String(p[k]); break; }
+        }
+        if (!matchedVal) return;
+        const graph = computeFlowGraph(b, getActiveFc());
+        const hitNode = graph.nodes.find((n) => n.label === matchedVal);
+        if (hitNode) {
+          activeSelection = { type: 'node', id: hitNode.id, label: hitNode.label, features: hitNode.features };
+        } else {
+          activeSelection = { type: 'category', id: `cat:${matchedVal}`, label: matchedVal, features: d.feature ? [d.feature] : [] };
+        }
+        draw();
+      };
+      const onMapMove = (ev) => {
+        if (!syncViewport) return;
+        viewportBounds = ev.detail?.bounds || null;
+        draw();
+      };
+      window.addEventListener('wm:map-feature-click', onMapClick);
+      window.addEventListener('wm:map-moveend', onMapMove);
+      ctx.cleanups.push(() => {
+        window.removeEventListener('wm:map-feature-click', onMapClick);
+        window.removeEventListener('wm:map-moveend', onMapMove);
+      });
+    }
 
     const layer = b.layer ? (ctx.library || []).find((l) => l.id === b.layer) : null;
     if (layer) {
@@ -613,20 +1085,46 @@ const BLOCKS = {
   },
 };
 
+function featureCenter(f) {
+  const g = f?.geometry;
+  if (!g || !g.coordinates) return null;
+  if (g.type === 'Point') return [g.coordinates[0], g.coordinates[1]];
+  const pts = [];
+  const walk = (c) => (typeof c?.[0] === 'number' ? pts.push(c) : Array.isArray(c) && c.forEach(walk));
+  walk(g.coordinates);
+  if (!pts.length) return null;
+  return [pts.reduce((s, c) => s + c[0], 0) / pts.length, pts.reduce((s, c) => s + c[1], 0) / pts.length];
+}
+
+export function filterFeaturesByBounds(fc, bounds) {
+  if (!fc || !Array.isArray(fc.features) || !Array.isArray(bounds) || bounds.length < 4) return fc;
+  const [west, south, east, north] = bounds;
+  return {
+    type: 'FeatureCollection',
+    ...(fc.metadata ? { metadata: fc.metadata } : {}),
+    features: fc.features.filter((f) => {
+      const c = featureCenter(f);
+      return c && c[0] >= west && c[0] <= east && c[1] >= south && c[1] <= north;
+    }),
+  };
+}
+
 export function computeChartSeries(b, fc) {
   let series = [];
   if (fc && Array.isArray(fc.features) && fc.features.length) {
-    const gf = b.groupField || '';
+    const gf = b.groupField || b.sourceField || '';
     const vf = b.valueField || '';
     const stat = b.stat || (vf ? 'sum' : 'count');
     const groups = new Map();
     fc.features.forEach((f, idx) => {
       const p = f.properties || {};
       const key = gf ? String(p[gf] ?? 'Unspecified') : String(p.name || p.title || `#${idx + 1}`);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(p);
+      if (!groups.has(key)) groups.set(key, { rows: [], features: [] });
+      const entry = groups.get(key);
+      entry.rows.push(p);
+      entry.features.push(f);
     });
-    for (const [label, rows] of groups.entries()) {
+    for (const [label, { rows, features }] of groups.entries()) {
       let val = rows.length;
       if (stat !== 'count' && vf) {
         const nums = rows.map((r) => Number(String(r[vf] ?? '').replace(/[,$%\s]/g, ''))).filter((n) => Number.isFinite(n));
@@ -636,7 +1134,7 @@ export function computeChartSeries(b, fc) {
         else if (stat === 'min') val = Math.min(...nums);
         else if (stat === 'max') val = Math.max(...nums);
       }
-      series.push({ label, value: Math.round(val * 100) / 100, count: rows.length });
+      series.push({ label, value: Math.round(val * 100) / 100, count: rows.length, features });
     }
     series.sort((a, c) => c.value - a.value);
     const lim = Math.max(1, +(b.limit || (b.chartType === 'table' ? 15 : 8)));
@@ -646,15 +1144,160 @@ export function computeChartSeries(b, fc) {
       const n = Number(String(it.value ?? 0).replace(/[,$%\s]/g, ''));
       return {
         label: String(it.label || `Item ${idx + 1}`),
+        target: it.target ? String(it.target) : '',
         value: Number.isFinite(n) ? n : 0,
         color: COLOR.test(it.color || '') ? it.color : PALETTE[idx % PALETTE.length],
         note: it.note || '',
+        features: [],
       };
     });
   }
   const total = series.reduce((s, it) => s + (it.value > 0 ? it.value : 0), 0);
   const max = series.length ? Math.max(...series.map((it) => Math.abs(it.value)), 1) : 1;
   return { series, total, max };
+}
+
+/**
+ * Builds a multi-stage flow / network graph { nodes, links, stages, maxStageNodes }
+ * from either a GeoJSON FeatureCollection or manual b.items rows.
+ */
+export function computeFlowGraph(b, fc) {
+  const nodesMap = new Map(); // id -> node
+  const linksMap = new Map(); // id -> link
+  const lim = Math.max(2, +(b.limit || 18));
+
+  const getNode = (stage, label, colorHint) => {
+    const clean = String(label || 'Unspecified').trim() || 'Unspecified';
+    const id = `s${stage}:${clean}`;
+    if (!nodesMap.has(id)) {
+      const idx = nodesMap.size;
+      nodesMap.set(id, {
+        id,
+        label: clean,
+        stage,
+        value: 0,
+        inValue: 0,
+        outValue: 0,
+        degree: 0,
+        color: colorHint || PALETTE[idx % PALETTE.length],
+        coords: [],
+        features: [],
+        lngLat: null,
+      });
+    }
+    return nodesMap.get(id);
+  };
+
+  const addFlow = (sStage, sLabel, tStage, tLabel, weight, feat, colorHint) => {
+    const val = Number.isFinite(weight) && weight > 0 ? weight : 0;
+    if (val <= 0) return;
+    const sn = getNode(sStage, sLabel, colorHint);
+    const tn = getNode(tStage, tLabel);
+    if (sn.id === tn.id) return;
+    if (feat) {
+      sn.features.push(feat);
+      tn.features.push(feat);
+      const g = feat.geometry;
+      if (g?.type === 'LineString' && g.coordinates?.length >= 2) {
+        sn.coords.push(g.coordinates[0]);
+        tn.coords.push(g.coordinates[g.coordinates.length - 1]);
+      } else {
+        const c = featureCenter(feat);
+        if (c) { sn.coords.push(c); tn.coords.push(c); }
+      }
+    }
+    const lid = `${sn.id}->${tn.id}`;
+    if (!linksMap.has(lid)) {
+      linksMap.set(lid, {
+        id: lid,
+        source: sn.id,
+        target: tn.id,
+        sourceLabel: sn.label,
+        targetLabel: tn.label,
+        sourceNode: sn,
+        targetNode: tn,
+        value: 0,
+        color: sn.color,
+        features: [],
+      });
+    }
+    const lk = linksMap.get(lid);
+    lk.value = Math.round((lk.value + val) * 100) / 100;
+    if (feat) lk.features.push(feat);
+  };
+
+  if (fc && Array.isArray(fc.features) && fc.features.length) {
+    const sampleProps = fc.features[0]?.properties || {};
+    const keys = Object.keys(sampleProps);
+    const sf = b.sourceField || b.groupField || keys.find((k) => /^(origin_name|source|origin|from|region|state|category|cluster_id)$/i.test(k)) || keys[0] || '';
+    const tf = b.targetField || keys.find((k) => k !== sf && /^(hub_name|target|destination|to|type|status|subregion|county)$/i.test(k)) || keys.find((k) => k !== sf && typeof sampleProps[k] === 'string') || '';
+    const mf = b.midField && b.midField !== sf && b.midField !== tf ? b.midField : '';
+    const vf = b.valueField || '';
+    const stat = b.stat || (vf ? 'sum' : 'count');
+
+    const measure = (f) => {
+      if (stat === 'count' || !vf) return 1;
+      const n = Number(String(f.properties?.[vf] ?? '').replace(/[,$%\s]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    fc.features.forEach((f, idx) => {
+      const p = f.properties || {};
+      const sVal = sf ? String(p[sf] ?? 'Unspecified') : String(p.name || p.title || `Node ${idx + 1}`);
+      const tVal = tf ? String(p[tf] ?? 'Destination') : 'Total Flow';
+      const w = measure(f);
+      if (mf && p[mf] != null && p[mf] !== '') {
+        const mVal = String(p[mf]);
+        addFlow(0, sVal, 1, mVal, w, f);
+        addFlow(1, mVal, 2, tVal, w, f);
+      } else {
+        addFlow(0, sVal, 1, tVal, w, f);
+      }
+    });
+  } else if (Array.isArray(b.items) && b.items.length) {
+    b.items.forEach((it, idx) => {
+      const val = Number(String(it.value ?? 0).replace(/[,$%\s]/g, ''));
+      const sLabel = String(it.label || `Source ${idx + 1}`);
+      const tLabel = String(it.target || (idx % 2 === 0 ? 'Core Hub' : 'Regional Hub'));
+      const cHint = COLOR.test(it.color || '') ? it.color : PALETTE[idx % PALETTE.length];
+      if (it.mid) {
+        addFlow(0, sLabel, 1, String(it.mid), val, null, cHint);
+        addFlow(1, String(it.mid), 2, tLabel, val, null, cHint);
+      } else {
+        addFlow(0, sLabel, 1, tLabel, val, null, cHint);
+      }
+    });
+  }
+
+  // Keep top links by value to stay crisp
+  const allLinks = [...linksMap.values()].sort((a, c) => c.value - a.value).slice(0, lim * 2);
+  const activeNodeIds = new Set();
+  allLinks.forEach((lk) => { activeNodeIds.add(lk.source); activeNodeIds.add(lk.target); });
+
+  const nodes = [...nodesMap.values()].filter((n) => activeNodeIds.has(n.id));
+  nodes.forEach((n) => { n.inValue = 0; n.outValue = 0; n.degree = 0; });
+  allLinks.forEach((lk) => {
+    lk.sourceNode.outValue += lk.value;
+    lk.targetNode.inValue += lk.value;
+    lk.sourceNode.degree++;
+    lk.targetNode.degree++;
+  });
+  nodes.forEach((n) => {
+    n.value = Math.round(Math.max(n.inValue, n.outValue, 1) * 100) / 100;
+    if (n.coords.length) {
+      n.lngLat = [
+        n.coords.reduce((s, c) => s + c[0], 0) / n.coords.length,
+        n.coords.reduce((s, c) => s + c[1], 0) / n.coords.length,
+      ];
+    }
+  });
+
+  const maxStage = nodes.reduce((m, n) => Math.max(m, n.stage), 1);
+  const stages = Array.from({ length: maxStage + 1 }, (_, s) =>
+    nodes.filter((n) => n.stage === s).sort((a, c) => c.value - a.value));
+  const maxStageNodes = Math.max(1, ...stages.map((st) => st.length));
+
+  return { nodes, links: allLinks, stages, maxStageNodes };
 }
 
 export const BLOCK_TYPES = Object.keys(BLOCKS);

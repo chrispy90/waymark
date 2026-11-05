@@ -328,3 +328,37 @@ test('terrain DEM decoder, line densification, profile stats, and field calculat
   assert.equal(fc.features[0].properties.elev_formula, 1950);
   assert.equal(fc.features[1].properties.elev_formula, 2300);
 });
+
+test('Phase 1: Sankey & Network graph flow computation and map viewport bounds filtering', async () => {
+  const { computeFlowGraph, filterFeaturesByBounds } = await load('render.js');
+
+  const flowFc = {
+    type: 'FeatureCollection',
+    features: [
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[-74.0, 40.7], [-75.1, 39.9]] }, properties: { origin_name: 'New York', hub_name: 'Philly Hub', sector: 'Retail', volume: 120 } },
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[-74.0, 40.7], [-71.0, 42.3]] }, properties: { origin_name: 'New York', hub_name: 'Boston Hub', sector: 'Tech', volume: 80 } },
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: [[-118.2, 34.0], [-122.4, 37.7]] }, properties: { origin_name: 'Los Angeles', hub_name: 'SF Hub', sector: 'Tech', volume: 200 } },
+    ],
+  };
+
+  // 2-stage flow graph (Source -> Target)
+  const g2 = computeFlowGraph({ groupField: 'origin_name', targetField: 'hub_name', stat: 'sum', valueField: 'volume' }, flowFc);
+  assert.equal(g2.stages.length, 2);
+  assert.equal(g2.links.length, 3);
+  const nyNode = g2.nodes.find((n) => n.label === 'New York');
+  assert.ok(nyNode);
+  assert.equal(nyNode.value, 200);
+  assert.equal(nyNode.degree, 2);
+  assert.ok(Array.isArray(nyNode.lngLat) && nyNode.lngLat.length === 2);
+
+  // 3-stage Sankey flow graph (Origin -> Sector -> Hub)
+  const g3 = computeFlowGraph({ groupField: 'origin_name', midField: 'sector', targetField: 'hub_name', stat: 'sum', valueField: 'volume' }, flowFc);
+  assert.equal(g3.stages.length, 3);
+  assert.ok(g3.links.length >= 4);
+
+  // Viewport bounds filtering for map-synced charts/graphs
+  const eastCoastFc = filterFeaturesByBounds(flowFc, [-78, 38, -70, 44]);
+  assert.equal(eastCoastFc.features.length, 2);
+  const eastGraph = computeFlowGraph({ groupField: 'origin_name', targetField: 'hub_name', stat: 'sum', valueField: 'volume' }, eastCoastFc);
+  assert.equal(eastGraph.links.length, 2);
+});

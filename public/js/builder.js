@@ -49,12 +49,12 @@ const CATALOG = {
   stats: { label: 'Big numbers', icon: 'sliders', group: 'Scroll effects', desc: 'Figures that count up when they appear', isNew: true,
     make: () => ({ items: [{ value: '120', label: 'What this number means' }, { value: '3.4M', label: 'Another fact' }, { value: '98%', label: 'And one more' }], caption: '' }),
     fields: [{ k: 'items', t: 'stats' }, { k: 'caption', label: 'Caption (optional)' }] },
-  chart: { label: 'Chart & table', icon: 'table', group: 'Maps', desc: 'Interactive bars, columns, donut or executive table from a layer or custom rows', isNew: true,
-    make: () => ({ title: 'Key breakdown', subtitle: '', chartType: 'bar', stat: 'sum', items: [{ label: 'North region', value: 420 }, { label: 'South region', value: 310 }, { label: 'Central hub', value: 265 }, { label: 'West corridor', value: 180 }], caption: '', size: 'wide' }),
+  chart: { label: 'Chart, Sankey & network', icon: 'table', group: 'Maps', desc: 'Interactive bars, columns, donut, Sankey flow, network graph or executive table linked to the map', isNew: true,
+    make: () => ({ title: 'Key breakdown', subtitle: '', chartType: 'bar', stat: 'sum', items: [{ label: 'North region', target: 'Central Hub', value: 420 }, { label: 'South region', target: 'Central Hub', value: 310 }, { label: 'East corridor', target: 'Coastal Port', value: 265 }, { label: 'West corridor', target: 'Coastal Port', value: 180 }], caption: '', size: 'wide' }),
     fields: [
       { k: 'title', label: 'Chart title' },
       { k: 'subtitle', label: 'Subtitle (optional)' },
-      { k: 'chartType', t: 'seg', label: 'Display as', opts: [['bar', 'Bars'], ['column', 'Columns'], ['donut', 'Donut'], ['table', 'Table']] },
+      { k: 'chartType', t: 'seg', label: 'Display as', opts: [['bar', 'Bars'], ['column', 'Columns'], ['donut', 'Donut'], ['sankey', 'Sankey'], ['network', 'Network'], ['table', 'Table']] },
       { t: 'chartData' },
       { row: [{ k: 'unitPrefix', label: 'Prefix (e.g. $)' }, { k: 'unitSuffix', label: 'Suffix (e.g. %, km)' }] },
       { k: 'size', t: 'seg', label: 'Width', opts: SIZE_OPTS },
@@ -646,7 +646,7 @@ function field(obj, spec) {
       h('select', { onchange: (e) => set(e.target.value) }, spec.opts.map(([v, l]) => h('option', { value: v, selected: String(val) === v }, l))), hint);
     case 'seg': {
       const seg = h('div', { class: 'seg seg-block', role: 'group' }, spec.opts.map(([v, l]) => h('button', { type: 'button', class: String(val) === v ? 'is-on' : '',
-        onclick: (e) => { set(v); seg.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget)); if (spec.k === 'display' || spec.k === 'mode' || spec.k === 'stat') renderRail(); } }, l)));
+        onclick: (e) => { set(v); seg.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b === e.currentTarget)); if (spec.k === 'display' || spec.k === 'mode' || spec.k === 'stat' || spec.k === 'chartType') renderRail(); } }, l)));
       return h('div', { class: 'field' }, labelEl(spec.label), seg, hint);
     }
     case 'color': return h('label', { class: 'field' }, labelEl(spec.label),
@@ -699,6 +699,7 @@ function satCompareField(block) {
 function chartDataField(block) {
   const wrap = h('div', { class: 'field' });
   const draw = async () => {
+    const isFlow = block.chartType === 'sankey' || block.chartType === 'network';
     const lib = (story.layers || []).filter((l) => l.type !== 'raster');
     const sourceSel = h('select', { onchange: (e) => {
       block.layer = e.target.value || undefined;
@@ -713,10 +714,11 @@ function chartDataField(block) {
         h('label', { class: 'field' }, labelEl('Data source'), sourceSel),
         listField(block, 'items', {
           noun: 'Row',
-          make: () => ({ label: 'Category', value: 100 }),
-          summary: (it) => `${it.label || ''}: ${it.value ?? 0}`,
+          make: () => ({ label: 'Source A', target: 'Hub 1', value: 100 }),
+          summary: (it) => `${it.label || ''}${it.target ? ` → ${it.target}` : ''}: ${it.value ?? 0}`,
           form: (it) => fields(it, [
-            { row: [{ k: 'label', label: 'Category label' }, { k: 'value', t: 'number', label: 'Numeric value' }] },
+            { row: [{ k: 'label', label: isFlow ? 'Source node' : 'Category label' }, { k: 'value', t: 'number', label: 'Numeric value' }] },
+            ...(isFlow ? [{ row: [{ k: 'target', label: 'Target node' }, { k: 'mid', label: 'Middle stage (optional)' }] }] : []),
           ]),
         }),
       );
@@ -735,11 +737,19 @@ function chartDataField(block) {
     wrap.replaceChildren(
       h('label', { class: 'field' }, labelEl('Data source'), sourceSel),
       fields(block, [
-        { k: 'groupField', t: 'select', label: 'Group by category field', opts: colOpts },
+        { k: 'groupField', t: 'select', label: isFlow ? 'Source node field (Origin)' : 'Group by category field', opts: colOpts },
+        ...(isFlow ? [
+          { k: 'targetField', t: 'select', label: 'Target node field (Destination / Hub)', opts: colOpts },
+          ...(block.chartType === 'sankey' ? [{ k: 'midField', t: 'select', label: 'Middle stage field (optional 3-column Sankey)', opts: colOpts }] : []),
+          ...(block.chartType === 'network' ? [{ k: 'networkLayout', t: 'seg', label: 'Default network layout', opts: [['force', 'Force-directed'], ['geo', 'Geo-pinned']], dflt: 'force' }] : []),
+        ] : []),
         { k: 'stat', t: 'seg', label: 'Statistic', opts: [['count', 'Count'], ['sum', 'Sum'], ['avg', 'Average'], ['max', 'Max'], ['min', 'Min']] },
         ...(block.stat && block.stat !== 'count' ? [{ k: 'valueField', t: 'select', label: 'Numeric field to measure', opts: colOpts }] : []),
-        { k: 'limit', t: 'number', label: 'Max categories to show', dflt: 10 },
+        { k: 'limit', t: 'number', label: isFlow ? 'Max nodes/flows to show' : 'Max categories to show', dflt: 12 },
       ]),
+      h('label', { class: 'check', style: 'margin-top:8px' },
+        h('input', { type: 'checkbox', checked: !!block.syncBounds, onchange: (e) => { block.syncBounds = e.target.checked; changed(); } }),
+        'Filter chart/graph dynamically as reader pans & zooms the map'),
     );
   };
   draw();
