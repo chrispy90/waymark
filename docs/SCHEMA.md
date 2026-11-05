@@ -61,6 +61,7 @@ and when `span` is more than 0 only the span before it. Leave it out to show all
     "opacity": 0.45, "radius": 6, "width": 3, // polygon fill opacity, point radius, line width
     "label": "name",                          // optional label field
     "sizeField": "magnitude", "sizeMin": 4, "sizeMax": 28,  // proportional symbols: circle area (points, areas) or width (lines) by a number
+    "curveLines": true,                       // lines only: renders 2-point origin-destination lines as curved quadratic flow arcs
     "minzoom": 5, "maxzoom": 18,              // optional visible zoom range
     "display": "features",                    // points only: "features" | "heatmap" | "clusters"
     "weight": "visitors"                      // heatmap only: optional numeric field that weights each point
@@ -143,7 +144,7 @@ Every block has a `type`. Rich-text fields (`html`) are sanitized at render time
 | `chapter` | `title`, `kicker?`, `text?`, `bg`, `fg` (hex colors), `align?` (`center` \| `left`), `image?`. A full-screen title. The page takes on `bg`/`fg` from here until the next chapter |
 | `statement` | `text`, `cite?`, `style?` (`sans`). Large text whose words light up as the reader scrolls |
 | `stats` | `items: [{ value, label }]`, `caption?`. `value` can include a prefix or suffix (`$3.4M`, `98%`, `1,200`) and counts up when it appears |
-| `chart` | `chartType` (`bar` \| `column` \| `donut` \| `table`), `title?`, `subtitle?`, `caption?`, `color?`, `prefix?`, `suffix?`, `size?`, `items: [{ label, value, color?, note? }]` |
+| `chart` | `chartType` (`bar` \| `column` \| `donut` \| `table` \| `sankey` \| `network`), `title?`, `subtitle?`, `caption?`, `color?`, `prefix?`, `suffix?`, `size?`, `sourceType?` (`manual` \| `layer`), `layerId?`, `groupField?`, `midField?`, `targetField?`, `stat?`, `valueField?`, `networkLayout?` (`force` \| `geo`), `syncBounds?` (`boolean`), `items: [{ label, target?, value, color?, note? }]` |
 | `gallery` | `title?`, `text?`, `images: [{ url, caption?, alt? }]`. Scrolling down moves the row of images sideways |
 | `video` | `url` (YouTube, Vimeo or a video file), `caption?`, `size?` |
 | `embed` | `url`, `caption?`, `size?` |

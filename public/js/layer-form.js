@@ -239,6 +239,7 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
   function sizeField(st, info) {
     const stats = info.fc ? layerStats(info.fc) : { fields: [] };
     const nums = stats.fields.filter((f) => f.kind === 'number').map((f) => f.name);
+    const hasLines = info.fc ? kinds(info.fc).has('line') : false;
     const lines = info.fc ? kinds(info.fc).size === 1 && kinds(info.fc).has('line') : false;
     return h('div', {},
       h('label', { class: 'field' }, labelEl('Size by number'),
@@ -248,7 +249,10 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
         field(st, { k: 'sizeMin', t: 'number', label: lines ? 'Thinnest (px)' : 'Smallest (px)', placeholder: lines ? '1' : '4' }),
         field(st, { k: 'sizeMax', t: 'number', label: lines ? 'Widest (px)' : 'Largest (px)', placeholder: lines ? '10' : '28' })) : null,
       h('p', { class: 'field-hint' }, st.sizeField ? (lines ? 'Lines get wider as the value grows.' : 'Circle area grows with the value, so twice the value looks twice as big. Areas get a circle at their center. Works together with color.')
-        : nums.length ? 'Proportional symbols: bigger circles (or wider lines) for bigger values.' : 'This layer has no number fields to size by.'));
+        : nums.length ? 'Proportional symbols: bigger circles (or wider lines) for bigger values.' : 'This layer has no number fields to size by.'),
+      hasLines || st.curveLines ? h('label', { class: 'check', style: 'margin-top:8px' },
+        h('input', { type: 'checkbox', checked: !!st.curveLines, onchange: (e) => { st.curveLines = e.target.checked || undefined; changed(); renderRail(); } }),
+        'Curve origin–destination lines as flow arcs') : null);
   }
 
   // 3D Polygon / Hexbin extrusion: extrude polygons into 3D prisms by a fixed height or numeric attribute.

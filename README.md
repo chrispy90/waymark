@@ -136,14 +136,14 @@ Drop any spatial file directly onto the map or Data panel:
 
 **Filters** narrow a layer with plain rules, like *magnitude ≥ 5*, *in the last 7 days* or *state = Texas*. They apply to the map, the insights, the analysis and the export.
 
-**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 23 tools are grouped the way desktop GIS toolboxes group them:
+**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 28 tools are grouped the way desktop GIS toolboxes group them:
 
 | Group | Tools |
 |---|---|
-| **Summarize** | Hex bins (count, sum or average) · Spatial density clusters (DBSCAN) · Count in areas · Dissolve (by a field, e.g. counties into states) |
-| **Proximity** | Buffer · Multi-ring trade areas (concentric catchment bands) · Hub & spoke desire lines · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
+| **Summarize** | Hex bins (count, sum or average) · Hot-spot & outlier analysis (Getis-Ord $G_i^*$ z-scores & Local Moran's $I$ LISA clusters) · Spatial density clusters (DBSCAN) · Count in areas · Dissolve (by a field, e.g. counties into states) |
+| **Proximity** | Buffer · Multi-ring trade areas (concentric catchment bands) · Gravity & Huff market share model (probabilistic capture, 2SFCA accessibility & O–D flows) · Hub & spoke desire lines · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
 | **Overlay** | Clip · Erase · Intersect · Join by location · Select by location (touch, inside, contain, stay clear) · Merge |
-| **Terrain** | Elevation profile & slope (samples polylines along global DEM for distance, gain/loss, and grade %) |
+| **Terrain** | Cost surface & accessibility grid (anisotropic Tobler slope friction & barrier grid) · Least-cost path & corridor (Dijkstra minimum-cost routing with Chaikin smoothing) · 3D viewshed & line of sight (radial DEM visibility sectors & sightline rays with Earth curvature) · Elevation profile & slope (samples polylines along global DEM for distance, gain/loss, and grade %) |
 | **Manage data** | Join attributes by field · Center points · Outline (convex hull) · Simplify · Add geometry attributes (area, length, coordinates) · Filter |
 
 <table>
@@ -167,11 +167,13 @@ Create reusable, server-backed GeoJSON feature layers (like ArcGIS Online Hosted
 - **Field Calculator:** compute values across all features using column math (`+`, `-`, `*`, `/`, `% of`, `% change`), automatic spatial geometry measurements (`$AREA_KM2`, `$AREA_ACRES`, `$LEN_KM`, `$LAT`, `$LON`), rankings (`1..N`), or text templates.
 - **Source attribution & live service URLs:** attach source attribution/credits to a hosted layer so it automatically appears on map legends and credits, copy its live `/api/layers/:id/geojson` endpoint, or export any table to **GeoJSON** or **CSV**.
 
-### Interactive charts & executive tables
+### Interactive Sankey flow diagrams, network graphs, charts & executive tables
 
-Add a **Chart & table** block to any story — or click **Add chart to story** directly from a layer's Insights histogram — to present data alongside your narrative:
+Add a **Chart & table** block to any story — or click **Add chart to story** directly from a layer's Insights histogram — to present data alongside your narrative with live bidirectional map brushing:
 
-- **Four views:** horizontal **Bars**, vertical **Columns**, SVG **Donut** rings with total callouts, or sortable **Executive Tables**.
+- **Six interactive views:** horizontal **Bars**, vertical **Columns**, SVG **Donut** rings with total callouts, sortable **Executive Tables**, multi-stage **Sankey Flow Diagrams** (2-stage or 3-stage cubic Bézier ribbons with draggable nodes), and interactive **Network Graphs** (toggleable between **Force-Directed** Fruchterman–Reingold physics and **Geo-Pinned** spatial coordinates).
+- **Bi-directional Map ↔ Chart Brushing & Viewport Sync:** click any bar, donut slice, Sankey ribbon/node, or network graph node/edge to highlight and fly to the corresponding features on the nearest map (`wm-chart-hi`). Click any feature on the map to highlight its corresponding nodes and flows in the chart. Enable **Sync with map view** so charts and network graphs dynamically recompute as the reader pans and zooms the map.
+- **Curved Origin–Destination Flow Arcs:** turn on *Curve origin–destination lines as flow arcs* in any line layer's style settings (or generate them directly with the **Hub & spoke** or **Gravity & Huff model** tools) to render smooth quadratic great-circle flow arcs on the map.
 - **Live layer aggregation or custom rows:** group and aggregate (`count`, `sum`, `avg`, `min`, `max`) any layer in your story on the fly, or enter custom rows with prefixes and suffixes (such as `$` or `%`).
 
 ### Make a map once, use it in every story

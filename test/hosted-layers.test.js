@@ -497,4 +497,62 @@ test('Phase 3: 3D Viewshed line-of-sight analysis & Getis-Ord Gi* / Local Moran\
   assert.ok(TOOLS.hotspot);
 });
 
+test('Phase 4: Gravity / Huff market share model, 2SFCA accessibility & curved O–D flow arcs', async () => {
+  const { computeGravityModel, TOOLS } = await load('analysis.js');
+  const { withCurvedArcs } = await load('maps.js');
+  const { computeFlowGraph } = await load('render.js');
+
+  const demand = {
+    type: 'FeatureCollection',
+    features: [
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-74.01, 40.71] }, properties: { name: 'Lower Manhattan', pop: 5000 } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-73.95, 40.80] }, properties: { name: 'Harlem', pop: 4000 } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-73.98, 40.68] }, properties: { name: 'Brooklyn', pop: 6000 } },
+    ],
+  };
+  const supply = {
+    type: 'FeatureCollection',
+    features: [
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-74.00, 40.72] }, properties: { name: 'Downtown Flagship', sqft: 80000 } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [-73.94, 40.81] }, properties: { name: 'Uptown Branch', sqft: 30000 } },
+    ],
+  };
+
+  // 1. Demand mode: computes Huff probability, primary hub, and 2SFCA accessibility
+  const demRes = computeGravityModel({
+    demand,
+    supply,
+    attractField: 'sqft',
+    demandField: 'pop',
+    beta: 2,
+    outputMode: 'demand',
+  });
+  assert.equal(demRes.data.features.length, 3);
+  const lowerM = demRes.data.features[0].properties;
+  assert.equal(lowerM.primary_hub, 'Downtown Flagship');
+  assert.ok(lowerM.primary_prob_pct > 80);
+  assert.ok(lowerM.accessibility_index > 0);
+
+  // 2. Flows mode: produces O-D flow lines that feed directly into curved arcs and Sankey/Network charts
+  const flowRes = computeGravityModel({
+    demand,
+    supply,
+    attractField: 'sqft',
+    demandField: 'pop',
+    beta: 2,
+    outputMode: 'flows',
+  });
+  assert.ok(flowRes.data.features.length >= 3);
+  const curved = withCurvedArcs(flowRes.data, { curvature: 0.22, steps: 16 });
+  assert.equal(curved.features[0].geometry.coordinates.length, 17);
+
+  // Verify O-D gravity flows plug directly into Sankey/Network computeFlowGraph
+  const graph = computeFlowGraph({ groupField: 'origin_name', targetField: 'hub_name', stat: 'sum', valueField: 'flow_volume' }, flowRes.data);
+  assert.equal(graph.stages.length, 2);
+  assert.ok(graph.links.length >= 3);
+
+  assert.ok(TOOLS.gravity);
+});
+
+
 

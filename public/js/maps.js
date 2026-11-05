@@ -481,6 +481,53 @@ function withArrows(fc) {
   return heads.length ? { ...fc, features: [...fc.features, ...heads] } : fc;
 }
 
+/**
+ * Converts 2-point origin–destination LineStrings into smooth quadratic Bézier curved flow arcs
+ * (and optionally appends directional arrowheads at the destination).
+ */
+export function withCurvedArcs(fc, { curvature = 0.22, steps = 24 } = {}) {
+  const arcCoords = (a, b) => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-6) return [a, b];
+    const midX = (a[0] + b[0]) / 2;
+    const midY = (a[1] + b[1]) / 2;
+    const cosLat = Math.max(0.25, Math.cos(((midY * Math.PI) / 180)));
+    // Perpendicular offset scaled by curvature so east-west and north-south arcs look balanced
+    const nx = -dy / dist;
+    const ny = (dx * cosLat) / dist;
+    const offset = dist * curvature;
+    const ctrlX = midX + (nx * offset) / cosLat;
+    const ctrlY = midY + ny * offset;
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const u = 1 - t;
+      pts.push([
+        u * u * a[0] + 2 * u * t * ctrlX + t * t * b[0],
+        u * u * a[1] + 2 * u * t * ctrlY + t * t * b[1],
+      ]);
+    }
+    return pts;
+  };
+
+  return {
+    ...fc,
+    features: (fc.features || []).map((f) => {
+      const g = f?.geometry;
+      if (!g) return f;
+      if (g.type === 'LineString' && g.coordinates.length >= 2 && g.coordinates.length <= 4) {
+        return {
+          ...f,
+          geometry: { type: 'LineString', coordinates: arcCoords(g.coordinates[0], g.coordinates.at(-1)) },
+        };
+      }
+      return f;
+    }),
+  };
+}
+
 // A triangle drawn as a signed-distance image, so MapLibre can tint it with icon-color.
 function addArrowImage(map) {
   if (map.hasImage('wm-arrow')) return;
@@ -713,6 +760,7 @@ function loadInto(map, layer) {
     }
     const size = s.sizeField ? sizeScale(layer, data) : null;
     if (size?.areas && display === 'features') data = withSymbols(data);
+    if (s.curveLines && display === 'features') data = withCurvedArcs(data);
     source.setData(display === 'features' ? withArrows(data) : data);
     if (size) applySize(map, src, size, display);
     applyTime(map);

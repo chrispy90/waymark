@@ -913,7 +913,196 @@ export const TOOLS = {
       };
     },
   },
+
+  gravity: {
+    name: 'Gravity & Huff market share model', icon: 'target', group: 'Proximity',
+    desc: 'Models retail or service catchment competition (Huff probability, primary hub market share & 2SFCA spatial accessibility) or generates origin–destination flow lines ready for Sankey/Network charts.',
+    inputs: [
+      { k: 'demand', label: 'Demand locations (neighborhoods, census tracts or customers)' },
+      { k: 'supply', label: 'Supply hubs (stores, hospitals, warehouses or transit)' },
+    ],
+    params: [
+      { k: 'attractField', t: 'field', of: 'supply', numeric: true, label: 'Hub attractiveness / capacity field (optional)', optional: true },
+      { k: 'demandField', t: 'field', of: 'demand', numeric: true, label: 'Demand population / spend weight (optional)', optional: true },
+      { k: 'beta', t: 'number', label: 'Distance decay exponent (β)', dflt: 2 },
+      { k: 'maxDist', t: 'number', label: 'Max catchment distance (0 = unlimited)', dflt: 0 },
+      { k: 'units', t: 'units', dflt: 'kilometers' },
+      { k: 'outputMode', t: 'choice', label: 'Output layer', dflt: 'demand', opts: [['demand', 'Demand areas / points'], ['flows', 'Origin–Destination flow lines']] },
+    ],
+    name_: (p, a) => p.outputMode === 'flows' ? `Gravity flows (${a.demand} → ${a.supply})` : `${a.demand} market share (${a.supply})`,
+    run({ demand, supply }, p) {
+      const maxDistKm = Number(p.maxDist) > 0 ? toKm(Number(p.maxDist), p.units || 'kilometers') : 0;
+      const res = computeGravityModel({
+        demand,
+        supply,
+        attractField: p.attractField,
+        demandField: p.demandField,
+        beta: Number(p.beta) || 2,
+        maxDistKm,
+        outputMode: p.outputMode || 'demand',
+      });
+      return {
+        data: res.data,
+        field: res.field,
+        note: res.note,
+      };
+    },
+    style: (src, r) => (r?.field === 'flow_volume'
+      ? { color: '#7c3aed', mode: 'categorical', field: 'hub_name', sizeField: 'flow_volume', sizeMin: 1.5, sizeMax: 9, curveLines: true, opacity: 0.82 }
+      : { color: '#7c3aed', mode: 'categorical', field: 'primary_hub', opacity: 0.72 }),
+  },
 };
+
+/* ---------- Gravity / Huff Market Share & 2SFCA Spatial Accessibility Model ---------- */
+
+/**
+ * Computes Huff (1964) probabilistic market share, primary hub assignment, and Two-Step Floating
+ * Catchment Area (2SFCA) accessibility index between `demand` features and `supply` hubs.
+ */
+export function computeGravityModel({
+  demand,
+  supply,
+  attractField = '',
+  demandField = '',
+  beta = 2,
+  maxDistKm = 0,
+  outputMode = 'demand', // 'demand' | 'flows'
+} = {}) {
+  const demFeats = (demand?.features || []).filter((f) => f.geometry);
+  const supFeats = (supply?.features || []).filter((f) => f.geometry);
+  if (!demFeats.length || !supFeats.length) throw new Error('Gravity model requires both demand and supply features.');
+  guard(demFeats.length * supFeats.length, 250000, 'origin–destination pairs');
+
+  const b = Math.max(0.1, Math.min(6, Number(beta) || 2));
+  const dMax = Number(maxDistKm) > 0 ? Number(maxDistKm) : Infinity;
+
+  const hubs = supFeats.map((f, j) => {
+    const rawS = attractField ? Number(f.properties?.[attractField]) : 100;
+    return {
+      idx: j,
+      name: featureName(f.properties) || `Hub ${j + 1}`,
+      c: centerCoordsOf(f),
+      attract: Number.isFinite(rawS) && rawS > 0 ? rawS : 100,
+      capturedDemand: 0,
+      weightedDemand: 0,
+    };
+  });
+
+  const demNodes = demFeats.map((f, i) => {
+    const rawW = demandField ? Number(f.properties?.[demandField]) : 1;
+    return {
+      idx: i,
+      feat: f,
+      name: featureName(f.properties) || `Demand ${i + 1}`,
+      c: centerCoordsOf(f),
+      weight: Number.isFinite(rawW) && rawW >= 0 ? rawW : 1,
+    };
+  });
+
+  // Step 1 of 2SFCA + Huff utility matrix U_ij = S_j / d_ij^beta
+  const utilities = Array.from({ length: demNodes.length }, () => new Float64Array(hubs.length));
+  const dists = Array.from({ length: demNodes.length }, () => new Float64Array(hubs.length));
+
+  for (let i = 0; i < demNodes.length; i++) {
+    for (let j = 0; j < hubs.length; j++) {
+      const d = Math.max(0.05, haversineKm(demNodes[i].c, hubs[j].c));
+      dists[i][j] = d;
+      if (d <= dMax) {
+        const u = hubs[j].attract / (d ** b);
+        utilities[i][j] = u;
+        hubs[j].weightedDemand += demNodes[i].weight / (d ** b);
+      }
+    }
+  }
+
+  // Supply-to-demand ratio R_j for 2SFCA
+  const hubRatio = hubs.map((h) => (h.weightedDemand > 0 ? (h.attract / h.weightedDemand) : 0));
+
+  const demandOut = [];
+  const flowOut = [];
+
+  for (let i = 0; i < demNodes.length; i++) {
+    const dm = demNodes[i];
+    const rowU = utilities[i];
+    const totalU = rowU.reduce((s, v) => s + v, 0);
+
+    let bestJ = -1;
+    let bestProb = 0;
+    let secondProb = 0;
+    let accessScore = 0;
+
+    for (let j = 0; j < hubs.length; j++) {
+      const p = totalU > 0 ? rowU[j] / totalU : 0;
+      const flow = dm.weight * p;
+      hubs[j].capturedDemand += flow;
+      if (dists[i][j] <= dMax) {
+        accessScore += hubRatio[j] / (dists[i][j] ** b);
+      }
+      if (p > bestProb) {
+        secondProb = bestProb;
+        bestProb = p;
+        bestJ = j;
+      } else if (p > secondProb) {
+        secondProb = p;
+      }
+
+      if (outputMode === 'flows' && p >= 0.05) {
+        flowOut.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [dm.c, hubs[j].c] },
+          properties: {
+            origin_name: dm.name,
+            hub_name: hubs[j].name,
+            probability_pct: round(p * 100, 1),
+            flow_volume: round(flow, 2),
+            distance_km: round(dists[i][j], 2),
+            is_primary: false, // updated below
+          },
+        });
+      }
+    }
+
+    const primaryHub = bestJ >= 0 ? hubs[bestJ].name : 'Out of range';
+    const primaryDist = bestJ >= 0 ? round(dists[i][bestJ], 2) : null;
+    if (outputMode === 'flows' && bestJ >= 0) {
+      const match = flowOut.findLast((fl) => fl.properties.origin_name === dm.name && fl.properties.hub_name === primaryHub);
+      if (match) match.properties.is_primary = true;
+    }
+
+    demandOut.push({
+      ...dm.feat,
+      properties: {
+        ...dm.feat.properties,
+        primary_hub: primaryHub,
+        primary_prob_pct: round(bestProb * 100, 1),
+        market_dominance_pct: round((bestProb - secondProb) * 100, 1),
+        expected_flow: round(dm.weight * bestProb, 2),
+        nearest_hub_km: primaryDist,
+        accessibility_index: round(accessScore * 100, 2),
+        total_gravity_potential: round(totalU, 2),
+      },
+    });
+  }
+
+  const topHub = [...hubs].sort((a, b) => b.capturedDemand - a.capturedDemand)[0];
+  const totalDemand = demNodes.reduce((s, d) => s + d.weight, 0) || 1;
+  const topSharePct = topHub ? round((topHub.capturedDemand / totalDemand) * 100, 1) : 0;
+
+  if (outputMode === 'flows') {
+    return {
+      data: fc(flowOut),
+      field: 'flow_volume',
+      hubs,
+      note: `${flowOut.length.toLocaleString()} O–D gravity flows across ${hubs.length} hubs · Top hub: ${topHub?.name} (${topSharePct}% share)`,
+    };
+  }
+  return {
+    data: fc(demandOut),
+    field: 'primary_hub',
+    hubs,
+    note: `${demNodes.length.toLocaleString()} demand zones assigned to ${hubs.length} hubs · Top hub: ${topHub?.name} (${topSharePct}% market share)`,
+  };
+}
 
 /* ---------- Spatial Autocorrelation: Getis-Ord Gi* & Local Moran's I (LISA) ---------- */
 
