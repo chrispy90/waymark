@@ -362,3 +362,67 @@ test('Phase 1: Sankey & Network graph flow computation and map viewport bounds f
   const eastGraph = computeFlowGraph({ groupField: 'origin_name', targetField: 'hub_name', stat: 'sum', valueField: 'volume' }, eastCoastFc);
   assert.equal(eastGraph.links.length, 2);
 });
+
+test('Phase 2: Geospatial Cost Surface, Tobler slope friction & Least-Cost Path routing', async () => {
+  const { toblerHikingKmh, buildCostSurface, traceLeastCostPaths } = await load('terrain.js');
+  const { TOOLS } = await load('analysis.js');
+
+  // Tobler hiking function peaks near -5% grade (~6 km/h) and slows down on steep ascents
+  const flatSpeed = toblerHikingKmh(0);
+  const slightDownSpeed = toblerHikingKmh(-5);
+  const steepUpSpeed = toblerHikingKmh(30);
+  assert.ok(slightDownSpeed > flatSpeed);
+  assert.ok(flatSpeed > steepUpSpeed);
+
+  const origins = {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [-105.3, 40.0] }, properties: { name: 'Basecamp' } }],
+  };
+  const destinations = {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [-105.1, 40.0] }, properties: { name: 'Summit Station' } }],
+  };
+  // Place a central high-friction barrier polygon between -105.22 and -105.18
+  const barriers = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-105.22, 39.97], [-105.18, 39.97], [-105.18, 40.03], [-105.22, 40.03], [-105.22, 39.97]]],
+      },
+      properties: { name: 'Canyon Wall', friction: 0 }, // impassable
+    }],
+  };
+
+  // Synthetic DEM sampler with a ridge in the middle
+  const mockElev = async (coords) => coords.map(([lng, lat]) => 1500 + Math.exp(-(((lng + 105.2) * 40) ** 2)) * 400 + (lat - 40) * 50);
+
+  const surface = await buildCostSurface({
+    origins,
+    destinations,
+    barriers,
+    resolution: 18,
+    padKm: 2,
+    useTerrain: true,
+    elevSampler: mockElev,
+  });
+
+  assert.ok(surface.grid.features.length >= 100);
+  const impassableCells = surface.grid.features.filter((f) => f.properties.passable === false);
+  assert.ok(impassableCells.length > 0, 'Barrier cells should be marked impassable');
+
+  const paths = traceLeastCostPaths(surface, destinations, { smooth: true });
+  assert.equal(paths.features.length, 1);
+  const route = paths.features[0];
+  assert.equal(route.properties.origin, 'Basecamp');
+  assert.equal(route.properties.destination, 'Summit Station');
+  assert.ok(route.properties.travel_time_min > 0);
+  assert.ok(route.properties.distance_km >= route.properties.straight_km);
+  assert.ok(route.properties.detour_ratio >= 1, 'Route should detour around impassable barrier');
+
+  // Verify workbench TOOLS integration
+  assert.ok(TOOLS.costSurface);
+  assert.ok(TOOLS.leastCostPath);
+});
+

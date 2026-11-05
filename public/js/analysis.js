@@ -1,6 +1,6 @@
 // Geospatial analysis for the editor, built on Turf.js (global `turf`, loaded only in the builder).
 // Every tool turns input layers into a new FeatureCollection that is saved as an ordinary layer.
-import { densifyLine, profileStats, sampleElevations } from './terrain.js';
+import { densifyLine, profileStats, sampleElevations, buildCostSurface, traceLeastCostPaths } from './terrain.js';
 
 const T = () => {
   const t = globalThis.turf || (typeof window !== 'undefined' ? window.turf : null);
@@ -741,6 +741,78 @@ export const TOOLS = {
       return { data: fc(out), field: 'elevation_m', note: vals.length ? `Elevation ${Math.round(Math.min(...vals))}–${Math.round(Math.max(...vals))} m across ${vals.length.toLocaleString()} features` : 'No elevation could be read' };
     },
     style: (src, r) => ({ color: '#15803d', mode: 'graduated', field: r?.field || 'elevation_m' }),
+  },
+
+  costSurface: {
+    name: 'Cost surface & accessibility grid', icon: 'mountain', group: 'Terrain',
+    desc: 'Builds an anisotropic travel-time and friction surface from origin points using DEM terrain slope (Tobler hiking function) and optional barrier/corridor layers.',
+    inputs: [
+      { k: 'origins', label: 'Origin sites or hubs' },
+      { k: 'barriers', label: 'Barriers or corridors (optional)', optional: true },
+    ],
+    params: [
+      { k: 'resolution', t: 'choice', label: 'Grid resolution', dflt: '28', opts: [['20', 'Fast (20×20)'], ['28', 'Balanced (28×28)'], ['40', 'Detailed (40×40)']] },
+      { k: 'padKm', t: 'number', label: 'Study area buffer (km)', dflt: 3 },
+      { k: 'barrierFactor', t: 'choice', label: 'Default barrier behavior', dflt: '5', opts: [['5', '5× High friction'], ['0', 'Impassable block'], ['0.35', 'Corridor speed boost (0.35×)']] },
+      { k: 'useTerrain', t: 'check', label: 'Include DEM elevation slope friction (Tobler)', dflt: true },
+    ],
+    name_: (p, a) => `${a.origins} cost surface`,
+    async run({ origins, barriers }, p) {
+      const surface = await buildCostSurface({
+        origins,
+        barriers,
+        resolution: Number(p.resolution) || 28,
+        padKm: Number(p.padKm) || 3,
+        barrierFactor: Number(p.barrierFactor),
+        useTerrain: p.useTerrain !== false,
+      });
+      const passable = surface.grid.features.filter((f) => f.properties.travel_time_min != null);
+      const maxMin = passable.length ? Math.max(...passable.map((f) => f.properties.travel_time_min)) : 0;
+      return {
+        data: surface.grid,
+        field: 'travel_time_min',
+        note: `${surface.rows}×${surface.cols} friction grid (${surface.grid.features.length.toLocaleString()} cells) · up to ${round(maxMin, 1)} min travel time`,
+      };
+    },
+    style: () => ({ color: '#d97706', mode: 'graduated', field: 'travel_time_min', opacity: 0.62, width: 0.5 }),
+  },
+
+  leastCostPath: {
+    name: 'Least-cost path & corridor', icon: 'route', group: 'Terrain',
+    desc: 'Finds the optimal minimum-cost route from origins to destinations across terrain slope and custom friction barriers or corridors.',
+    inputs: [
+      { k: 'origins', label: 'Start origins' },
+      { k: 'destinations', label: 'Target destinations' },
+      { k: 'barriers', label: 'Barriers or corridors (optional)', optional: true },
+    ],
+    params: [
+      { k: 'resolution', t: 'choice', label: 'Routing grid detail', dflt: '32', opts: [['24', 'Standard (24×24)'], ['32', 'High (32×32)'], ['44', 'Ultra (44×44)']] },
+      { k: 'barrierFactor', t: 'choice', label: 'Default barrier behavior', dflt: '5', opts: [['5', '5× High friction'], ['0', 'Impassable block'], ['0.35', 'Corridor speed boost (0.35×)']] },
+      { k: 'useTerrain', t: 'check', label: 'Route around steep DEM terrain slopes', dflt: true },
+      { k: 'smooth', t: 'check', label: 'Smooth path geometry (Chaikin curves)', dflt: true },
+    ],
+    name_: (p, a) => `Least-cost path (${a.origins} → ${a.destinations})`,
+    async run({ origins, destinations, barriers }, p) {
+      const surface = await buildCostSurface({
+        origins,
+        destinations,
+        barriers,
+        resolution: Number(p.resolution) || 32,
+        padKm: 2.5,
+        barrierFactor: Number(p.barrierFactor),
+        useTerrain: p.useTerrain !== false,
+      });
+      const paths = traceLeastCostPaths(surface, destinations, { smooth: p.smooth !== false });
+      if (!paths.features.length) throw new Error('No passable route could be found between the origins and destinations.');
+      const totalKm = paths.features.reduce((s, f) => s + (f.properties.distance_km || 0), 0);
+      const avgTime = paths.features.reduce((s, f) => s + (f.properties.travel_time_min || 0), 0) / paths.features.length;
+      return {
+        data: paths,
+        field: 'travel_time_min',
+        note: `${paths.features.length} optimal ${paths.features.length === 1 ? 'route' : 'routes'} · ${round(totalKm, 2)} km total · avg ${round(avgTime, 1)} min`,
+      };
+    },
+    style: () => ({ color: '#059669', width: 4, opacity: 0.92 }),
   },
 };
 

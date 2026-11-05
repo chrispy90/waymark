@@ -242,6 +242,7 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
     const paramsBox = h('div');
 
     tool.inputs.forEach((inp, i) => {
+      if (inp.optional) { inputs[inp.k] = ''; return; }
       const fits = usable.filter((l) => !inp.kind || data[l.id].kinds.has(inp.kind));
       const pref = (i === 0 && layerId && fits.find((l) => l.id === layerId)) || fits[i] || fits[0];
       inputs[inp.k] = pref?.id;
@@ -285,19 +286,20 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
     const inputFields = tool.inputs.map((inp) => {
       const fits = usable.filter((l) => !inp.kind || data[l.id].kinds.has(inp.kind));
       return h('label', { class: 'field' }, h('span', { class: 'field-label' }, inp.label),
-        fits.length ? h('select', { onchange: (e) => { inputs[inp.k] = e.target.value; showInputs(); drawParams(); } },
+        fits.length || inp.optional ? h('select', { onchange: (e) => { inputs[inp.k] = e.target.value; showInputs(); drawParams(); } },
+          inp.optional ? h('option', { value: '', selected: !inputs[inp.k] }, 'None (optional)') : null,
           fits.map((l) => h('option', { value: l.id, selected: inputs[inp.k] === l.id }, `${l.name} · ${data[l.id].data.features.length.toLocaleString()}${data[l.id].filtered ? ' (filtered)' : ''}`)))
           : h('p', { class: 'field-hint', style: 'margin:0' }, `You need a layer with ${inp.kind === 'point' ? 'points' : inp.kind === 'polygon' ? 'areas (polygons)' : 'features'} for this.`));
     });
 
     const runBtn = h('button', { type: 'button', class: 'btn btn-primary btn-block', onclick: () => run() }, icon('sparkle', { size: 16 }), 'Run');
     const run = () => {
-      if (tool.inputs.some((inp) => !inputs[inp.k])) { toast('Choose the layers to use first.', { tone: 'error' }); return; }
+      if (tool.inputs.some((inp) => !inp.optional && !inputs[inp.k])) { toast('Choose the layers to use first.', { tone: 'error' }); return; }
       runBtn.disabled = true;
       runBtn.replaceChildren(h('span', { class: 'spinner' }), 'Working…');
       setTimeout(async () => {
         try {
-          const ins = Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, data[id].data]));
+          const ins = Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, id && data[id] ? data[id].data : null]));
           result = await tool.run(ins, { ...params, _names: Object.fromEntries(Object.entries(inputs).map(([k, id]) => [k, lib.find((l) => l.id === id)?.name || 'Layer'])) });
           map._wmResult = result.data;
           if (map.isStyleLoaded()) resultLayers(map, 'wm-result');
@@ -348,6 +350,7 @@ export async function rerunAnalysis(layer) {
   const lib = ctx.story().layers || [];
   const ins = {};
   for (const [k, id] of Object.entries(a.inputs)) {
+    if (!id) { ins[k] = null; continue; }
     const src = lib.find((l) => l.id === id);
     if (!src) { toast('One of the layers this was made from has been deleted.', { tone: 'error' }); return; }
     ins[k] = await layerFeatures(src);
