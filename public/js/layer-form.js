@@ -1,7 +1,7 @@
 // Settings for one data layer (source, filters, insights, style, labels, visible range, popup). Shared by the story
 // editor's Data tab and the saved-map editor, which pass in how to save and redraw.
 import { h, icon, toast } from './ui.js';
-import { loadLayerData, fieldNames, colorRamp, BIVARIATE_SCHEMES, FILTER_OPS, filterData, activeFilters } from './maps.js';
+import { loadLayerData, loadSample, fieldNames, colorRamp, BIVARIATE_SCHEMES, FILTER_OPS, filterData, activeFilters } from './maps.js';
 import { layerStats, TOOLS, kinds } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 import { openDraw, rerunAnalysis, insightsPanel } from './workbench.js';
@@ -38,6 +38,7 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
     if (l.type === 'raster') return 'Imagery';
     const prefix = isHostedLayer(l) ? 'Hosted · ' : '';
     const i = layerInfo[l.id] || {};
+    if (l.type === 'vector') return i.total != null ? `${prefix}${i.total.toLocaleString()} features · tiles` : i.error ? 'Could not load' : 'Vector tiles';
     if (i.count != null && activeFilters(l).length) return `${prefix}${i.shown.toLocaleString()} of ${i.count.toLocaleString()} features`;
     return i.loading ? 'Loading…' : i.error ? 'Could not load' : i.count != null ? `${prefix}${i.count.toLocaleString()} ${i.count === 1 ? 'feature' : 'features'}` : 'No data yet';
   };
@@ -49,6 +50,15 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
     if (!layer.data && !layer.url) { layerInfo[layer.id] = { key }; return; }
     layerInfo[layer.id] = { key, loading: true };
     const done = (info) => { if (layerInfo[layer.id]?.key === key) { layerInfo[layer.id] = { key, ...info }; onInfo?.(layer); } };
+    if (layer.type === 'vector') {
+      // Drawn from tiles: work from a sample of its attributes (hosted layers) or the field list its source published.
+      loadSample(layer).then((sample) => {
+        const fc = { type: 'FeatureCollection', features: sample?.features || [] };
+        const names = sample ? [...new Set([...(sample.fields || []).map((f) => f.name), ...fieldNames(fc)])] : layer.fields || [];
+        done({ total: sample?.count ?? null, fields: names, fc: sample ? fc : null, geomType: sample?.geomType || layer.geomType || null, sampled: true });
+      }).catch((err) => done({ error: err.message }));
+      return;
+    }
     loadLayerData(layer).then((fc) => {
       if (!layer.attribution && fc.metadata?.attribution) layer.attribution = fc.metadata.attribution;
       done({ count: fc.features.length, shown: filterData(layer, fc).features.length, fields: fieldNames(fc), fc });
@@ -76,7 +86,8 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
       if (!info.fc) return;
       const shown = filterData(layer, info.fc).features.length;
       info.shown = shown;
-      count.textContent = activeFilters(layer).length ? `Showing ${shown.toLocaleString()} of ${info.fc.features.length.toLocaleString()}` : `All ${info.fc.features.length.toLocaleString()} features`;
+      count.textContent = info.sampled ? (activeFilters(layer).length ? `About ${Math.round((shown / Math.max(1, info.fc.features.length)) * 100)}% match` : `All ${(info.total ?? 0).toLocaleString()} features`)
+        : activeFilters(layer).length ? `Showing ${shown.toLocaleString()} of ${info.fc.features.length.toLocaleString()}` : `All ${info.fc.features.length.toLocaleString()} features`;
       count.className = `pill no-dot ${activeFilters(layer).length ? 'is-live' : ''}`;
     };
     const rows = rules.map((r, i) => {
@@ -137,13 +148,18 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
     } });
     const cats = st.mode === 'categorical' && st.field && info.fc ? colorRamp(layer, info.fc).legend.entries.filter(([v]) => v !== 'Other') : [];
     const status = info.loading ? h('span', { class: 'pill' }, 'Loading…') : info.error ? h('span', { class: 'pill is-error' }, info.error)
+      : tiled ? h('span', { class: 'pill is-live' }, info.total != null ? `${info.total.toLocaleString()} features · drawn from tiles` : 'Drawn from vector tiles')
       : info.count != null ? h('span', { class: 'pill is-live' }, `${hosted ? 'Hosted GeoJSON · ' : ''}${info.count.toLocaleString()} features · ${flds.length} fields`) : null;
 
-    const isPoints = info.fc ? kinds(info.fc).has('point') : false;
+    const tiled = layer.type === 'vector';
+    const isPoints = tiled ? info.geomType === 'Point' : info.fc ? kinds(info.fc).has('point') : false;
     const a = layer.analysis;
     const inputNames = a ? Object.values(a.inputs).map((id) => (doc().layers || []).find((l) => l.id === id)?.name || 'a deleted layer').join(' and ') : '';
     return h('div', {},
-      hosted ? h('div', { class: 'provenance' }, icon('database', { size: 15 }),
+      tiled ? h('div', { class: 'provenance' }, icon('layers', { size: 15 }),
+        h('span', {}, hosted ? 'A big hosted layer, drawn from vector tiles so it stays fast. Style, filters, labels and popups work; the table, drawing, clusters, time and analysis need a smaller layer.'
+          : 'Vector tiles from another server. Style, labels and popups work; it can\'t be edited or analyzed here.')) : null,
+      hosted && !tiled ? h('div', { class: 'provenance' }, icon('database', { size: 15 }),
         h('span', {}, 'Hosted Feature Layer (GeoJSON)'),
         h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openAttributeTableDialog(layer, { onChange: () => { delete layerInfo[layer.id]; changed(); renderRail(); } }) }, icon('list', { size: 14 }), 'Edit table'),
         h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openDraw({ layer }) }, icon('pen', { size: 14 }), 'Edit shapes')) : null,
@@ -163,14 +179,14 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
           oninput: (e) => { layer.attribution = e.target.value; changed(); },
           onchange: () => { if (hosted && info.fc) saveHostedLayer(layer, info.fc, { attribution: layer.attribution }).catch(() => {}); },
         })),
-      a || layer.catalog || hosted ? (status ? h('div', { style: 'margin:4px 0 8px' }, status) : null) : h('div', { class: 'field' }, labelEl('Data'),
+      a || layer.catalog || hosted || tiled ? (status ? h('div', { style: 'margin:4px 0 8px' }, status) : null) : h('div', { class: 'field' }, labelEl('Data'),
         h('div', { class: 'row' },
           h('input', { class: 'input', type: 'text', value: layer.data ? '' : layer.url || '', placeholder: layer.data ? `Uploaded file (${layer.data.features.length} features)` : 'Paste a GeoJSON or ArcGIS layer link',
             onchange: (e) => { layer.url = e.target.value.trim(); delete layer.data; delete layerInfo[layer.id]; changed(); renderRail(); } }),
           h('button', { type: 'button', class: 'btn', title: 'Upload GeoJSON or CSV', onclick: () => fileInput.click() }, icon('upload', { size: 15 }), 'File'), fileInput),
         h('p', { class: 'field-hint' }, 'GeoJSON link, public ArcGIS FeatureServer layer, or a .geojson / .csv file (CSV needs lat and lon columns).'),
         status ? h('div', { style: 'margin-top:8px' }, status) : null),
-      h('div', { class: 'row row-wrap', style: 'margin:8px 0 4px;gap:6px' },
+      tiled ? null : h('div', { class: 'row row-wrap', style: 'margin:8px 0 4px;gap:6px' },
         h('button', {
           type: 'button',
           class: 'btn btn-sm',
@@ -191,11 +207,11 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
           },
         }, icon('database', { size: 14 }), 'Publish as Hosted Layer') : null),
       info.fc ? [h('div', { class: 'rail-section-title' }, 'Filters'), filtersField(layer, info)] : null,
-      info.fc ? [h('div', { class: 'rail-section-title' }, activeFilters(layer).length ? 'Insights (filtered)' : 'Insights'), insightsPanel(layer, filterData(layer, info.fc))] : null,
+      info.fc && !tiled ? [h('div', { class: 'rail-section-title' }, activeFilters(layer).length ? 'Insights (filtered)' : 'Insights'), insightsPanel(layer, filterData(layer, info.fc))] : null,
       h('div', { class: 'rail-section-title' }, 'Style'),
-      isPoints ? field(st, { k: 'display', t: 'seg', label: 'Show points as', opts: [['features', 'Dots'], ['heatmap', 'Heatmap'], ['clusters', 'Clusters']], dflt: 'features' }) : null,
+      isPoints ? field(st, { k: 'display', t: 'seg', label: 'Show points as', opts: tiled ? [['features', 'Dots'], ['heatmap', 'Heatmap']] : [['features', 'Dots'], ['heatmap', 'Heatmap'], ['clusters', 'Clusters']], dflt: 'features' }) : null,
       isPoints && st.display === 'heatmap' ? fieldSelect(st, 'weight', 'Weight the heat by (optional)', 'Each point counts the same') : null,
-      field(st, { k: 'mode', t: 'seg', label: 'Color', opts: [['single', 'One color'], ['categorical', 'Category'], ['graduated', 'Number'], ['bivariate', 'Bivariate']], dflt: 'single' }),
+      field(st, { k: 'mode', t: 'seg', label: 'Color', opts: tiled && !info.fc ? [['single', 'One color']] : [['single', 'One color'], ['categorical', 'Category'], ['graduated', 'Number'], ['bivariate', 'Bivariate']], dflt: 'single' }),
       st.mode === 'bivariate' ? [
         h('div', { class: 'grid-2' },
           fieldSelect(st, 'field', 'Field A (X-axis →)', 'Choose…'),
@@ -217,11 +233,8 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
         field(st, { k: 'opacity', t: 'number', label: 'Fill opacity' }),
         field(st, { k: 'radius', t: 'number', label: 'Point size' }),
         field(st, { k: 'width', t: 'number', label: 'Line width' })),
-      h('div', { class: 'rail-section-title' }, 'Size & 3D Extrusion'),
-      sizeField(st, info),
-      extrudeField(st, info),
-      h('div', { class: 'rail-section-title' }, 'Time'),
-      timeField(layer, info),
+      tiled && !info.fc ? null : [h('div', { class: 'rail-section-title' }, 'Size & 3D Extrusion'), sizeField(st, info), tiled ? null : extrudeField(st, info)],
+      tiled ? null : [h('div', { class: 'rail-section-title' }, 'Time'), timeField(layer, info)],
       h('div', { class: 'rail-section-title' }, 'Labels and visibility'),
       fieldSelect(st, 'label', 'Show labels from'),
       h('div', { class: 'grid-2' },

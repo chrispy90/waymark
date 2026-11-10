@@ -185,6 +185,7 @@ const FEATURE_SERVICE = /\/(FeatureServer|MapServer)\/\d+\/?$/i;
 export function loadLayerData(layer) {
   if (layer.data) return Promise.resolve(layer.data);
   if (!layer.url || layer.type === 'raster') return Promise.resolve(emptyFC());
+  if (layer.type === 'vector' && !layer.sampleUrl) return Promise.resolve(emptyFC()); // someone else's tiles: there is no file to load
   const key = `${layer.url}|${JSON.stringify(layer.query || {})}|${layer.transform || ''}`;
   if (!cache.has(key)) {
     const p = (FEATURE_SERVICE.test(layer.url) ? fetchFeatureService(layer.url, layer.query) : fetchGeoJSON(layer.url))
@@ -196,8 +197,24 @@ export function loadLayerData(layer) {
   return cache.get(key);
 }
 
+/**
+ * The layer definition for a hosted layer (as listed by /api/layers). Big ones are drawn from vector tiles;
+ * `url` stays, so exports and anything that needs every feature can still load the whole file.
+ */
+export const hostedLayerDef = (r, id = `l${Math.random().toString(36).slice(2, 8)}`) => ({
+  id,
+  hostedLayerId: r.id,
+  name: r.title || 'Hosted layer',
+  url: r.url || `/api/layers/${r.id}/geojson`,
+  attribution: r.attribution || '',
+  style: r.style && r.style.color ? r.style : { ...(r.style || {}), color: '#2563eb' },
+  popup: r.popup || {},
+  ...(r.tiled ? { type: 'vector', tiles: r.tileUrl, sampleUrl: r.sampleUrl, bbox: r.bbox || undefined } : {}),
+});
+
 /** Clears cached GeoJSON for a URL (or all URLs) after a hosted layer is edited. */
 export function invalidateLayerCache(url) {
+  samples.clear();
   if (!url) { cache.clear(); return; }
   for (const k of [...cache.keys()]) {
     if (k.startsWith(`${url}|`) || k.includes(url)) cache.delete(k);
@@ -349,7 +366,7 @@ export function bbox(fc) {
 export async function fitToLayer(map, id) {
   const layer = map._library.find((l) => l.id === id);
   if (!layer) return;
-  const b = bbox(await loadLayerData(layer));
+  const b = layer.type === 'vector' ? (layer.bbox || (await loadSample(layer))?.bbox) : bbox(await loadLayerData(layer));
   if (b) map.fitBounds(b, { padding: 48, maxZoom: 16, duration: 800 });
 }
 
@@ -636,10 +653,20 @@ function installLayers(map) {
     const radius = s.radius ?? 6;
     if (layer.type === 'raster') {
       // Imagery overlays sit under the basemap's labels so place names stay readable.
-      map.addSource(src, { type: 'raster', tiles: [tileUrl(layer)], tileSize: 256, maxzoom: layer.maxzoom ?? 18, attribution: layer.attribution || '' });
-      const labels = map.getStyle().layers.find((l) => l.type === 'symbol' && !l.id.startsWith('dl-'))?.id;
-      map.addLayer({ id: `${src}-raster`, type: 'raster', source: src, layout: { visibility: vis }, paint: { 'raster-opacity': s.opacity ?? 0.85 } }, labels);
-      map._legendInfo[layer.id] = { type: 'imagery' };
+      const addRaster = () => {
+        if (map.getSource(src) || !map._library.includes(layer)) return;
+        map.addSource(src, { type: 'raster', ...(layer.pmtiles ? { url: tileUrl(layer) } : { tiles: [tileUrl(layer)], maxzoom: layer.maxzoom ?? 18 }), tileSize: 256, attribution: layer.attribution || '' });
+        const labels = map.getStyle().layers.find((l) => l.type === 'symbol' && !l.id.startsWith('dl-'))?.id;
+        map.addLayer({ id: `${src}-raster`, type: 'raster', source: src, layout: { visibility: map._visible.includes(layer.id) ? 'visible' : 'none' }, paint: { 'raster-opacity': s.opacity ?? 0.85 } }, labels);
+        map._legendInfo[layer.id] = { type: 'imagery' };
+        map._legend.render(map);
+      };
+      if (layer.pmtiles) usePmtiles().then(addRaster).catch(() => {});
+      else addRaster();
+      return;
+    }
+    if (layer.type === 'vector') {
+      installTiled(map, layer, src, vis, color, radius);
       return;
     }
     map.addSource(src, { type: 'geojson', data: emptyFC(), ...(layer.attribution ? { attribution: layer.attribution } : {}), ...(display === 'clusters' ? { cluster: true, clusterRadius: 50, clusterMaxZoom: 14 } : {}) });
@@ -725,6 +752,148 @@ function installLayers(map) {
   map._legend.render(map);
 }
 
+/* ---------------- Layers drawn from vector tiles ---------------- */
+
+// Big hosted layers, PMTiles archives and {z}/{x}/{y} vector tile addresses. The browser only downloads the tiles on
+// screen, so these can hold millions of features. They support color (single, by category, by number), size by
+// number, labels, popups, filters, heatmaps and a visible zoom range; clusters, time and drawing need a normal layer.
+const PMTILES_JS = 'https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js';
+let pmtilesReady = null;
+/** Loads the PMTiles reader once and teaches MapLibre the pmtiles:// address scheme. */
+export function usePmtiles() {
+  pmtilesReady ||= new Promise((resolve, reject) => {
+    if (globalThis.pmtiles) { resolve(); return; }
+    const el = document.createElement('script');
+    el.src = PMTILES_JS;
+    el.onload = resolve;
+    el.onerror = () => { pmtilesReady = null; reject(new Error('Could not load the PMTiles reader')); };
+    document.head.append(el);
+  }).then(() => {
+    if (!globalThis.__wmPmtiles) { globalThis.__wmPmtiles = new globalThis.pmtiles.Protocol(); maplibregl.addProtocol('pmtiles', globalThis.__wmPmtiles.tile); }
+    return globalThis.pmtiles;
+  });
+  return pmtilesReady;
+}
+export const isPmtiles = (url) => /\.pmtiles(\?|$)/i.test(String(url || ''));
+const tileAddress = (url) => (/^(https?:)?\/\//i.test(url) ? url : new URL(url.startsWith('/') ? url : `/${url}`, location.origin).href.replace(/%7B/gi, '{').replace(/%7D/gi, '}'));
+
+// A layer's filter rules as a MapLibre expression (tiles are filtered while drawing, not after loading).
+function filterExpression(layer) {
+  const rules = activeFilters(layer).filter((r) => r.op === 'is empty' || r.op === 'is not empty' || (r.value ?? '') !== '');
+  if (!rules.length) return null;
+  const one = ({ field, op, value }) => {
+    const raw = ['get', field];
+    const str = ['downcase', ['to-string', ['coalesce', raw, '']]];
+    const n = Number(value);
+    const numeric = value !== '' && Number.isFinite(n);
+    const empty = ['any', ['!', ['has', field]], ['==', ['to-string', ['coalesce', raw, '']], '']];
+    const cmp = (o) => (numeric ? ['all', ['has', field], [o, ['to-number', raw, 0], n]] : [o, str, String(value).toLowerCase()]);
+    switch (op) {
+      case 'is empty': return empty;
+      case 'is not empty': return ['!', empty];
+      case 'contains': return ['in', String(value).toLowerCase(), str];
+      case '=': return numeric ? ['all', ['has', field], ['==', ['to-number', raw, 0], n]] : ['==', str, String(value).toLowerCase()];
+      case '≠': return numeric ? ['any', ['!', ['has', field]], ['!=', ['to-number', raw, 0], n]] : ['!=', str, String(value).toLowerCase()];
+      case '>': return cmp('>');
+      case '≥': return cmp('>=');
+      case '<': return cmp('<');
+      case '≤': return cmp('<=');
+      case 'in the last (days)': return ['all', ['has', field], ['>=', ['to-number', raw, 0], Date.now() - n * 864e5]];
+      default: return true;
+    }
+  };
+  return [layer.filterMatch === 'any' ? 'any' : 'all', ...rules.map(one)];
+}
+
+function installTiled(map, layer, src, vis, color, radius) {
+  const s = layer.style || {};
+  const display = displayOf(layer);
+  const sl = layer.sourceLayer || 'layer';
+  const pm = isPmtiles(layer.tiles);
+  const add = () => {
+    if (map.getSource(src) || !map._library.includes(layer)) return;
+    map.addSource(src, { type: 'vector', ...(pm ? { url: `pmtiles://${tileAddress(layer.tiles)}` } : { tiles: [tileAddress(layer.tiles)], minzoom: layer.tileMinzoom ?? 0, maxzoom: layer.tileMaxzoom ?? 14 }),
+      ...(layer.attribution ? { attribution: layer.attribution } : {}) });
+    const rules = filterExpression(layer);
+    const where = (geom) => (rules ? ['all', geom, rules] : geom);
+    const v = map._visible.includes(layer.id) ? 'visible' : 'none';
+    map.addLayer({ id: `${src}-fill`, type: 'fill', source: src, 'source-layer': sl, filter: where(POLY), layout: { visibility: v }, paint: { 'fill-color': color, 'fill-opacity': s.extrude ? 0.08 : s.opacity ?? 0.45 } });
+    if (s.extrude) {
+      map.addLayer({ id: `${src}-extrusion`, type: 'fill-extrusion', source: src, 'source-layer': sl, filter: where(POLY), layout: { visibility: v },
+        paint: { 'fill-extrusion-color': color, 'fill-extrusion-height': Math.max(1, +(s.extrudeHeight ?? 500)), 'fill-extrusion-opacity': Math.min(1, Math.max(0.25, +(s.opacity ?? 0.82))) } });
+    }
+    map.addLayer({ id: `${src}-line`, type: 'line', source: src, 'source-layer': sl, filter: where(['any', POLY, LINE]), layout: { visibility: v, 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': color, 'line-width': ['case', LINE, s.width ?? 3, 1] } });
+    if (display === 'heatmap') {
+      map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, 'source-layer': sl, filter: where(POINT), maxzoom: 17, layout: { visibility: v }, paint: {
+        'heatmap-weight': 1,
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 15, 3],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, radius * 1.6, 15, radius * 6],
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...heatStops(color).flat()],
+        'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.92, 16, 0.2],
+      } });
+    }
+    if (glowing() && display !== 'heatmap') {
+      map.addLayer({ id: `${src}-glow`, type: 'circle', source: src, 'source-layer': sl, filter: where(POINT), layout: { visibility: v }, paint: { 'circle-color': color, 'circle-radius': radius * 3, 'circle-blur': 1, 'circle-opacity': 0.55 } });
+    }
+    map.addLayer({ id: `${src}-circle`, type: 'circle', source: src, 'source-layer': sl, filter: where(POINT), layout: { visibility: v },
+      paint: { 'circle-color': color, 'circle-radius': radius, 'circle-stroke-color': glowing() ? 'rgba(255,255,255,0.85)' : '#ffffff',
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 11, 1.2], // thin outlines when thousands of points are packed together
+        'circle-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 0.92] : 0.9,
+        'circle-stroke-opacity': display === 'heatmap' ? ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15.5, 1] : 1 } });
+    map.addLayer({ id: `${src}-label`, type: 'symbol', source: src, 'source-layer': sl, ...(rules ? { filter: rules } : {}), layout: {
+      visibility: s.label ? v : 'none', 'text-field': s.label ? ['to-string', ['get', s.label]] : '', 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
+    paint: darkBase(map) ? { 'text-color': '#f3f2fb', 'text-halo-color': 'rgba(8,8,16,0.85)', 'text-halo-width': 1.5 } : { 'text-color': '#1f2937', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
+    map._baseFilters ||= {};
+    subIds(layer.id).forEach((lid) => { if (map.getLayer(lid)) map._baseFilters[lid] = map.getFilter(lid); });
+    if (s.minzoom != null || s.maxzoom != null) subIds(layer.id).forEach((lid) => map.getLayer(lid) && map.setLayerZoomRange(lid, +(s.minzoom ?? 0), +(s.maxzoom ?? 24)));
+    orderLayers(map);
+    if (v === 'visible') loadInto(map, layer);
+    map._legend.render(map);
+  };
+  if (pm) usePmtiles().then(add).catch((err) => { map._legendInfo[layer.id] = { type: 'error', message: err.message }; map._legend.render(map); });
+  else add();
+}
+
+// A hosted layer's sample: the attributes of up to 5,000 features, enough to work out colors, sizes and the legend.
+const samples = new Map();
+export function loadSample(layer) {
+  if (!layer.sampleUrl) return Promise.resolve(null);
+  if (!samples.has(layer.sampleUrl)) samples.set(layer.sampleUrl, fetchJson(layer.sampleUrl).catch((err) => { samples.delete(layer.sampleUrl); throw err; }));
+  return samples.get(layer.sampleUrl);
+}
+
+function loadTiled(map, layer, src) {
+  const s = layer.style || {};
+  const display = displayOf(layer);
+  loadSample(layer).then((sample) => {
+    if (!map.getSource(src)) return;
+    const fc = filterData(layer, { type: 'FeatureCollection', features: sample?.features || [] });
+    if (!layer.attribution && sample?.attribution) layer.attribution = sample.attribution;
+    const { expr, legend } = colorRamp(layer, fc);
+    map.setPaintProperty(`${src}-fill`, 'fill-color', expr);
+    if (map.getLayer(`${src}-extrusion`)) map.setPaintProperty(`${src}-extrusion`, 'fill-extrusion-color', expr);
+    const plain = !s.mode || s.mode === 'single';
+    map.setPaintProperty(`${src}-line`, 'line-color', plain ? expr : ['case', POLY, '#ffffff', expr]);
+    map.setPaintProperty(`${src}-circle`, 'circle-color', expr);
+    if (map.getLayer(`${src}-glow`)) map.setPaintProperty(`${src}-glow`, 'circle-color', expr);
+    let info = legend;
+    if (display === 'heatmap') info = { type: 'heat', stops: heatStops(/^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : PALETTE[0]), weight: s.weight };
+    const vals = s.sizeField ? fc.features.map((f) => Number(f.properties?.[s.sizeField])).filter((v) => Number.isFinite(v) && v >= 0) : [];
+    if (vals.length) {
+      const size = { field: s.sizeField, min: Math.min(...vals), max: Math.max(...vals), lo: +(s.sizeMin ?? 4), hi: +(s.sizeMax ?? 28), lines: false, areas: false };
+      applySize(map, src, size, display);
+      info = { ...info, size };
+    }
+    if (sample?.count) info = { ...info, count: sample.count };
+    map._legendInfo[layer.id] = info;
+    map._legend.render(map);
+  }).catch((err) => {
+    map._legendInfo[layer.id] = { type: 'error', message: err.message };
+    map._legend.render(map);
+  });
+}
+
 /** Removes a layer from a live map and adds it back, picking up any change to its style or data. */
 export function rebuildLayer(map, layer) {
   if (!map.isStyleLoaded()) return;
@@ -749,6 +918,7 @@ function loadInto(map, layer) {
   const s = layer.style || {};
   const display = displayOf(layer);
   if (layer.type === 'raster') return;
+  if (layer.type === 'vector') { loadTiled(map, layer, src); return; }
   layerFeatures(layer).then((fc) => {
     if (map.getSource(src) !== source) return; // style was swapped while loading
     if (!layer.attribution && fc.metadata?.attribution) layer.attribution = fc.metadata.attribution;
@@ -868,12 +1038,12 @@ function withTime(fc, field) {
     return Number.isFinite(t) ? { ...f, properties: { ...f.properties, __t: t } } : f;
   }) };
 }
-const timeLayers = (map) => map._library.filter((l) => l.time?.field && map._visible.includes(l.id));
+const timeLayers = (map) => map._library.filter((l) => l.time?.field && l.type !== 'vector' && map._visible.includes(l.id));
 // map._time is null (show everything) or { at, span }: features up to `at`, and if span > 0 only the span before it.
 function applyTime(map) {
   if (!map.isStyleLoaded?.()) return;
   const t = map._time;
-  map._library.filter((l) => l.time?.field).forEach((l) => subIds(l.id).forEach((lid) => {
+  map._library.filter((l) => l.time?.field && l.type !== 'vector').forEach((l) => subIds(l.id).forEach((lid) => {
     if (!map.getLayer(lid)) return;
     const base = map._baseFilters?.[lid] ?? ['all'];
     map.setFilter(lid, t ? ['all', base, ['has', '__t'], ['<=', ['get', '__t'], t.at], ...(t.span ? [['>=', ['get', '__t'], t.at - t.span]] : [])] : base);
@@ -1111,6 +1281,7 @@ class LegendControl {
       if (info.type === 'error') { const e = document.createElement('div'); e.className = 'sm-legend-err'; e.textContent = 'Could not load: ' + info.message; row.append(e); }
       if (info.type === 'single') name.prepend(swatch(info.color, info.clusters));
       if (info.clusters) { const d = document.createElement('div'); d.className = 'sm-legend-note'; d.textContent = 'Nearby points are grouped; click a group to zoom in'; row.append(d); }
+      if (info.count) { const d = document.createElement('div'); d.className = 'sm-legend-note'; d.textContent = `${info.count.toLocaleString()} features`; row.append(d); }
       if (info.type === 'heat') {
         const bar = document.createElement('div');
         bar.className = 'sm-legend-ramp';

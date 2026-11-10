@@ -1,13 +1,15 @@
 // Data workspaces for the editor: Add data, Analyze (with live map preview), and Draw & measure.
 import { h, icon, dialog, toast } from './ui.js';
 import { api, uploadImage } from './api.js';
-import { createMap, setVisibleLayers, reloadLayer, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW } from './maps.js';
+import { createMap, setVisibleLayers, reloadLayer, loadLayerData, layerFeatures, bbox, DEFAULT_VIEW, hostedLayerDef } from './maps.js';
 import { openCatalog } from './catalog.js';
 import { TOOLS, TOOL_GROUPS, OPS, kinds, layerStats, fmtDist, fmtArea, fmtNum } from './analysis.js';
 import { csvToGeoJSON } from './csv.js';
 import { parseKML, parseGPX, fileKind, ACCEPT } from './gisfiles.js';
 import { readPhotoMeta, titleFromFilename } from './exif.js';
 import { openNewHostedLayerDialog, isHostedLayer, saveHostedLayer } from './table.js';
+import { readShapefileZip } from './shapefile.js';
+import { openServices } from './services.js';
 
 let ctx; // { story, changed, renderRail, openLayer, selectedIndex, insertBlock }
 export const initWorkbench = (c) => { ctx = c; };
@@ -26,15 +28,7 @@ function addLayer(layer, { open = true } = {}) {
 }
 
 export function addHostedLayerRef(r, { open = true } = {}) {
-  return addLayer({
-    id: uid('l'),
-    hostedLayerId: r.id,
-    name: r.title || 'Hosted layer',
-    url: r.url || `/api/layers/${r.id}/geojson`,
-    attribution: r.attribution || '',
-    style: r.style && Object.keys(r.style).length ? r.style : { color: '#2563eb' },
-    popup: r.popup || {},
-  }, { open });
+  return addLayer(hostedLayerDef(r, uid('l')), { open });
 }
 
 /* ---------- Parsing uploads ---------- */
@@ -83,18 +77,53 @@ export async function addFiles(fileList) {
   if (photos.length) await addPhotos(photos);
 }
 
+// Files past this size (or this many features) are stored on the server as hosted layers instead of inside the
+// story or map, so pages stay light. Very big ones are then drawn from vector tiles.
+const HOST_BYTES = 3 * 1024 * 1024;
+const HOST_FEATURES = 20000;
+
+/** Uploads a file (or GeoJSON made from one) as hosted layers and adds them. */
+async function hostFile(body, filename) {
+  const busy = toast(`Uploading ${filename}…`, { duration: 600000 });
+  try {
+    const r = await api('POST', '/api/layers/import', body, { raw: true, headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(filename) } });
+    let last = null;
+    r.layers.forEach((l, i) => { last = addHostedLayerRef(l, { open: i === r.layers.length - 1 }); });
+    const n = r.layers.reduce((sum, l) => sum + l.featureCount, 0);
+    toast(`Added ${r.layers.length === 1 ? `"${r.layers[0].title}"` : `${r.layers.length} layers`} · ${n.toLocaleString()} features, stored as ${r.layers.length === 1 ? 'a hosted layer' : 'hosted layers'}${r.layers.some((l) => l.tiled) ? ' and drawn from tiles' : ''}`, { tone: 'ok', duration: 6000 });
+    return last;
+  } finally { busy?.(); }
+}
+
 export async function addFromFile(file) {
-  if (fileKind(file.name, file.type) === 'photo') return addPhotos([file]);
-  if (!fileKind(file.name, file.type)) {
-    toast(`${file.name}: use GeoJSON, KML, GPX, CSV or geotagged JPEG photos. Shapefiles can be converted at mapshaper.org.`, { tone: 'error', duration: 7000 });
+  const kind = fileKind(file.name, file.type);
+  if (kind === 'photo') return addPhotos([file]);
+  if (!kind) {
+    toast(`${file.name}: use GeoJSON, a zipped shapefile, GeoPackage, KML, GPX, CSV or geotagged JPEG photos.`, { tone: 'error', duration: 7000 });
     return null;
   }
   try {
+    if (kind === 'geopackage') return await hostFile(file, file.name);
+    if (kind === 'geojson' && file.size > HOST_BYTES) return await hostFile(file, file.name);
+    if (kind === 'shapefile') {
+      const sets = await readShapefileZip(await file.arrayBuffer());
+      let last = null;
+      for (const set of sets) {
+        if (!set.data.features.length) continue;
+        const json = JSON.stringify(set.data);
+        if (json.length > HOST_BYTES || set.data.features.length > HOST_FEATURES) last = await hostFile(new Blob([json]), `${set.name}.geojson`);
+        else {
+          last = addLayer({ id: uid('l'), name: set.name.replace(/[_-]+/g, ' '), data: set.data, style: { color: '#2563eb' }, popup: {} });
+          toast(`Added "${last.name}" · ${set.data.features.length.toLocaleString()} features`, { tone: 'ok' });
+        }
+      }
+      if (!last) throw new Error('No features were found in it');
+      return last;
+    }
     const data = await parseDataFile(file);
-    const kb = Math.round(JSON.stringify(data).length / 1024);
+    if (JSON.stringify(data).length > HOST_BYTES || data.features.length > HOST_FEATURES) return await hostFile(new Blob([JSON.stringify(data)]), file.name.replace(/\.\w+$/, '.geojson'));
     const layer = addLayer({ id: uid('l'), name: file.name.replace(/\.\w+$/, '').replace(/[_-]+/g, ' '), data, style: { color: '#2563eb' }, popup: {} });
     toast(`Added "${layer.name}" · ${data.features.length.toLocaleString()} features`, { tone: 'ok' });
-    if (kb > 3000) toast(`That file is ${kb.toLocaleString()} KB. Big files make stories slow to load; hosting it and adding it by link is better.`, { duration: 8000 });
     return layer;
   } catch (e) {
     toast(`Could not read ${file.name}: ${e.message}`, { tone: 'error', duration: 6000 });
@@ -145,6 +174,11 @@ export async function openHostedLayerPicker() {
   }
 }
 
+/** "Add from a map service": each layer picked is added to the story or map and switched on. */
+export function openMapServices({ onAdd } = {}) {
+  return openServices({ onAdd: (layer) => { addLayer(layer, { open: false }); onAdd?.(layer); } });
+}
+
 /* ---------- Add data ---------- */
 
 export function openAddData() {
@@ -152,7 +186,7 @@ export function openAddData() {
     onchange: async () => { const files = [...fileInput.files]; dlg.close(); await addFiles(files); } });
   const drop = h('button', { type: 'button', class: 'ad-drop', onclick: () => fileInput.click() },
     icon('upload', { size: 26 }), h('strong', {}, 'Drop files here, or click to browse'),
-    h('span', {}, 'GeoJSON · KML (Google Earth) · GPX (GPS tracks) · CSV with lat/lon · geotagged JPEG photos'));
+    h('span', {}, 'GeoJSON · zipped shapefile · GeoPackage · KML · GPX · CSV with lat/lon · geotagged JPEG photos. Big files are fine.'));
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-drop'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('is-drop'));
   drop.addEventListener('drop', async (e) => { e.preventDefault(); const files = [...e.dataTransfer.files]; dlg.close(); await addFiles(files); });
@@ -178,6 +212,7 @@ export function openAddData() {
         option('database', 'Hosted feature layers', 'Create or pick a server-hosted GeoJSON layer with an editable attribute table', () => { dlg.close(); openHostedLayerPicker(); }),
         option('plus', 'New hosted layer', 'Define custom attribute fields, source attribution and geometry', () => { dlg.close(); openNewHostedLayerDialog({ onCreated: (r) => addHostedLayerRef(r) }); }),
         option('globe', 'Public data', 'NOAA, NASA, USGS, Census, NPS and thousands more', () => { dlg.close(); openPublicData(); }),
+        option('layers', 'From a map service', 'WMS, WMTS, WFS, map tiles or a PMTiles file from another server', () => { dlg.close(); openMapServices(); }),
         option('pen', 'Draw on the map', 'Sketch and style points, lines, areas, circles and text', () => { dlg.close(); openDraw(); }),
         option('map', 'Try sample data', 'Landmarks along the Potomac River', () => {
           dlg.close();
@@ -221,9 +256,9 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
   map.on('style.load', () => resultLayers(map, 'wm-result'));
 
   const data = {};
-  await Promise.all(lib.filter((l) => l.type !== 'raster').map(async (l) => { try { const d = await layerFeatures(l); data[l.id] = { data: d, kinds: kinds(d), filtered: !!(l.filters || []).some((f) => f.field) }; } catch { /* unavailable layer */ } }));
+  await Promise.all(lib.filter((l) => l.type !== 'raster' && l.type !== 'vector').map(async (l) => { try { const d = await layerFeatures(l); data[l.id] = { data: d, kinds: kinds(d), filtered: !!(l.filters || []).some((f) => f.field) }; } catch { /* unavailable layer */ } }));
   const usable = lib.filter((l) => data[l.id]);
-  if (!usable.length) { side.replaceChildren(h('p', { class: 'form-error' }, "None of your layers could be loaded.")); return; }
+  if (!usable.length) { side.replaceChildren(h('p', { class: 'form-error' }, lib.some((l) => l.type === 'vector') ? 'Analysis runs in your browser, so it can\'t use imagery or very large layers. Filter a copy down first, or add a smaller layer.' : "None of your layers could be loaded.")); return; }
 
   const list = () => {
     side.replaceChildren(

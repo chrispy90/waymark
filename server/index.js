@@ -794,7 +794,7 @@ route('GET', '/api/layers/:id/sample', async (req, p) => {
   const step = Math.max(1, Math.ceil(all.length / 5000));
   const features = [];
   for (let i = 0; i < all.length; i += step) features.push({ type: 'Feature', geometry: null, properties: all[i].properties || {} });
-  return [200, { type: 'FeatureCollection', count: all.length, bbox: row.bbox ? JSON.parse(row.bbox) : bboxOf(all), fields: JSON.parse(row.fields || '[]'), attribution: row.attribution || '', features },
+  return [200, { type: 'FeatureCollection', count: all.length, bbox: row.bbox ? JSON.parse(row.bbox) : bboxOf(all), geomType: row.geom_type, fields: JSON.parse(row.fields || '[]'), attribution: row.attribution || '', features },
     { 'Cache-Control': 'no-cache' }];
 });
 

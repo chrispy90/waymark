@@ -149,8 +149,10 @@ export function fileKind(name = '', type = '') {
   if (/\.(jpe?g)$/i.test(name) || type === 'image/jpeg') return 'photo';
   if (/\.csv$/i.test(name) || type === 'text/csv') return 'csv';
   if (/\.(geo)?json$/i.test(name) || type === 'application/json' || type === 'application/geo+json') return 'geojson';
+  if (/\.zip$/i.test(name)) return 'shapefile';
+  if (/\.gpkg$/i.test(name)) return 'geopackage';
   return null;
 }
 
-export const ACCEPT = '.geojson,.json,.csv,.kml,.gpx,.jpg,.jpeg,application/json,application/geo+json,text/csv,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg';
-export const SUPPORTED = /\.(geo)?json$|\.csv$|\.kml$|\.gpx$|\.jpe?g$/i;
+export const ACCEPT = '.geojson,.json,.csv,.kml,.gpx,.zip,.gpkg,.jpg,.jpeg,application/json,application/geo+json,text/csv,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg';
+export const SUPPORTED = /\.(geo)?json$|\.csv$|\.kml$|\.gpx$|\.zip$|\.gpkg$|\.jpe?g$/i;

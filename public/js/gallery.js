@@ -4,6 +4,7 @@ import { listLocalStories, deleteLocalStory } from './store.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime, coverGradient, setTitle } from './ui.js';
 import { openWizard } from './wizard.js';
 import { newMap, storyFromMap } from './webmap.js';
+import { hostedLayerDef } from './maps.js';
 import { openExport } from './export.js';
 import { openNewHostedLayerDialog, openAttributeTableDialog } from './table.js';
 
@@ -240,7 +241,7 @@ function layerCard(l, i) {
     const m = newMap();
     m.title = `${l.title} Map`;
     const lid = `l${Math.random().toString(36).slice(2, 8)}`;
-    m.layers.push({ id: lid, hostedLayerId: l.id, name: l.title, url: l.url, attribution: l.attribution || '', style: l.style?.color ? l.style : { color: '#2563eb' }, popup: l.popup || {} });
+    m.layers.push(hostedLayerDef(l, lid));
     m.view.layers.push(lid);
     const r = await api('POST', '/api/maps', { map: m });
     location.href = `/map.html?id=${r.id}`;

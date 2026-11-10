@@ -2,8 +2,8 @@
 // an attribute table and per-layer settings. Maps made here can be used in any number of stories.
 import { api, requireUser, uploadImage } from './api.js';
 import { $, h, icon, logo, toast, menu, dialog, confirmDialog, setTitle } from './ui.js';
-import { BASEMAPS, createMap, readView, setTime, setEnvironment, setVisibleLayers, refreshLayers, rebuildLayer, orderLayers, fitToLayer, layerFeatures, fieldNames, bbox } from './maps.js';
-import { initWorkbench, openAddData, openAnalysis, openDraw, openPublicData, openHostedLayerPicker, rerunAnalysis } from './workbench.js';
+import { BASEMAPS, createMap, readView, setTime, setEnvironment, setVisibleLayers, refreshLayers, rebuildLayer, orderLayers, fitToLayer, layerFeatures, fieldNames, bbox, hostedLayerDef } from './maps.js';
+import { initWorkbench, openAddData, openAnalysis, openDraw, openPublicData, openHostedLayerPicker, openMapServices, rerunAnalysis } from './workbench.js';
 import { layerEditor } from './layer-form.js';
 import { renderAttributeTable, openNewHostedLayerDialog, isHostedLayer } from './table.js';
 import { TOOLS, TOOL_GROUPS, fmtDist, fmtArea } from './analysis.js';
@@ -193,7 +193,7 @@ function layerMenu(btn, l) {
   const i = doc.layers.indexOf(l);
   menu(btn, [
     { label: 'Zoom to layer', icon: 'target', onClick: () => fitToLayer(map, l.id) },
-    l.type !== 'raster' ? { label: 'Attribute table & schema', icon: 'list', onClick: () => openTable(l) } : null,
+    l.type !== 'raster' && l.type !== 'vector' ? { label: 'Attribute table & schema', icon: 'list', onClick: () => openTable(l) } : null,
     { label: 'Settings', icon: 'sliders', onClick: () => selectLayer(l.id) },
     l.analysis ? { label: 'Re-run analysis', icon: 'refresh', onClick: () => rerunAnalysis(l) } : null,
     (l.drawn && l.data) || isHostedLayer(l) ? { label: 'Edit shapes', icon: 'pen', onClick: () => openDraw({ layer: l, view: currentView(), onSave: () => {} }) } : null,
@@ -214,7 +214,7 @@ function addPanel() {
     opt('database', 'Hosted feature layers', 'Create or pick a server-hosted GeoJSON layer with editable attributes and attribution', () => openHostedLayerPicker()),
     opt('plus', 'New hosted layer', 'Define custom schema fields, source attribution and geometry', () => openNewHostedLayerDialog({
       onCreated: (r) => {
-        const l = { id: `l${Math.random().toString(36).slice(2, 8)}`, hostedLayerId: r.id, name: r.title, url: r.url, attribution: r.attribution || '', style: r.style?.color ? r.style : { color: '#2563eb' }, popup: r.popup || {} };
+        const l = hostedLayerDef(r);
         doc.layers.push(l);
         doc.view.layers.push(l.id);
         changed();
@@ -223,7 +223,8 @@ function addPanel() {
       },
     })),
     opt('globe', 'Browse public data', 'NOAA, NASA, USGS, Census, parks, wildfires, plus ArcGIS Online search', () => openPublicData({ onAdd: (l) => { doc.view.layers.push(l.id); changed(); showTool('layers'); } })),
-    opt('upload', 'Your data', 'GeoJSON or CSV files, or a link to GeoJSON or an ArcGIS layer', () => openAddData()),
+    opt('upload', 'Your data', 'GeoJSON, shapefile, GeoPackage, KML, GPX or CSV files of any size, or a link', () => openAddData()),
+    opt('layers', 'From a map service', 'WMS, WMTS, WFS, map tiles or a PMTiles file from another server', () => openMapServices({ onAdd: (l) => { doc.view.layers.push(l.id); changed(); showTool('layers'); } })),
     opt('pen', 'Draw on the map', 'Points, lines, areas, circles and text, styled your way', () => startDraw()))];
 }
 
@@ -470,7 +471,7 @@ function renderProps() {
   const scroll = props.scrollTop;
   props.replaceChildren(
     h('div', { class: 'me-props-head' }, h('strong', {}, l.name || 'Layer'), h('span', { class: 'spacer' }),
-      l.type !== 'raster' ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openTable(l) }, icon('list', { size: 14 }), 'Table') : null,
+      l.type !== 'raster' && l.type !== 'vector' ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => openTable(l) }, icon('list', { size: 14 }), 'Table') : null,
       h('button', { type: 'button', class: 'icon-btn', title: 'Zoom to layer', 'aria-label': 'Zoom to layer', onclick: () => fitToLayer(map, l.id) }, icon('target', { size: 16 })),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close settings', onclick: closeProps }, icon('x', { size: 16 }))),
     LE.layerForm(l));
