@@ -310,7 +310,7 @@ function layerCard(l, i) {
         l.refreshMinutes ? h('span', { class: `pill no-dot ${l.refreshError ? 'is-error' : ''}`, title: l.refreshError || `Refreshes from ${l.sourceUrl}` }, l.refreshError ? 'Sync failed' : 'In sync') : null,
         sharedPill(l),
         h('span', { class: 'muted' }, `${(l.featureCount || 0).toLocaleString()} features · ${(l.fields || []).length} fields · edited ${relTime(l.updatedAt)}`)),
-      l.attribution ? h('div', { class: 'muted', style: 'font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }, `Attribution: ${l.attribution}`) : null));
+      l.attribution ? h('div', { class: 'muted', style: 'flex-basis:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }, `Attribution: ${l.attribution}`) : null));
 }
 
 /* ---------- Dashboards ---------- */

@@ -19,6 +19,12 @@ export function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
+/** Replaces an element's children. Unlike replaceChildren, it takes nested arrays and skips null and false. */
+export function fill(el, ...kids) {
+  el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
+  return el;
+}
+
 /* ---------- Icons (24px grid, stroked) ---------- */
 
 const P = {

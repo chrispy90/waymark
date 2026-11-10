@@ -1,6 +1,6 @@
 // "Add from a map service": standard services other GIS servers publish. WMS and WMTS (pictures of a map), WFS
 // (features), {z}/{x}/{y} tile addresses and PMTiles archives. Each becomes an ordinary Waymark layer.
-import { h, icon, dialog, toast } from './ui.js';
+import { h, icon, dialog, toast, fill } from './ui.js';
 import { usePmtiles, isPmtiles } from './maps.js';
 
 const uid = () => `l${Math.random().toString(36).slice(2, 8)}`;
@@ -147,7 +147,7 @@ export function openServices({ onAdd }) {
     ['OpenStreetMap (tiles)', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
   ];
   async function find() {
-    out.replaceChildren(h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Asking the server what it offers…'));
+    fill(out, h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Asking the server what it offers…'));
     go.disabled = true;
     try {
       const svc = await inspectService(input.value);
@@ -157,14 +157,14 @@ export function openServices({ onAdd }) {
       const draw = () => {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
         const shown = svc.layers.filter((l) => words.every((w) => `${l.title} ${l.name}`.toLowerCase().includes(w))).slice(0, 200);
-        list.replaceChildren(...(shown.length ? shown.map((l) => h('button', { type: 'button', class: 'pick', onclick: () => {
+        fill(list, ...(shown.length ? shown.map((l) => h('button', { type: 'button', class: 'pick', onclick: () => {
           if (sourceLayer && !sourceLayer.value.trim()) { toast('Type the name of the layer inside the tiles first.', { tone: 'error' }); sourceLayer.focus(); return; }
           onAdd(l.layer(sourceLayer?.value.trim()));
           toast(`Added "${l.title}"`, { tone: 'ok' });
         } }, h('span', { class: 'pick-icon' }, icon(svc.kind === 'wfs' || /vector/i.test(svc.label) ? 'layers' : 'image', { size: 18 })),
         h('span', {}, h('strong', {}, l.title), l.name !== l.title ? h('span', {}, l.name) : null))) : [h('p', { class: 'muted' }, 'No layers match.')]));
       };
-      out.replaceChildren(
+      fill(out,
         h('div', { class: 'row', style: 'margin:4px 0 8px' }, h('span', { class: 'pill is-live' }, svc.label), h('strong', {}, svc.title || 'Service'), h('span', { class: 'spacer' }),
           h('span', { class: 'muted' }, `${svc.layers.length.toLocaleString()} ${svc.layers.length === 1 ? 'layer' : 'layers'}`)),
         svc.kind === 'wfs' ? h('p', { class: 'field-hint' }, 'WFS layers come in as features (up to 20,000), so you can style, filter and analyze them.') : null,
@@ -173,7 +173,7 @@ export function openServices({ onAdd }) {
         list);
       draw();
     } catch (e) {
-      out.replaceChildren(h('p', { class: 'form-error' }, e.message));
+      fill(out, h('p', { class: 'form-error' }, e.message));
     } finally { go.disabled = false; }
   }
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') find(); });

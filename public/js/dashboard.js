@@ -3,7 +3,7 @@
 // /dashboard.html?id=<id> is the editor (for the owner and editors); /d/<id> is the public page (?embed=1 for websites).
 import { api } from './api.js';
 import { createMap, layerFeatures, fieldNames, highlightMapFeatures, bbox } from './maps.js';
-import { $, h, icon, logo, toast, menu, dialog, confirmDialog, setTitle, BRAND } from './ui.js';
+import { $, h, icon, logo, toast, menu, dialog, confirmDialog, setTitle, BRAND, fill } from './ui.js';
 import { openShare } from './share.js';
 
 const params = new URLSearchParams(location.search);
@@ -197,7 +197,7 @@ function drawWidgets() {
   const box = $('#widgets');
   if (!box) return;
   const chip = sel ? h('div', { class: 'db-chip' }, icon('sliders', { size: 14 }), h('span', {}, `Showing ${sel.field}: `, h('strong', {}, sel.value)), h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Clear the filter', onclick: () => select(sel.layer, sel.field, sel.value) }, icon('x', { size: 14 }))) : null;
-  box.replaceChildren(...[chip, ...doc.widgets.map((w, i) => h('section', { class: `db-card is-${w.type}` },
+  fill(box, ...[chip, ...doc.widgets.map((w, i) => h('section', { class: `db-card is-${w.type}` },
     h('div', { class: 'db-card-head' }, h('h2', {}, w.title || TYPES.find((t) => t[0] === w.type)?.[1] || 'Chart'),
       editing ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Options for ${w.title || 'chart'}`, onclick: (e) => menu(e.currentTarget, [
         { label: 'Edit', icon: 'sliders', onClick: () => editWidget(w) },
@@ -223,7 +223,7 @@ function editWidget(existing) {
     const pick = (key, text, opts, empty) => h('label', { class: 'field' }, h('span', { class: 'field-label' }, text),
       h('select', { onchange: (e) => { w[key] = e.target.value || undefined; draw(); } }, empty ? h('option', { value: '' }, empty) : null, opts.map(([v, l]) => h('option', { value: v, selected: w[key] === v }, l))));
     if (w.type !== 'number' && w.type !== 'table' && !w.group) w.group = fields.find((f) => !nums.includes(f)) || fields[0];
-    form.replaceChildren(
+    fill(form,
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Kind of chart'), h('div', { class: 'seg seg-block' }, TYPES.map(([v, l]) => h('button', { type: 'button', class: w.type === v ? 'is-on' : '', onclick: () => { w.type = v; draw(); } }, l)))),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Title'), h('input', { class: 'input', type: 'text', value: w.title || '', placeholder: 'e.g. Reports by neighborhood', oninput: (e) => { w.title = e.target.value; } })),
       pick('layer', 'Layer', layers.map((l) => [l.id, `${l.name || 'Layer'} · ${data[l.id].features.length.toLocaleString()}`])),
@@ -256,7 +256,7 @@ function editWidget(existing) {
 
 const mode = await load();
 if (!mode || !doc) {
-  root.replaceChildren(h('main', { class: 'pv-missing' }, h('h1', {}, 'This dashboard isn\'t available'), h('p', {}, 'It may have been deleted, or it isn\'t shared with you.'), h('a', { class: 'btn btn-primary', href: '/?tab=dashboards' }, 'Go to Waymark')));
+  fill(root, h('main', { class: 'pv-missing' }, h('h1', {}, 'This dashboard isn\'t available'), h('p', {}, 'It may have been deleted, or it isn\'t shared with you.'), h('a', { class: 'btn btn-primary', href: '/?tab=dashboards' }, 'Go to Waymark')));
 } else {
   editing = mode === 'editor';
   doc.widgets ||= [];
@@ -267,7 +267,7 @@ if (!mode || !doc) {
     : h('h1', { class: 'db-title' }, doc.title || 'Untitled dashboard');
   const extent = h('label', { class: 'check db-extent', title: 'Charts count only the features inside the map\'s current view' },
     h('input', { type: 'checkbox', checked: !!doc.extentFilter, onchange: (e) => { doc.extentFilter = e.target.checked; changed(); drawWidgets(); } }), 'Only what\'s in view');
-  root.replaceChildren(
+  fill(root,
     embed ? null : h('header', { class: 'bld-top db-top' },
       mode === 'public' ? h('a', { href: '/', class: 'pv-logo', 'aria-label': BRAND.name }, logo({ size: 26, withName: false }))
         : [h('a', { href: '/?tab=dashboards', class: 'icon-btn', title: 'All dashboards', 'aria-label': 'All dashboards' }, icon('back')), logo({ size: 26, withName: false }), h('span', { class: 'bld-sep', 'aria-hidden': 'true' })],

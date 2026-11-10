@@ -106,3 +106,6 @@
 .pp-who p { margin: 6px 0 0; color: var(--fg-2); max-width: 640px; line-height: 1.5; }
 .pp-h { font: 700 14px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 28px 0 12px; }
 .pp-sub { margin: 0 0 8px; font-size: 13.5px; color: var(--fg-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fp-form .field-label { display: block; }
+.pp .card-body { display: block; }
+.pp .card-meta { display: flex; align-items: center; gap: 8px; }

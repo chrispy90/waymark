@@ -1,6 +1,6 @@
 // Public form (/f/<id>): answer a few questions, mark the place on a map, add a photo, send. Each submission
 // becomes a point in a hosted layer. Built for phones first.
-import { h, icon, setTitle } from './ui.js';
+import { h, icon, setTitle, fill } from './ui.js';
 
 const id = /^\/f\/([\w-]+)/.exec(location.pathname)?.[1] || new URLSearchParams(location.search).get('id');
 const root = document.getElementById('page');
@@ -10,10 +10,10 @@ const res = await fetch(`/api/public/forms/${encodeURIComponent(id)}`);
 const form = res.ok ? await res.json() : null;
 
 if (!form) {
-  root.replaceChildren(h('main', { class: 'pv-missing' }, h('h1', {}, 'This form isn\'t available'), h('p', {}, 'The link may be wrong, or the form was deleted.')));
+  fill(root, h('main', { class: 'pv-missing' }, h('h1', {}, 'This form isn\'t available'), h('p', {}, 'The link may be wrong, or the form was deleted.')));
 } else if (!form.open) {
   setTitle(form.title);
-  root.replaceChildren(h('main', { class: 'pv-missing' }, h('h1', {}, form.title), h('p', {}, 'This form is closed and isn\'t taking new submissions.')));
+  fill(root, h('main', { class: 'pv-missing' }, h('h1', {}, form.title), h('p', {}, 'This form is closed and isn\'t taking new submissions.')));
 } else {
   setTitle(form.title);
   let lngLat = null;
@@ -86,7 +86,7 @@ if (!form) {
       const r = await post(`/api/public/forms/${id}/submit`, JSON.stringify({ values, lngLat, photo }), { 'Content-Type': 'application/json' });
       const out = await r.json().catch(() => null);
       if (!r.ok) throw new Error(out?.error || 'That didn\'t go through. Try again.');
-      root.replaceChildren(h('main', { class: 'pv-missing fp-done' }, h('span', { class: 'fp-check' }, icon('check', { size: 30 })), h('h1', {}, 'Sent'), h('p', {}, out.thanks || 'Thanks! Your submission was received.'),
+      fill(root, h('main', { class: 'pv-missing fp-done' }, h('span', { class: 'fp-check' }, icon('check', { size: 30 })), h('h1', {}, 'Sent'), h('p', {}, out.thanks || 'Thanks! Your submission was received.'),
         h('button', { type: 'button', class: 'btn btn-primary', onclick: () => location.reload() }, 'Send another')));
     } catch (err) {
       error.textContent = err.message;
@@ -101,7 +101,7 @@ if (!form) {
     h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', onclick: () => photoInput.click() }, icon('image', { size: 15 }), 'Add a photo'), photoName, photoInput)) : null,
   error, send);
 
-  root.replaceChildren(h('main', { class: 'fp' }, h('h1', {}, form.title), form.description ? h('p', { class: 'fp-intro' }, form.description) : null, el,
+  fill(root, h('main', { class: 'fp' }, h('h1', {}, form.title), form.description ? h('p', { class: 'fp-intro' }, form.description) : null, el,
     h('p', { class: 'fp-foot muted' }, 'Made with ', h('a', { href: '/' }, 'Waymark'))));
 
   const map = new maplibregl.Map({ container: mapEl, style: 'https://tiles.openfreemap.org/styles/liberty', center: form.center || [-98.5, 39.5], zoom: form.zoom ?? (form.center ? 12 : 3), attributionControl: { compact: true }, cooperativeGestures: true });

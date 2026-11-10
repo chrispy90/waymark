@@ -2,7 +2,7 @@
 // Add ?embed=1 to drop the header for use inside another website.
 import { createMap, applyView } from './maps.js';
 import { api } from './api.js';
-import { h, icon, logo, setTitle, BRAND } from './ui.js';
+import { h, icon, logo, setTitle, BRAND, fill } from './ui.js';
 
 const params = new URLSearchParams(location.search);
 const id = /^\/m\/([\w-]+)/.exec(location.pathname)?.[1] || params.get('id');
@@ -18,7 +18,7 @@ async function load() {
 
 const doc = await load();
 if (!doc) {
-  root.replaceChildren(h('main', { class: 'pv-missing' }, h('h1', {}, 'This map isn\'t available'), h('p', {}, 'It may have been deleted, or it isn\'t shared by link.'), h('a', { class: 'btn btn-primary', href: '/' }, 'Go to Waymark')));
+  fill(root, h('main', { class: 'pv-missing' }, h('h1', {}, 'This map isn\'t available'), h('p', {}, 'It may have been deleted, or it isn\'t shared by link.'), h('a', { class: 'btn btn-primary', href: '/' }, 'Go to Waymark')));
 } else {
   setTitle(doc.title || 'Map');
   const mapEl = h('div', { class: 'pv-map' });
@@ -33,7 +33,7 @@ if (!doc) {
     note.hidden = !bm?.note;
     note.textContent = bm?.note || '';
   } }, h('option', { value: '' }, 'Starting view'), bookmarks.map((b) => h('option', { value: b.id }, b.name || 'Untitled view'))) : null;
-  root.replaceChildren(
+  fill(root,
     embed ? null : h('header', { class: 'pv-head' },
       h('a', { href: '/', class: 'pv-logo', 'aria-label': BRAND.name }, logo({ size: 26, withName: false })),
       h('div', { class: 'pv-titles' }, h('h1', {}, doc.title || 'Untitled map'), doc.summary ? h('p', {}, doc.summary) : null),

@@ -1,7 +1,7 @@
 // Sharing: who can open or change a story, map, layer or dashboard; public links and embed codes; groups; and the
 // settings for your public page.
 import { api } from './api.js';
-import { h, icon, dialog, toast, confirmDialog, copyText } from './ui.js';
+import { h, icon, dialog, toast, confirmDialog, copyText, fill } from './ui.js';
 
 const NOUN = { story: 'story', map: 'map', layer: 'layer', dashboard: 'dashboard' };
 const roleSelect = (value, onchange, opts = [['viewer', 'Can view'], ['editor', 'Can edit']]) =>
@@ -25,7 +25,7 @@ export async function openShare(item, { onChange } = {}) {
   let me;
   try {
     [state, { groups }, { user: me }] = await Promise.all([api('GET', `/api/share/${item.type}/${item.id}`), api('GET', '/api/groups'), api('GET', '/api/me')]);
-  } catch (e) { body.replaceChildren(h('p', { class: 'form-error' }, e.message)); return dlg; }
+  } catch (e) { fill(body, h('p', { class: 'form-error' }, e.message)); return dlg; }
 
   const save = async (patch) => {
     try {
@@ -44,7 +44,7 @@ export async function openShare(item, { onChange } = {}) {
     const origin = location.origin;
     const publicUrl = item.type === 'story' ? (item.url ? origin + item.url : null) : item.type === 'map' ? `${origin}/m/${item.id}` : item.type === 'dashboard' ? `${origin}/d/${item.id}` : `${origin}/api/public/layers/${item.id}.geojson`;
 
-    body.replaceChildren(
+    fill(body,
       h('div', { class: 'rail-section-title', style: 'margin-top:0' }, 'People and groups'),
       state.shares.length ? h('div', { class: 'share-list' }, state.shares.map((s, i) => h('div', { class: 'share-row' },
         h('span', { class: 'share-who' }, icon(s.kind === 'group' ? 'layers' : 'file', { size: 16 }), h('span', {}, h('strong', {}, s.kind === 'group' ? s.name : s.name || s.email), h('span', { class: 'muted' }, s.kind === 'group' ? 'Group' : s.email))),
@@ -117,7 +117,7 @@ export async function renderTeam(container, { user }) {
         g.canManage && m.role !== 'owner' ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Remove ${m.name || m.email}`, onclick: async () => { await api('DELETE', `/api/groups/${g.id}/members/${m.id}`); reload(); } }, icon('x', { size: 15 })) : h('span', { style: 'width:32px' })))),
       g.canManage ? h('div', { class: 'row share-add' }, email, h('button', { type: 'button', class: 'btn btn-primary', onclick: add }, 'Add')) : null);
   };
-  container.replaceChildren(
+  fill(container,
     h('div', { class: 'gallery-head' },
       h('div', {}, h('h1', {}, 'Your team'), h('p', {}, 'Groups let you share stories, maps, layers and dashboards with several people at once. Admins can add and remove people.')),
       h('span', { class: 'spacer' }), h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New group')),
@@ -136,7 +136,7 @@ export async function openProfile({ onChange } = {}) {
   const bio = h('textarea', { class: 'input', rows: 3, maxlength: 500, placeholder: 'A line or two about you or your organization' }, user.bio || '');
   const err = h('p', { class: 'form-error', role: 'alert' });
   const link = h('p', { class: 'field-hint' });
-  const showLink = () => link.replaceChildren(...(handle.value.trim() ? ['Your page: ', h('a', { href: `/u/${handle.value.trim().toLowerCase()}`, target: '_blank', rel: 'noopener' }, `${location.origin}/u/${handle.value.trim().toLowerCase()}`)]
+  const showLink = () => fill(link, ...(handle.value.trim() ? ['Your page: ', h('a', { href: `/u/${handle.value.trim().toLowerCase()}`, target: '_blank', rel: 'noopener' }, `${location.origin}/u/${handle.value.trim().toLowerCase()}`)]
     : ['Leave the address blank to have no public page.']));
   handle.addEventListener('input', showLink);
   showLink();

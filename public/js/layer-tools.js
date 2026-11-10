@@ -1,7 +1,7 @@
 // Tools for hosted layers: version history (undo), keeping a layer in sync with a URL, forms that collect points
 // from the public, and uploading big files.
 import { api } from './api.js';
-import { h, icon, dialog, toast, confirmDialog, copyText, relTime } from './ui.js';
+import { h, icon, dialog, toast, confirmDialog, copyText, relTime, fill } from './ui.js';
 import { invalidateLayerCache } from './maps.js';
 import { fileKind } from './gisfiles.js';
 import { readShapefileZip } from './shapefile.js';
@@ -34,7 +34,7 @@ export async function openHistory(layer, { onChange } = {}) {
   const canEdit = !layer.role || layer.role !== 'viewer';
   const load = async () => {
     const { versions } = await api('GET', `/api/layers/${layer.id}/history`);
-    body.replaceChildren(
+    fill(body,
       h('p', { class: 'field-hint', style: 'margin-top:0' }, 'Every change to this layer\'s features is kept here: edits in the table, drawing, form submissions and refreshes. Restoring a version makes a new one, so nothing is lost. The newest 25 are kept.'),
       h('div', { class: 'share-list' }, versions.map((v) => h('div', { class: 'share-row' },
         h('span', { class: 'share-who' }, icon(v.current ? 'check' : 'undo', { size: 16 }),
@@ -53,7 +53,7 @@ export async function openHistory(layer, { onChange } = {}) {
               } catch (e) { toast(e.message, { tone: 'error' }); }
             } }, 'Restore') : null)))));
   };
-  load().catch((e) => body.replaceChildren(h('p', { class: 'form-error' }, e.message)));
+  load().catch((e) => fill(body, h('p', { class: 'form-error' }, e.message)));
   return dlg;
 }
 
@@ -65,7 +65,7 @@ export function openSync(layer, { onChange } = {}) {
   const url = h('input', { class: 'input', type: 'url', value: layer.sourceUrl || '', placeholder: 'https://… GeoJSON, a CSV with lat/lon columns, or an ArcGIS feature layer' });
   const every = h('select', {}, EVERY.map(([v, l]) => h('option', { value: v, selected: (layer.refreshMinutes || 0) === v }, l)));
   const status = h('p', { class: 'field-hint' });
-  const showStatus = (l) => status.replaceChildren(...(l.refreshError ? [h('span', { class: 'form-error' }, `Last refresh failed: ${l.refreshError}`)]
+  const showStatus = (l) => fill(status, ...(l.refreshError ? [h('span', { class: 'form-error' }, `Last refresh failed: ${l.refreshError}`)]
     : l.refreshedAt ? [`Last refreshed ${relTime(l.refreshedAt)}.`] : ['Not refreshed yet.']));
   showStatus(layer);
   const save = async (thenRefresh) => {
@@ -103,7 +103,7 @@ function editForm(layer, form, { onSaved }) {
   const f = form ? structuredClone(form) : { title: layer.title, description: '', thanks: '', location: 'required', photo: false, open: true,
     fields: (layer.fields || []).filter((x) => !/^(photo_url|submitted_at)$/.test(x.name)).slice(0, 12).map((x) => ({ name: x.name, type: x.type, label: x.alias || x.name, required: false })) };
   const list = h('div', { class: 'form-fields' });
-  const draw = () => list.replaceChildren(...f.fields.map((fld, i) => h('div', { class: 'form-field' },
+  const draw = () => fill(list, ...f.fields.map((fld, i) => h('div', { class: 'form-field' },
     h('div', { class: 'row' },
       h('input', { class: 'input', type: 'text', value: fld.label, placeholder: 'Question', 'aria-label': 'Question', style: 'flex:2', oninput: (e) => { fld.label = e.target.value; if (fld._new) fld.name = e.target.value.trim().toLowerCase().replace(/[^\w]+/g, '_').replace(/^_|_$/g, '').slice(0, 40); } }),
       h('select', { 'aria-label': 'Answer type', onchange: (e) => { fld.type = e.target.value; } }, Object.entries(TYPE_LABEL).map(([v, l]) => h('option', { value: v, selected: fld.type === v }, l))),
@@ -146,7 +146,7 @@ export async function openForms(layer, { onChange } = {}) {
   const load = async () => {
     const { forms } = await api('GET', `/api/layers/${layer.id}/forms`);
     const create = h('button', { type: 'button', class: 'btn btn-primary', onclick: () => editForm(layer, null, { onSaved: (f) => { toast('Form made. Copy its link to share it.', { tone: 'ok' }); load(); copyText(location.origin + f.url); } }) }, icon('plus', { size: 15 }), 'New form');
-    body.replaceChildren(
+    fill(body,
       h('p', { class: 'field-hint', style: 'margin-top:0' }, 'A form is a public page where anyone with the link can add a point to this layer: answers to your questions, a place on the map, and a photo if you allow it. It works on phones. Nobody filling it in can see the layer\'s other data.'),
       forms.length ? h('div', { class: 'share-list' }, forms.map((f) => h('div', { class: 'share-row' },
         h('span', { class: 'share-who' }, icon('list', { size: 16 }), h('span', {}, h('strong', {}, f.title), h('span', { class: 'muted' }, `${f.submissions.toLocaleString()} ${f.submissions === 1 ? 'submission' : 'submissions'} · ${f.fields.length} ${f.fields.length === 1 ? 'question' : 'questions'}`))),
@@ -163,6 +163,6 @@ export async function openForms(layer, { onChange } = {}) {
         : h('p', { class: 'muted' }, 'No forms yet.'),
       h('div', { style: 'margin-top:12px' }, create));
   };
-  load().catch((e) => body.replaceChildren(h('p', { class: 'form-error' }, e.message)));
+  load().catch((e) => fill(body, h('p', { class: 'form-error' }, e.message)));
   return dlg;
 }

@@ -1084,3 +1084,4 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .svc-list { max-height: 320px; overflow: auto; display: grid; gap: 6px; }
 .svc-list .pick { width: 100%; text-align: left; }
 .svc .row .input { flex: 1; min-width: 0; }
+.card-body { flex-wrap: wrap; }
