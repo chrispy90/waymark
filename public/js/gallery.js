@@ -5,12 +5,14 @@ import { $, h, icon, logo, toast, menu, dialog, confirmDialog, copyText, relTime
 import { openWizard } from './wizard.js';
 import { newMap, storyFromMap } from './webmap.js';
 import { hostedLayerDef } from './maps.js';
+import { openShare, renderTeam, openProfile } from './share.js';
+import { openHistory, openSync, openForms, uploadLayerFiles } from './layer-tools.js';
 import { openExport } from './export.js';
 import { openNewHostedLayerDialog, openAttributeTableDialog } from './table.js';
 
 // "Your stories", "Your maps", and "Your layers" share the home screen. (Declared before start() runs, which uses it.)
 const urlTab = new URLSearchParams(location.search).get('tab');
-let tab = urlTab === 'maps' ? 'maps' : urlTab === 'layers' ? 'layers' : 'stories';
+let tab = ['maps', 'layers', 'dashboards', 'team'].includes(urlTab) ? urlTab : 'stories';
 const { user, firstRun } = await api('GET', '/api/me');
 if (!user) location.replace(firstRun ? '/login.html' : '/welcome.html');
 else start();
@@ -24,6 +26,7 @@ function start() {
   avatar.addEventListener('click', () => menu(avatar, [
     { label: user.email, icon: 'file', disabled: true, onClick: () => {} },
     'sep',
+    { label: 'Your public page', icon: 'globe', onClick: () => openProfile() },
     { label: 'Change password', icon: 'key', onClick: changePassword },
     { label: 'Sign out', icon: 'logout', onClick: signOut },
   ]));
@@ -34,7 +37,7 @@ function start() {
 
 const SAFE_IMG = /^(\/uploads\/|https?:\/\/)[^"'()\\\s]+$/;
 let query = '';
-const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps'], ['layers', 'Layers']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
+const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps'], ['layers', 'Layers'], ['dashboards', 'Dashboards'], ['team', 'Team']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
   class: tab === k ? 'is-on' : '', 'aria-selected': tab === k ? 'true' : 'false', onclick: () => { tab = k; history.replaceState(null, '', k === 'stories' ? '/' : `?tab=${k}`); skeleton(); load(); } }, l)));
 let sort = (() => { try { return localStorage.getItem('wm.sort') || 'edited'; } catch { return 'edited'; } })();
 
@@ -55,6 +58,8 @@ const sorters = {
 async function load() {
   if (tab === 'maps') return loadMaps();
   if (tab === 'layers') return loadLayers();
+  if (tab === 'dashboards') return loadDashboards();
+  if (tab === 'team') { const main = $('#gallery'); main.removeAttribute('aria-busy'); const box = h('div'); main.replaceChildren(tabs(), box); return renderTeam(box, { user }); }
   const { stories } = await api('GET', '/api/stories');
   const main = $('#gallery');
   main.removeAttribute('aria-busy');
@@ -96,6 +101,11 @@ addEventListener('keydown', (e) => {
   if (search && e.key === '/' && !e.target.closest('input, textarea') && !document.querySelector('dialog[open]')) { e.preventDefault(); search.focus(); }
 });
 
+// Things other people shared with you say whose they are and what you can do with them.
+const sharedPill = (x) => (x.role && x.role !== 'owner' ? h('span', { class: 'pill no-dot is-shared', title: x.role === 'editor' ? 'You can edit this' : 'You can view this' }, `${x.owner || 'Shared'} · ${x.role === 'editor' ? 'can edit' : 'view only'}`) : null);
+const mine = (x) => !x.role || x.role === 'owner';
+const canEdit = (x) => !x.role || x.role !== 'viewer';
+
 function badge(s) {
   if (!s.url) return h('span', { class: 'pill' }, 'Draft');
   if (s.hasUnpublishedChanges) return h('span', { class: 'pill is-warn' }, 'Unpublished edits');
@@ -109,21 +119,22 @@ function storyCard(s, i) {
     const btn = e.currentTarget;
     btn.setAttribute('aria-expanded', 'true');
     menu(btn, [
-      { label: 'Edit', icon: 'text', onClick: () => { location.href = `/builder.html?id=${s.id}`; } },
+      canEdit(s) ? { label: 'Edit', icon: 'text', onClick: () => { location.href = `/builder.html?id=${s.id}`; } } : null,
+      mine(s) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'story', id: s.id, title: s.title, url: s.url }, { onChange: load }) } : null,
       s.url ? { label: 'Open live story', icon: 'external', onClick: () => window.open(s.url, '_blank', 'noopener') } : { label: 'Preview draft', icon: 'eye', onClick: () => window.open(`/viewer.html?draft=${s.id}`, '_blank', 'noopener') },
       s.url ? { label: 'Copy link', icon: 'link', onClick: async () => { await copyText(location.origin + s.url); toast('Link copied', { tone: 'ok' }); } } : null,
       { label: 'Duplicate', icon: 'copy', onClick: () => duplicate(s) },
       { label: 'Export as a website…', icon: 'globe', onClick: () => openExport({ id: s.id }).catch((err) => toast(err.message, { tone: 'error' })) },
-      'sep',
-      { label: 'Delete', icon: 'trash', danger: true, onClick: () => remove(s) },
+      mine(s) ? 'sep' : null,
+      mine(s) ? { label: 'Delete', icon: 'trash', danger: true, onClick: () => remove(s) } : null,
     ].filter(Boolean));
     const obs = new MutationObserver(() => { if (!document.querySelector('.menu')) { btn.removeAttribute('aria-expanded'); obs.disconnect(); } });
     obs.observe(document.body, { childList: true });
   } }, icon('more'));
-  return h('a', { class: 'card', href: `/builder.html?id=${s.id}`, 'data-story': s.id, style: `--i:${i}` },
+  return h('a', { class: 'card', href: canEdit(s) ? `/builder.html?id=${s.id}` : `/viewer.html?draft=${s.id}`, 'data-story': s.id, style: `--i:${i}` },
     h('div', { class: 'card-cover', style: `background-image:${s.cover && SAFE_IMG.test(s.cover) ? `url("${s.cover}")` : coverGradient(s.id + s.title)}` }, h('span', { class: 'card-cover-title' }, s.title || 'Untitled story')),
     more,
-    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' }, badge(s), h('span', { class: 'muted' }, `Edited ${relTime(s.updatedAt)}${s.blocks ? ` · ${s.blocks} blocks` : ''}`))));
+    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' }, badge(s), sharedPill(s), h('span', { class: 'muted' }, `Edited ${relTime(s.updatedAt)}${s.blocks ? ` · ${s.blocks} blocks` : ''}`))));
 }
 
 async function duplicate(s) {
@@ -172,7 +183,10 @@ function mapCard(m, i) {
     e.preventDefault();
     e.stopPropagation();
     menu(e.currentTarget, [
-      { label: 'Edit map', icon: 'map', onClick: () => { location.href = `/map.html?id=${m.id}`; } },
+      canEdit(m) ? { label: 'Edit map', icon: 'map', onClick: () => { location.href = `/map.html?id=${m.id}`; } } : { label: 'Open map', icon: 'eye', onClick: () => { location.href = `/m/${m.id}`; } },
+      mine(m) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'map', id: m.id, title: m.title }, { onChange: load }) } : null,
+      m.shared ? { label: 'Open public page', icon: 'external', onClick: () => window.open(`/m/${m.id}`, '_blank', 'noopener') } : null,
+      { label: 'New dashboard with this map', icon: 'chart', onClick: () => newDashboard(m) },
       { label: 'New story with this map', icon: 'scrollmap', onClick: async () => {
         const { map } = await api('GET', `/api/maps/${m.id}`);
         const s = await api('POST', '/api/stories', { story: storyFromMap(map, m.id) });
@@ -185,8 +199,8 @@ function mapCard(m, i) {
         toast('Map duplicated', { tone: 'ok' });
         load();
       } },
-      'sep',
-      { label: 'Delete', icon: 'trash', danger: true, onClick: async () => {
+      mine(m) ? 'sep' : null,
+      mine(m) ? { label: 'Delete', icon: 'trash', danger: true, onClick: async () => {
         const { stories } = await api('GET', `/api/maps/${m.id}/usage`);
         const ok = await confirmDialog({ title: `Delete "${m.title || 'Untitled map'}"?`, danger: true, confirmLabel: 'Delete map',
           message: stories.length ? `${stories.length} ${stories.length === 1 ? 'story uses' : 'stories use'} it (${stories.map((s) => s.title).join(', ')}). Those maps will go blank. This can't be undone.` : "This can't be undone." });
@@ -194,14 +208,14 @@ function mapCard(m, i) {
         await api('DELETE', `/api/maps/${m.id}`);
         toast('Map deleted');
         load();
-      } },
-    ]);
+      } } : null,
+    ].filter(Boolean));
   } }, icon('more'));
-  return h('a', { class: 'card', href: `/map.html?id=${m.id}`, style: `--i:${i}` },
+  return h('a', { class: 'card', href: canEdit(m) ? `/map.html?id=${m.id}` : `/m/${m.id}`, style: `--i:${i}` },
     h('div', { class: 'card-cover', style: `background-image:${m.thumbnail && SAFE_IMG.test(m.thumbnail) ? `url("${m.thumbnail}")` : coverGradient(m.id + m.title)}` }, h('span', { class: 'card-cover-title' }, m.title || 'Untitled map')),
     more,
     h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
-      m.shared ? h('span', { class: 'pill is-live' }, 'In a live story') : h('span', { class: 'pill no-dot' }, 'Map'),
+      m.shared ? h('span', { class: 'pill is-live' }, 'Public') : h('span', { class: 'pill no-dot' }, 'Map'), sharedPill(m),
       h('span', { class: 'muted' }, `${m.layers} ${m.layers === 1 ? 'layer' : 'layers'} · ${m.bookmarks} ${m.bookmarks === 1 ? 'bookmark' : 'bookmarks'} · edited ${relTime(m.updatedAt)}`))));
 }
 
@@ -217,6 +231,8 @@ async function loadLayers() {
       openAttributeTableDialog({ id: r.id, hostedLayerId: r.id, name: r.title, url: r.url, attribution: r.attribution }, { onChange: () => load() });
     },
   });
+  const upload = h('input', { type: 'file', multiple: true, hidden: true, accept: '.geojson,.json,.zip,.gpkg', onchange: async () => { const files = [...upload.files]; upload.value = ''; if ((await uploadLayerFiles(files)).length) load(); } });
+  const uploadBtn = h('button', { type: 'button', class: 'btn btn-lg', title: 'GeoJSON, a zipped shapefile or a GeoPackage, of any size', onclick: () => upload.click() }, icon('upload'), 'Upload a file');
   main.replaceChildren(
     tabs(),
     h('div', { class: 'gallery-head' },
@@ -224,6 +240,7 @@ async function loadLayers() {
         ? `${layers.length} hosted GeoJSON ${layers.length === 1 ? 'layer' : 'layers'} · edit attributes, schema fields, and source attribution in one place`
         : 'Create ArcGIS Online-style hosted GeoJSON layers with editable attribute tables and source attribution.')),
       h('span', { class: 'spacer' }),
+      upload, uploadBtn,
       h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New hosted layer')),
     layers.length ? h('div', { class: 'cards' }, layers.map((l, i) => layerCard(l, i)),
       h('button', { type: 'button', class: 'card card-new', style: `--i:${layers.length}`, onclick: create }, h('span', { class: 'plus' }, icon('plus')), 'New hosted layer'))
@@ -250,8 +267,12 @@ function layerCard(l, i) {
     e.preventDefault();
     e.stopPropagation();
     menu(e.currentTarget, [
-      { label: 'Edit attribute table & schema', icon: 'list', onClick: openStudio },
+      l.tiled ? null : { label: canEdit(l) ? 'Edit attribute table & schema' : 'Open attribute table', icon: 'list', onClick: openStudio },
       { label: 'Open in a new map', icon: 'map', onClick: openInNewMap },
+      mine(l) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'layer', id: l.id, title: l.title }, { onChange: load }) } : null,
+      { label: 'Version history…', icon: 'undo', onClick: () => openHistory(l, { onChange: load }) },
+      canEdit(l) ? { label: 'Keep in sync with a URL…', icon: 'refresh', onClick: () => openSync(l, { onChange: load }) } : null,
+      canEdit(l) && (l.geomType === 'Point' || !l.featureCount) ? { label: 'Collect data with a form…', icon: 'pen', onClick: () => openForms(l, { onChange: load }) } : null,
       { label: 'Copy GeoJSON service URL', icon: 'link', onClick: async () => { await copyText(location.origin + l.url); toast('GeoJSON service URL copied', { tone: 'ok' }); } },
       { label: 'Duplicate layer', icon: 'copy', onClick: async () => {
         const full = await api('GET', `/api/layers/${l.id}`);
@@ -259,8 +280,8 @@ function layerCard(l, i) {
         toast('Hosted layer duplicated', { tone: 'ok' });
         load();
       } },
-      'sep',
-      { label: 'Delete layer', icon: 'trash', danger: true, onClick: async () => {
+      mine(l) ? 'sep' : null,
+      mine(l) ? { label: 'Delete layer', icon: 'trash', danger: true, onClick: async () => {
         const { stories, maps } = await api('GET', `/api/layers/${l.id}/usage`);
         const usedCount = (stories?.length || 0) + (maps?.length || 0);
         const ok = await confirmDialog({
@@ -273,19 +294,90 @@ function layerCard(l, i) {
         await api('DELETE', `/api/layers/${l.id}`);
         toast('Hosted layer deleted');
         load();
-      } },
-    ]);
+      } } : null,
+    ].filter(Boolean));
   } }, icon('more'));
 
-  return h('div', { class: 'card', role: 'button', tabindex: '0', style: `--i:${i};cursor:pointer`, onclick: openStudio, onkeydown: (e) => { if (e.key === 'Enter') openStudio(); } },
+  const openCard = l.tiled ? openInNewMap : openStudio; // big layers are too large for the table editor, so they open on a map
+  return h('div', { class: 'card', role: 'button', tabindex: '0', style: `--i:${i};cursor:pointer`, onclick: openCard, onkeydown: (e) => { if (e.key === 'Enter') openCard(); } },
     h('div', { class: 'card-cover', style: `background-image:${coverGradient('layer-' + l.id + l.title)}` },
       h('span', { class: 'card-cover-title' }, l.title || 'Untitled layer')),
     more,
     h('div', { class: 'card-body' },
       h('div', { class: 'card-meta' },
         l.shared ? h('span', { class: 'pill is-live' }, 'Public GeoJSON') : h('span', { class: 'pill no-dot' }, l.geomType || 'GeoJSON'),
+        l.tiled ? h('span', { class: 'pill no-dot', title: 'Drawn from vector tiles, so it stays fast' }, 'Tiles') : null,
+        l.refreshMinutes ? h('span', { class: `pill no-dot ${l.refreshError ? 'is-error' : ''}`, title: l.refreshError || `Refreshes from ${l.sourceUrl}` }, l.refreshError ? 'Sync failed' : 'In sync') : null,
+        sharedPill(l),
         h('span', { class: 'muted' }, `${(l.featureCount || 0).toLocaleString()} features · ${(l.fields || []).length} fields · edited ${relTime(l.updatedAt)}`)),
       l.attribution ? h('div', { class: 'muted', style: 'font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }, `Attribution: ${l.attribution}`) : null));
+}
+
+/* ---------- Dashboards ---------- */
+
+async function loadDashboards() {
+  const { dashboards } = await api('GET', '/api/dashboards');
+  const main = $('#gallery');
+  main.removeAttribute('aria-busy');
+  const create = () => newDashboard();
+  main.replaceChildren(
+    tabs(),
+    h('div', { class: 'gallery-head' },
+      h('div', {}, h('h1', {}, 'Your dashboards'), h('p', {}, dashboards.length ? `${dashboards.length} ${dashboards.length === 1 ? 'dashboard' : 'dashboards'} · a map with numbers and charts that filter each other` : 'A map with numbers and charts that filter each other.')),
+      h('span', { class: 'spacer' }), h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New dashboard')),
+    dashboards.length ? h('div', { class: 'cards' }, dashboards.map((d, i) => dashCard(d, i)),
+      h('button', { type: 'button', class: 'card card-new', style: `--i:${dashboards.length}`, onclick: create }, h('span', { class: 'plus' }, icon('plus')), 'New dashboard'))
+      : h('section', { class: 'empty' }, icon('chart', { size: 40 }), h('h2', {}, 'Put a map and its numbers side by side'),
+        h('p', {}, 'Pick one of your maps, then add big numbers, bar charts, donuts and tables. Click a bar and the map and the other charts filter to match. Share it with your team or by public link.'),
+        h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New dashboard')));
+}
+
+// A dashboard is built on a saved map; with no map given, ask which one.
+async function newDashboard(map) {
+  const make = async (m) => {
+    const r = await api('POST', '/api/dashboards', { dashboard: { title: `${m.title || 'Untitled map'} dashboard`, map: m.id, widgets: [] } });
+    location.href = `/dashboard.html?id=${r.id}&new=1`;
+  };
+  if (map) return make(map);
+  const { maps } = await api('GET', '/api/maps');
+  if (!maps.length) { toast('Make a map first: a dashboard is built on one of your saved maps.', { duration: 6000 }); tab = 'maps'; history.replaceState(null, '', '?tab=maps'); return load(); }
+  const dlg = dialog({ title: 'Which map is this dashboard about?', body: h('div', { class: 'sub-list', style: 'max-height:360px;overflow:auto' },
+    maps.map((m) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); make(m); } },
+      h('span', { class: 'pick-icon' }, icon('map', { size: 18 })), h('span', {}, h('strong', {}, m.title || 'Untitled map'), h('span', {}, `${m.layers} ${m.layers === 1 ? 'layer' : 'layers'} · edited ${relTime(m.updatedAt)}`))))),
+  actions: [h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel')] });
+  return dlg;
+}
+
+function dashCard(d, i) {
+  const more = h('button', { type: 'button', class: 'icon-btn card-more', 'aria-label': `Options for ${d.title}`, onclick: (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu(e.currentTarget, [
+      { label: canEdit(d) ? 'Edit dashboard' : 'Open dashboard', icon: 'chart', onClick: () => { location.href = `/dashboard.html?id=${d.id}`; } },
+      mine(d) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'dashboard', id: d.id, title: d.title }, { onChange: load }) } : null,
+      d.shared ? { label: 'Open public page', icon: 'external', onClick: () => window.open(`/d/${d.id}`, '_blank', 'noopener') } : null,
+      { label: 'Duplicate', icon: 'copy', onClick: async () => {
+        const { dashboard } = await api('GET', `/api/dashboards/${d.id}`);
+        const { id, ...copy } = dashboard;
+        await api('POST', '/api/dashboards', { dashboard: { ...copy, title: `${dashboard.title || 'Untitled dashboard'} (copy)` } });
+        toast('Dashboard duplicated', { tone: 'ok' });
+        load();
+      } },
+      mine(d) ? 'sep' : null,
+      mine(d) ? { label: 'Delete', icon: 'trash', danger: true, onClick: async () => {
+        if (!await confirmDialog({ title: `Delete "${d.title || 'Untitled dashboard'}"?`, danger: true, confirmLabel: 'Delete dashboard', message: d.shared ? 'Its public link will stop working. The map it uses is not deleted. This can\'t be undone.' : 'The map it uses is not deleted. This can\'t be undone.' })) return;
+        await api('DELETE', `/api/dashboards/${d.id}`);
+        toast('Dashboard deleted');
+        load();
+      } } : null,
+    ].filter(Boolean));
+  } }, icon('more'));
+  return h('a', { class: 'card', href: `/dashboard.html?id=${d.id}`, style: `--i:${i}` },
+    h('div', { class: 'card-cover', style: `background-image:${coverGradient('dash-' + d.id + d.title)}` }, h('span', { class: 'card-cover-title' }, d.title || 'Untitled dashboard')),
+    more,
+    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
+      d.shared ? h('span', { class: 'pill is-live' }, 'Public') : h('span', { class: 'pill no-dot' }, 'Dashboard'), sharedPill(d),
+      h('span', { class: 'muted' }, `${d.widgets} ${d.widgets === 1 ? 'chart' : 'charts'} · edited ${relTime(d.updatedAt)}`))));
 }
 
 function newStoryDialog() {

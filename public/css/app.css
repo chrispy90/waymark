@@ -1056,3 +1056,31 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .mapview.is-on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, var(--panel)); }
 .mapview > span { display: grid; gap: 2px; }
 .mapview .muted { font-size: 12px; }
+
+/* ---------- Sharing, groups, forms and map services ---------- */
+.pill.is-shared { background: color-mix(in srgb, #2563eb 12%, var(--panel)); color: #1d4ed8; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.gallery-tabs { flex-wrap: wrap; }
+.share-list { display: grid; gap: 2px; margin-bottom: 10px; }
+.share-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; min-width: 0; }
+.share-row:hover { background: var(--hover); }
+.share-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.share-who > span:last-child { min-width: 0; display: grid; }
+.share-who strong { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-who .muted { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-role { height: 32px; font-size: 13px; flex: none; }
+.share-add { margin-top: 4px; }
+.share-add .input { flex: 1; min-width: 0; }
+.share .rail-section-title { margin-top: 20px; }
+.share-row .row { flex-wrap: wrap; justify-content: flex-end; }
+.team { display: grid; gap: 18px; max-width: 760px; }
+.team-card { padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.team-card h2 { margin: 0; font: 700 18px/1.3 var(--sans); }
+.team-card > .row { margin-bottom: 10px; }
+.team-avatar { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--bg-2); font-weight: 700; font-size: 13px; color: var(--fg-2); }
+.form-fields { display: grid; gap: 8px; margin-bottom: 10px; }
+.form-field { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); }
+.form-field .row { gap: 8px; }
+.form-field select { height: 36px; }
+.svc-list { max-height: 320px; overflow: auto; display: grid; gap: 6px; }
+.svc-list .pick { width: 100%; text-align: left; }
+.svc .row .input { flex: 1; min-width: 0; }
