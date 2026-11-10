@@ -59,7 +59,7 @@ async function load() {
   if (tab === 'maps') return loadMaps();
   if (tab === 'layers') return loadLayers();
   if (tab === 'dashboards') return loadDashboards();
-  if (tab === 'team') { const main = $('#gallery'); main.removeAttribute('aria-busy'); const box = h('div'); main.replaceChildren(tabs(), box); return renderTeam(box, { user }); }
+  if (tab === 'team') { await null; const main = $('#gallery'); main.removeAttribute('aria-busy'); const box = h('div'); main.replaceChildren(tabs(), box); return renderTeam(box, { user }); }
   const { stories } = await api('GET', '/api/stories');
   const main = $('#gallery');
   main.removeAttribute('aria-busy');

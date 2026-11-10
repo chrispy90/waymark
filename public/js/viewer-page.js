@@ -9,6 +9,7 @@ import { withMaps } from './webmap.js';
 
 const root = document.getElementById('story');
 const params = new URLSearchParams(location.search);
+if (params.has('embed')) document.documentElement.classList.add('is-embed'); // inside another website: no top bar
 let destroy = null;
 const show = (story) => { destroy?.(); destroy = renderStory(story, root); };
 // Saved maps load live: readers get the published copy of each map; the owner previewing a draft gets their latest.

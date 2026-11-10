@@ -105,6 +105,11 @@ async function collect(story, opts, io, step) {
     try {
       layer.data = await io.layerData(layer);
       delete layer.url;
+      // A big hosted layer is drawn from the server's tiles; a static copy has no server, so it carries the features.
+      if (layer.type === 'vector' && layer.sampleUrl) {
+        delete layer.type; delete layer.tiles; delete layer.sampleUrl;
+        if (layer.data.features.length > 50000) warnings.push(`Layer "${layer.name}" has ${layer.data.features.length.toLocaleString()} features. The exported site will be large and slow to draw it.`);
+      }
     } catch (e) {
       warnings.push(local ? `Layer "${layer.name}" could not be loaded (${e.message}) and will be empty.` : `Layer "${layer.name}" could not be copied (${e.message}); it will load from its original link.`);
     }

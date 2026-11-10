@@ -2,6 +2,23 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
+## Unreleased
+
+### Added
+- **Teams and sharing.** Make groups on the new **Team** tab and add people by the email of their account. Share any story, map, hosted layer or dashboard with people or groups as a viewer or an editor. Shared items show whose they are and what you can do with them. Only the owner can delete, publish or change sharing. A shared story brings the maps and layers it uses.
+- **Big layers.** Hosted layers with more than 20,000 features are drawn from vector tiles made by the server, so browsers only download what's on screen. Files up to 256 MB upload straight to the server; anything over 3 MB or 20,000 features is stored as a hosted layer instead of inside the story.
+- **More formats and services.** Upload zipped shapefiles and GeoPackages. **Add from a map service** reads WMS, WMTS and WFS services, `{z}/{x}/{y}` tile addresses and PMTiles files.
+- **Dashboards.** A saved map beside big numbers, bar charts, donuts and tables. Click a bar or slice to filter the map and every other chart, or have the charts count only what's in view.
+- **Forms.** A public page, built for phones, where anyone with the link can add a point to a hosted layer: answers to your questions, a place on the map and an optional photo.
+- **Public links, embeds and a public page.** Maps and dashboards can be shared by link (`/m/…`, `/d/…`). Stories, maps and dashboards have an embed code. Pick an address for a public page (`/u/you`) that lists what you choose to show.
+- **Scheduled refresh.** A hosted layer can follow a URL (GeoJSON, a CSV with latitude and longitude, or an ArcGIS feature layer) every 15 minutes to every week.
+- **Routes and travel-time areas.** Two new analysis tools: the road route through a layer's points, and how far you can get from each point in a set time by car, by bike or on foot.
+- **Map export.** The map editor's **Export** tool saves a page with a title, legend, scale bar, north arrow and credits as a PDF or PNG.
+- **Layer history.** Every change to a hosted layer's features is kept (the newest 25), from edits, forms and refreshes, and any version can be downloaded or restored.
+
+### Changed
+- Publishing a story, or sharing a map or dashboard by link, makes the maps and hosted layers it uses readable, but only ones its owner can open. Putting someone else's map id in your own story gives no access to it.
+
 ## 1.5.0 (2026-10-17)
 
 ### Added

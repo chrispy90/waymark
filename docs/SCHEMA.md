@@ -103,6 +103,22 @@ Anything a feature doesn't set falls back to the layer's `style`. Draw saves sha
   "date": "2016-01-01", "maxzoom": 12, "attribution": "…", "style": { "opacity": 0.7 } }
 ```
 
+### Layers drawn from vector tiles
+
+```jsonc
+{ "id": "parcels", "name": "Parcels", "type": "vector",
+  "tiles": "/api/layers/<id>/tiles/{z}/{x}/{y}.mvt",   // or https://…/{z}/{x}/{y}.pbf, or a .pmtiles file
+  "sourceLayer": "layer",                              // the layer inside the tiles ("layer" for hosted layers)
+  "sampleUrl": "/api/layers/<id>/sample",              // hosted layers: attributes of up to 5,000 features, for colors and legends
+  "url": "/api/layers/<id>/geojson", "hostedLayerId": "<id>",   // hosted layers keep these, so exports can embed the features
+  "bbox": [-124, 26, -67, 48], "style": { /* color, mode, field, sizeField, label, opacity, minzoom, maxzoom */ }, "filters": [] }
+```
+
+Hosted layers with more than 20,000 features are added this way automatically. Style, filters, labels, popups and
+heatmaps work; clusters, the time slider, drawing, the attribute table and analysis need a layer that is loaded whole.
+Map services are ordinary layers too: WMS and WMTS become imagery layers (`type: "raster"`, with `{bbox-epsg-3857}`
+in a WMS address), and WFS becomes a layer with a `url`.
+
 ## Saved maps
 
 A saved map is its own document, made in the map editor (`/map.html?id=…`) and stored apart from stories:
@@ -130,6 +146,22 @@ The story keeps only the reference. Before a story is shown, previewed or export
 layers are copied into `layers` with ids `<map id>~<layer id>`, and the view becomes an ordinary one. Published stories load
 their maps live from `GET /api/public/maps/:id`, so edits to a map reach readers without republishing. A map becomes readable
 there once a published story of the same owner uses it. Exported websites get a copy and don't depend on the server.
+
+## Dashboards
+
+```jsonc
+{
+  "title": "Service requests", "map": "<map id>",
+  "extentFilter": false,                 // true: charts count only the features inside the map's current view
+  "widgets": [
+    { "id": "w1", "type": "number", "title": "Open requests", "layer": "<layer id in the map>", "stat": "count" },
+    { "id": "w2", "type": "number", "layer": "…", "stat": "sum", "field": "cost", "prefix": "$", "suffix": "" },   // stat: count | sum | avg | min | max
+    { "id": "w3", "type": "bars",   "layer": "…", "group": "kind", "stat": "count", "limit": 8 },                  // one bar per value of "group"
+    { "id": "w4", "type": "donut",  "layer": "…", "group": "ward", "stat": "sum", "field": "cost" },
+    { "id": "w5", "type": "table",  "layer": "…", "fields": ["kind", "ward"], "field": "days_open", "limit": 25 }  // "field": biggest first
+  ]
+}
+```
 
 ## Blocks
 

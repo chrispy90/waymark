@@ -964,3 +964,6 @@ img, video, iframe { display: block; max-width: 100%; }
 .is-editing [data-block-index].is-selected::after { outline-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* Embedded in another website (?embed=1) */
+.is-embed .sm-topbar { display: none; }

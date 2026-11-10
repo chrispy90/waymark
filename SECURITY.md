@@ -27,4 +27,10 @@ Problems in MapLibre, Turf, basemap providers or the public data sources should 
 
 ## How Waymark protects you
 
+Sharing is checked on the server for every request: each story, map, layer and dashboard has one owner, and other people only reach it through a share (as a viewer or an editor), a group they belong to, a public link, or a shared story or map that uses it. An item that isn't shared with you answers "not found", the same as one that doesn't exist.
+
+Two features fetch addresses that a signed-in person types in: scheduled layer refresh and reading a map service's description. Both refuse anything but http and https, refuse private, loopback and link-local addresses (unless `ALLOW_PRIVATE_FETCH=1`), re-check every redirect, and cap the response size. The address is resolved before the request is made, so a hostile DNS server that changes its answer between the two could still get through; keep sign-ups closed (`ALLOW_SIGNUP=0`) on a server that sits inside a sensitive network.
+
+Public forms accept submissions from anyone with the link. They are rate-limited per address, checked against the form's questions, and can only add points to their own layer; they never reveal the layer's existing data. Close a form to stop submissions.
+
 The README's [Security section](README.md#-under-the-hood) describes the protections that are built in: password hashing, sessions, CSRF protection, HTML sanitizing, the Content-Security-Policy and upload checks.

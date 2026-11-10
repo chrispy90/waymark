@@ -189,6 +189,34 @@ Then **walk readers through it**: one click turns the bookmarks into moving-map 
 
 <p align="center"><img src="docs/media/map-editor.png" alt="The map editor with layers, two bookmarks and layer settings" width="100%"></p>
 
+### Work as a team
+
+Make a group on the **Team** tab, add people by the email of their account, and share any story, map, hosted layer or dashboard with people or groups, as a **viewer** or an **editor**. What others share with you appears in your own lists, labeled with whose it is. Only the owner can delete, publish or change sharing, and a shared story brings along the maps and layers it uses.
+
+### Millions of features, and the formats GIS people already have
+
+- **Big layers stay fast.** A hosted layer with more than 20,000 features is drawn from **vector tiles** the server makes on request, so a browser downloads only what's on screen. Files up to 256 MB upload straight to the server.
+- **Shapefiles and GeoPackages.** Drop a zipped shapefile or a `.gpkg` anywhere you can add data. WGS 84, NAD83, Web Mercator and UTM are converted; other coordinate systems are refused with a clear message.
+- **Map services.** **Add from a map service** reads **WMS**, **WMTS** and **WFS** services, `{z}/{x}/{y}` tile addresses and **PMTiles** files. Paste an address, pick from the layers it offers.
+- **Layers that keep themselves current.** Point a hosted layer at a URL (GeoJSON, a CSV with latitude and longitude, or an ArcGIS feature layer) and it refreshes every 15 minutes to every week.
+- **Undo for data.** Every change to a hosted layer's features is kept, from edits, forms and refreshes. Download or restore any of the newest 25 versions.
+
+### Dashboards
+
+A **dashboard** puts one of your saved maps beside big numbers, bar charts, donuts and tables made from its layers. Click a bar or a slice and the map and every other chart filter to match; tick **Only what's in view** and the charts follow the map as you pan. Share a dashboard with your team, by public link, or embedded in a website.
+
+### Collect data with a form
+
+Give a hosted point layer a **form**: a public page, built for phones, where anyone with the link answers your questions, marks the place on a map (or uses their location) and can add a photo. Each submission becomes a point in the layer, and shows up in every map and dashboard that uses it. People filling it in never see the layer's other data.
+
+### Public links, embeds and your own page
+
+Share a map (`/m/…`) or a dashboard (`/d/…`) by link, copy an **embed code** for any story, map or dashboard, and choose an address for a **public page** (`/u/you`) that lists the work you decide to show.
+
+### Routes, travel time and print
+
+Two analysis tools use roads: **Route along roads** (the route through a layer's points, with distance and time per leg) and **Travel-time areas** (how far you can get in 5, 10 or 15 minutes by car, by bike or on foot). They use a [Valhalla](https://github.com/valhalla/valhalla) routing server: by default a free public demo, which is for light use only, so set `ROUTING_URL` to your own for regular work. The map editor's **Export** tool saves the map as a **PDF or PNG** page with a title, legend, scale bar, north arrow and credits.
+
 ### Draw right on the map
 
 Press **Draw** on any map in the editor and sketch points, lines, freehand routes, areas, boxes, circles and text labels right on it. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing or Hosted Feature Layer whenever you like.
@@ -313,6 +341,10 @@ Copy `.env.example` to `.env` and edit it. Everything is optional.
 | `COOKIE_SECURE` | off | Set to `1` when the site is served over HTTPS |
 | `ALLOW_SIGNUP` | on | Set to `0` to stop new sign-ups once your accounts exist |
 | `SMTP_*` | off | Email for password resets. See below |
+| `MAX_LAYER_MB` | `256` | Largest hosted-layer upload |
+| `TILE_THRESHOLD` | `20000` | Hosted layers with more features than this are drawn from vector tiles |
+| `ROUTING_URL` | a public Valhalla demo | Routing server for routes and travel-time areas |
+| `ALLOW_PRIVATE_FETCH` | off | Set to `1` to let scheduled refresh and map services reach addresses on your own network |
 
 </details>
 
@@ -377,6 +409,13 @@ public/                the web app (plain ES modules, no build step)
   js/mapeditor.js      the saved-map editor (map.html)
   js/webmap.js         saved maps in stories: builds them into a story before it's shown or exported
   js/table.js          hosted feature layers, editable attribute tables, schema studio and field calculator
+  js/share.js          share dialog, groups (the Team tab) and public-page settings
+  js/layer-tools.js    hosted layer history, sync with a URL, forms and big uploads
+  js/services.js       WMS, WMTS, WFS, tile addresses and PMTiles
+  js/shapefile.js      zipped shapefile reader
+  js/dashboard.js      dashboards (editor and public page)
+  js/print.js          map export to PDF and PNG
+  js/mapview.js · form-page.js · profile.js   public map, form and profile pages
   js/layer-form.js     layer settings, shared by the story editor and the map editor
   js/catalog.js        public data catalog (government sources + ArcGIS Online search)
   js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
@@ -412,6 +451,14 @@ Every request that changes data must send the header `X-Waymark: 1`. This guards
 | `GET /api/public/:slug` | A published story's JSON |
 | `GET /api/maps` · `POST /api/maps {map}` · `GET` `PUT {map, version}` `DELETE /api/maps/:id` · `GET /api/maps/:id/usage` · `GET /api/public/maps/:id` | Saved maps: list, create, read, save, delete, which stories use one, and the copy readers load once a published story uses it |
 | `GET /api/layers` · `POST /api/layers` · `GET` `PUT` `DELETE /api/layers/:id` · `GET /api/layers/:id/geojson` · `GET /api/layers/:id/usage` · `GET /api/public/layers/:id` | Hosted feature layers: list, create, edit schema/attributes/features, serve as GeoJSON, check story/map usage, and public GeoJSON service endpoint |
+| `POST /api/layers/import` (raw file) · `GET /api/layers/:id/tiles/:z/:x/:y.mvt` · `GET /api/layers/:id/sample` | Big uploads (GeoJSON, GeoPackage), vector tiles, and a sample of attributes for styling |
+| `GET /api/layers/:id/history` · `GET /api/layers/:id/history/:version` · `POST /api/layers/:id/restore/:version` · `POST /api/layers/:id/refresh` | Layer history, restore, and refresh from the layer's source URL |
+| `GET` `POST /api/layers/:id/forms` · `PUT` `DELETE /api/forms/:id` · `GET /api/public/forms/:id` · `POST /api/public/forms/:id/submit` · `POST /api/public/forms/:id/photo` | Forms that add points to a hosted layer |
+| `GET /api/dashboards` · `POST /api/dashboards {dashboard}` · `GET` `PUT {dashboard, version}` `DELETE /api/dashboards/:id` · `GET /api/public/dashboards/:id` | Dashboards |
+| `GET` `POST /api/groups` · `PUT` `DELETE /api/groups/:id` · `POST /api/groups/:id/members {email, role}` · `DELETE /api/groups/:id/members/:userId` | Groups |
+| `GET` `PUT /api/share/:type/:id {shares, link, listed}` (type: story, map, layer, dashboard) | Who an item is shared with, its public link, and whether it is on your public page |
+| `PUT /api/me {name, handle, bio}` · `GET /api/public/users/:handle` | Your public page |
+| `GET /api/config` · `GET /api/fetch?url=` | Settings the browser needs, and a guarded fetch of map service descriptions |
 | `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
 
 </details>
