@@ -92,6 +92,83 @@ db.exec(`
     expires_at INTEGER NOT NULL,
     used_at INTEGER
   );
+  -- Teams: groups of accounts, and who an item (story, map, layer, dashboard) is shared with.
+  CREATE TABLE IF NOT EXISTS groups (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS group_members (
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'member',
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (group_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS shares (
+    item_type TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS shares_item ON shares(item_type, item_id);
+  CREATE INDEX IF NOT EXISTS shares_user ON shares(user_id);
+  CREATE INDEX IF NOT EXISTS shares_group ON shares(group_id);
+  -- Earlier states of a hosted layer, kept on disk as <id>.v<version>.geojson so edits can be undone.
+  CREATE TABLE IF NOT EXISTS layer_versions (
+    layer_id TEXT NOT NULL REFERENCES layers(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    saved_at INTEGER NOT NULL,
+    saved_by TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    feature_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (layer_id, version)
+  );
+  -- Dashboards: a saved map plus charts, numbers and filters that work on each other.
+  CREATE TABLE IF NOT EXISTS dashboards (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    shared INTEGER NOT NULL DEFAULT 0,
+    listed INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS dashboards_owner ON dashboards(owner_id, updated_at DESC);
+  -- Public forms that add points to a hosted layer.
+  CREATE TABLE IF NOT EXISTS forms (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    layer_id TEXT NOT NULL REFERENCES layers(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}',
+    open INTEGER NOT NULL DEFAULT 1,
+    submissions INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS forms_layer ON forms(layer_id);
 `);
+
+// Columns added after the first release. SQLite has no "ADD COLUMN IF NOT EXISTS".
+const addColumn = (table, column, type) => {
+  if (!db.prepare(`SELECT 1 FROM pragma_table_info('${table}') WHERE name = ?`).get(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+};
+addColumn('users', 'handle', 'TEXT');
+addColumn('users', 'bio', "TEXT NOT NULL DEFAULT ''");
+addColumn('stories', 'listed', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('maps', 'listed', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('layers', 'updated_by', 'TEXT');
+addColumn('layers', 'source_url', "TEXT NOT NULL DEFAULT ''");
+addColumn('layers', 'refresh_minutes', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('layers', 'refreshed_at', 'INTEGER');
+addColumn('layers', 'refresh_error', "TEXT NOT NULL DEFAULT ''");
+addColumn('layers', 'bbox', 'TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_handle ON users(handle COLLATE NOCASE) WHERE handle IS NOT NULL');
 
 module.exports = { db, DATA_DIR, UPLOAD_DIR, LAYER_DIR };
