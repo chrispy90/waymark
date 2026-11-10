@@ -1020,10 +1020,10 @@ route('GET', '/api/public/users/:handle', async (req, p) => {
 
 /* ---------------- Outside services ---------------- */
 
-// Routing and drive-time engines. The defaults are free public demo servers; point these at your own for real use.
+// Routes and travel-time areas come from a Valhalla server. The default is the free public demo run by
+// OpenStreetMap Germany (fair-use only); set ROUTING_URL to your own Valhalla for regular use.
 route('GET', '/api/config', async () => [200, {
-  routingUrl: (process.env.ROUTING_URL || 'https://router.project-osrm.org').replace(/\/$/, ''),
-  isochroneUrl: (process.env.ISOCHRONE_URL || 'https://valhalla1.openstreetmap.de').replace(/\/$/, ''),
+  routingUrl: (process.env.ROUTING_URL || 'https://valhalla1.openstreetmap.de').replace(/\/$/, ''),
   tileThreshold: TILE_THRESHOLD,
   maxLayerMb: Math.round(MAX_LAYER / 1048576),
 }, { 'Cache-Control': 'public, max-age=300' }]);

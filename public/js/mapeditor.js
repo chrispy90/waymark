@@ -9,6 +9,7 @@ import { renderAttributeTable, openNewHostedLayerDialog, isHostedLayer } from '.
 import { TOOLS, TOOL_GROUPS, fmtDist, fmtArea } from './analysis.js';
 import { findPlaces } from './wizard.js';
 import { storyFromMap } from './webmap.js';
+import { exportPanel } from './print.js';
 
 await requireUser();
 const params = new URLSearchParams(location.search);
@@ -136,7 +137,7 @@ const LE = layerEditor({ doc: () => doc, changed: () => changed(), rerender: () 
 
 const TOOLBAR = [
   ['layers', 'Layers', 'layers'], ['add', 'Add data', 'plus'], ['basemap', 'Basemap', 'globe'], ['bookmarks', 'Bookmarks', 'target'],
-  ['analysis', 'Analysis', 'sparkle'], ['draw', 'Draw', 'pen'], ['measure', 'Measure', 'ruler'], ['details', 'Map details', 'sliders'],
+  ['analysis', 'Analysis', 'sparkle'], ['draw', 'Draw', 'pen'], ['measure', 'Measure', 'ruler'], ['export', 'Export', 'download'], ['details', 'Map details', 'sliders'],
 ];
 let tool = doc.layers.length ? 'layers' : 'add';
 const tools = $('#tools');
@@ -154,6 +155,7 @@ function renderTools() {
 
 const PANELS = {
   layers: layersPanel, add: addPanel, basemap: basemapPanel, bookmarks: bookmarksPanel, analysis: analysisPanel, draw: drawPanel, measure: measurePanel, details: detailsPanel,
+  export: () => exportPanel(map, () => doc, () => renderPanel()),
 };
 function renderPanel() {
   const scroll = panel.scrollTop;

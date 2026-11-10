@@ -103,9 +103,85 @@ function guard(n, max, what) {
   if (n > max) throw new Error(`That's too much for the browser (${n.toLocaleString()} ${what}). Filter the layer first, or use fewer features.`);
 }
 
+/* ---------- Roads: routes and travel-time areas (from a Valhalla routing server) ---------- */
+
+let routingUrl = null;
+async function routing(path, body) {
+  routingUrl ||= await fetch('/api/config').then((r) => r.json()).then((c) => c.routingUrl).catch(() => 'https://valhalla1.openstreetmap.de');
+  let res;
+  // A plain GET: a JSON POST needs the routing server to answer a cross-site preflight, which public ones don't.
+  try { res = await fetch(`${routingUrl}/${path}?json=${encodeURIComponent(JSON.stringify(body))}`); } catch { throw new Error('The routing service could not be reached. Try again in a moment.'); }
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error ? `The routing service said: ${json.error}` : res.status === 429 ? 'The routing service is busy. Wait a moment and run it again.' : `The routing service answered with an error (${res.status}).`);
+  return json;
+}
+// Valhalla sends route shapes as an encoded polyline with six decimal places.
+export function decodePolyline6(str) {
+  const out = [];
+  let [i, lat, lng] = [0, 0, 0];
+  const next = () => { let [shift, result, b] = [0, 0, 0]; do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20); return result & 1 ? ~(result >> 1) : result >> 1; };
+  while (i < str.length) { lat += next(); lng += next(); out.push([lng / 1e6, lat / 1e6]); }
+  return out;
+}
+const MODES = [['auto', 'Car'], ['bicycle', 'Bike'], ['pedestrian', 'Walking']];
+const modeLabel = (m) => ({ auto: 'by car', bicycle: 'by bike', pedestrian: 'on foot' }[m] || 'by car');
+const pointsOf = (data) => data.features.filter((f) => f.geometry?.type === 'Point');
+const hm = (minutes) => (minutes >= 60 ? `${Math.floor(minutes / 60)} hr ${Math.round(minutes % 60)} min` : `${Math.round(minutes)} min`);
+
 /* ---------- Tools ---------- */
 
 export const TOOLS = {
+  route: {
+    name: 'Route along roads', icon: 'route', group: 'Proximity', desc: 'The route through a layer\'s points, in order, following roads or paths, with distance and travel time.',
+    inputs: [{ k: 'input', label: 'Stops, in order', kind: 'point' }],
+    params: [{ k: 'mode', t: 'choice', label: 'Travel', opts: MODES, dflt: 'auto' }, { k: 'loop', t: 'check', label: 'Return to the first stop', dflt: false }],
+    name_: (p, a) => `Route through ${a.input} ${modeLabel(p.mode)}`,
+    async run({ input }, p) {
+      const stops = pointsOf(input);
+      if (stops.length < 2) throw new Error('A route needs at least two points.');
+      guard(stops.length, 20, 'stops');
+      const locations = stops.map((f) => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
+      if (p.loop) locations.push(locations[0]);
+      const { trip } = await routing('route', { locations, costing: p.mode || 'auto', units: 'kilometers' });
+      const legs = (trip?.legs || []).map((leg, i) => {
+        const from = stops[i];
+        const to = stops[(i + 1) % stops.length];
+        return { type: 'Feature', geometry: { type: 'LineString', coordinates: decodePolyline6(leg.shape) },
+          properties: { leg: i + 1, from: featureName(from.properties) || `Stop ${i + 1}`, to: featureName(to.properties) || `Stop ${((i + 1) % stops.length) + 1}`,
+            km: round(leg.summary.length, 2), miles: round(leg.summary.length * 0.621371, 2), minutes: round(leg.summary.time / 60, 1), travel: modeLabel(p.mode) } };
+      });
+      if (!legs.length) throw new Error('No route was found between those points.');
+      const km = trip.summary.length;
+      return { data: fc(legs), note: `${fmtDist(km)} · about ${hm(trip.summary.time / 60)} ${modeLabel(p.mode)}. One line per leg, each with its own distance and time.` };
+    },
+    style: () => ({ color: '#7c3aed', width: 5 }),
+  },
+
+  traveltime: {
+    name: 'Travel-time areas', icon: 'target', group: 'Proximity', desc: 'How far you can get from each point in a set number of minutes by car, by bike or on foot (drive-time areas).',
+    inputs: [{ k: 'input', label: 'From points in', kind: 'point' }],
+    params: [{ k: 'minutes', label: 'Minutes (comma-separated)', dflt: '5, 10, 15' }, { k: 'mode', t: 'choice', label: 'Travel', opts: MODES, dflt: 'auto' }],
+    name_: (p, a) => `${String(p.minutes).replace(/\s+/g, '')} min ${modeLabel(p.mode)} from ${a.input}`,
+    async run({ input }, p) {
+      const from = pointsOf(input);
+      if (!from.length) throw new Error('This needs a layer with points.');
+      guard(from.length, 10, 'starting points');
+      const times = [...new Set(String(p.minutes).split(/[,\s]+/).map(Number).filter((n) => n > 0 && n <= 120))].sort((a, b) => a - b).slice(0, 4);
+      if (!times.length) throw new Error('Enter one or more travel times in minutes, like 5, 10, 15.');
+      const out = [];
+      for (const [i, f] of from.entries()) {
+        const res = await routing('isochrone', { locations: [{ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }], costing: p.mode || 'auto', contours: times.map((time) => ({ time })), polygons: true, denoise: 0.6, generalize: 60 });
+        for (const area of res.features || []) {
+          out.push({ type: 'Feature', geometry: area.geometry, properties: { from: featureName(f.properties) || `Point ${i + 1}`, minutes: area.properties?.contour, travel: modeLabel(p.mode), label: `${area.properties?.contour} min` } });
+        }
+        if (i < from.length - 1) await new Promise((r) => setTimeout(r, 350)); // be gentle with a shared server
+      }
+      out.sort((a, b) => b.properties.minutes - a.properties.minutes); // big areas first, so smaller ones draw on top
+      return { data: fc(out), note: `${times.join(', ')} minutes ${modeLabel(p.mode)} from ${from.length} ${from.length === 1 ? 'point' : 'points'}, in typical conditions without live traffic.` };
+    },
+    style: () => ({ color: '#7c3aed', mode: 'categorical', field: 'label', opacity: 0.25, width: 1.5 }),
+  },
+
   buffer: {
     name: 'Buffer', icon: 'target', group: 'Proximity', desc: 'Draw a zone around every feature, at a distance you choose.',
     inputs: [{ k: 'input', label: 'Around features in' }],
