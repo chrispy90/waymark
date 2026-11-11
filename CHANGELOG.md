@@ -2,6 +2,15 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
+## Unreleased
+
+### Added
+- **User guide.** A help center at `/help` with 22 pages: getting started, the story editor and every block, maps in stories, publishing, the map editor, adding data, layer settings, hosted layers, drawing, an analysis overview and a reference for all 30 tools, sharing and teams, dashboards, forms, export and print, formats and limits, keyboard shortcuts, troubleshooting, and an administrator's guide. It has search, screenshots, and works on phones. Open it from the account menu, the editors' menus, or **How this tool works** on any analysis tool.
+
+### Fixed
+- Layer settings in the map editor and story editor failed to load for ordinary (non-tiled) layers, showing "Cannot access 'tiled' before initialization".
+- The attribute table's toolbar showed stray "null" text.
+
 ## 1.6.0 (2026-11-10)
 
 ### Added

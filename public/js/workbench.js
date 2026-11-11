@@ -9,6 +9,7 @@ import { parseKML, parseGPX, fileKind, ACCEPT } from './gisfiles.js';
 import { readPhotoMeta, titleFromFilename } from './exif.js';
 import { openNewHostedLayerDialog, isHostedLayer, saveHostedLayer } from './table.js';
 import { readShapefileZip } from './shapefile.js';
+import { slugify } from './markdown.js';
 import { openServices } from './services.js';
 
 let ctx; // { story, changed, renderRail, openLayer, selectedIndex, insertBlock }
@@ -243,6 +244,9 @@ const fit = (map, data) => { const b = data && bbox(data); if (b) map.fitBounds(
 
 /* ---------- Analyze ---------- */
 
+// Help headings that differ from a tool's name (the help drops the parenthesized method names).
+const HELP_TITLE = { hotspot: 'Hot-spot & outlier analysis' };
+
 export async function openAnalysis({ tool: startTool, layerId, view: here } = {}) {
   const story = ctx.story();
   const lib = story.layers || [];
@@ -365,7 +369,8 @@ export async function openAnalysis({ tool: startTool, layerId, view: here } = {}
 
     side.replaceChildren(...kidsOf(
       h('button', { type: 'button', class: 'link-btn wb-back', onclick: () => { map._wmResult = null; map.getSource('wm-result')?.setData({ type: 'FeatureCollection', features: [] }); list(); } }, '← All analyses'),
-      h('div', { class: 'wb-tool-head' }, h('span', { class: 'pick-icon' }, icon(tool.icon, { size: 18 })), h('div', {}, h('h3', {}, tool.name), h('p', {}, tool.desc))),
+      h('div', { class: 'wb-tool-head' }, h('span', { class: 'pick-icon' }, icon(tool.icon, { size: 18 })), h('div', {}, h('h3', {}, tool.name), h('p', {}, tool.desc),
+        h('a', { class: 'wb-help', href: `/help/analysis-tools#${slugify(HELP_TITLE[toolId] || tool.name)}`, target: '_blank', rel: 'noopener' }, icon('help', { size: 13 }), 'How this tool works'))),
       inputFields, paramsBox,
       h('div', { style: 'margin-top:18px' }, runBtn),
       resultBox));

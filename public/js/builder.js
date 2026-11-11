@@ -1440,6 +1440,7 @@ function commands() {
     { label: 'Export as a website…', hint: 'A .zip for any web server, or a .war for Tomcat', icon: 'globe', group: 'Story', run: exportSite },
     { label: 'Download story file', hint: 'A .json file you can import again', icon: 'download', group: 'Story', run: downloadStory },
     { label: 'Keyboard shortcuts', icon: 'keyboard', group: 'Help', run: openShortcuts, keys: '?' },
+    { label: 'Open the help', hint: 'The full guide to stories, maps, data and sharing', icon: 'help', group: 'Help', run: () => window.open('/help/stories', '_blank', 'noopener') },
     { label: 'All stories', icon: 'back', group: 'Help', run: () => { location.href = '/'; } },
   ];
 }
@@ -1522,6 +1523,7 @@ $('#btn-more').addEventListener('click', (e) => menu(e.currentTarget, [
   { label: 'Export as a website…', icon: 'globe', onClick: exportSite },
   { label: 'Download story file (for re-importing)', icon: 'download', onClick: downloadStory },
   { label: 'Keyboard shortcuts', icon: 'keyboard', onClick: openShortcuts },
+  { label: 'Help', icon: 'help', onClick: () => window.open('/help/stories', '_blank', 'noopener') },
   { label: 'Import a story file…', icon: 'upload', onClick: () => {
     const input = h('input', { type: 'file', accept: 'application/json,.json', onchange: async () => {
       try {

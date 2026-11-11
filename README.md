@@ -487,6 +487,10 @@ Stories are plain JSON. See [docs/SCHEMA.md](docs/SCHEMA.md).
 
 <br>
 
+## 📖 User guide
+
+Waymark has a full user guide built in: open **Help** from the account menu, or go to `/help` on your Waymark server. It covers the story editor and every block, maps in stories, the map editor, every way to add data, layer styling, hosted layers, all 30 analysis tools, sharing and teams, dashboards, forms, export and print, data formats and limits, keyboard shortcuts, troubleshooting, and an administrator's guide. The pages are Markdown in [`public/help/`](public/help/index.md), so you can also read them here on GitHub.
+
 ## 🤝 Contributing
 
 Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately, as described in [SECURITY.md](SECURITY.md). Each release is listed in the [changelog](CHANGELOG.md).

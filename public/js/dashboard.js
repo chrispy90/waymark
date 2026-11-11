@@ -276,6 +276,7 @@ if (!mode || !doc) {
       h('span', { class: 'spacer' }),
       editing ? extent : null,
       editing && mapDoc ? h('a', { class: 'btn', href: `/map.html?id=${doc.map}` }, icon('map', { size: 15 }), 'Edit the map') : null,
+      editing ? h('a', { class: 'icon-btn', href: '/help/dashboards', target: '_blank', rel: 'noopener', title: 'Help', 'aria-label': 'Help' }, icon('help')) : null,
       editing && meta.role === 'owner' ? h('button', { type: 'button', class: 'btn', onclick: () => openShare({ type: 'dashboard', id: meta.id, title: doc.title }) }, icon('link', { size: 15 }), 'Share') : null,
       editing ? h('button', { type: 'button', class: 'btn btn-primary', onclick: () => editWidget(null) }, icon('plus', { size: 15 }), 'Add a chart') : null),
     h('main', { class: 'db-main' }, h('div', { class: 'db-map-wrap' }, mapEl), h('aside', { class: 'db-side', id: 'widgets', 'aria-live': 'polite' }, h('p', { class: 'uploading' }, h('span', { class: 'spinner' }), 'Loading the data…'))));

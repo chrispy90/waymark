@@ -26,7 +26,7 @@ const MIN_REFRESH = 5; // minutes
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8', '.geojson': 'application/geo+json', '.svg': 'image/svg+xml',
+  '.json': 'application/json; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.geojson': 'application/geo+json', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon',
 };
 
@@ -1143,6 +1143,7 @@ const server = http.createServer(async (req, res) => {
     if (urlPath === '/js/brand.js') return send(res, 200, `export const BRAND = ${JSON.stringify(brand)};\n`, { 'Content-Type': 'text/javascript; charset=utf-8' });
     const pub = /^\/s\/([a-z0-9-]+)\/?$/.exec(urlPath);
     if (pub) return renderPublished(req, res, pub[1]);
+    if (/^\/help(\/[\w-]+)?\/?$/.test(urlPath)) return serveFile(res, path.join(PUBLIC, 'help.html')); // help center; pages load from /help/<page>.md
     const page = /^\/(m|d|f|u)\/([\w-]{2,40})\/?$/.exec(urlPath);
     if (page) return serveFile(res, path.join(PUBLIC, { m: 'mapview.html', d: 'dashboard.html', f: 'form.html', u: 'profile.html' }[page[1]]));
     return serveStatic(req, res, urlPath);

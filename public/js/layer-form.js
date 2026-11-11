@@ -147,11 +147,11 @@ export function layerEditor({ doc, changed, rerender, onInfo, noun = 'story' }) 
       } catch (err) { toast(`Could not read file: ${err.message}`, { tone: 'error' }); }
     } });
     const cats = st.mode === 'categorical' && st.field && info.fc ? colorRamp(layer, info.fc).legend.entries.filter(([v]) => v !== 'Other') : [];
+    const tiled = layer.type === 'vector';
     const status = info.loading ? h('span', { class: 'pill' }, 'Loading…') : info.error ? h('span', { class: 'pill is-error' }, info.error)
       : tiled ? h('span', { class: 'pill is-live' }, info.total != null ? `${info.total.toLocaleString()} features · drawn from tiles` : 'Drawn from vector tiles')
       : info.count != null ? h('span', { class: 'pill is-live' }, `${hosted ? 'Hosted GeoJSON · ' : ''}${info.count.toLocaleString()} features · ${flds.length} fields`) : null;
 
-    const tiled = layer.type === 'vector';
     const isPoints = tiled ? info.geomType === 'Point' : info.fc ? kinds(info.fc).has('point') : false;
     const a = layer.analysis;
     const inputNames = a ? Object.values(a.inputs).map((id) => (doc().layers || []).find((l) => l.id === id)?.name || 'a deleted layer').join(' and ') : '';

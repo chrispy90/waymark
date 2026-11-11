@@ -26,6 +26,7 @@ function start() {
   avatar.addEventListener('click', () => menu(avatar, [
     { label: user.email, icon: 'file', disabled: true, onClick: () => {} },
     'sep',
+    { label: 'Help', icon: 'help', onClick: () => window.open('/help', '_blank', 'noopener') },
     { label: 'Your public page', icon: 'globe', onClick: () => openProfile() },
     { label: 'Change password', icon: 'key', onClick: changePassword },
     { label: 'Sign out', icon: 'logout', onClick: signOut },

@@ -89,6 +89,7 @@ const P = {
   circle: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
   type: 'M5 6V4h14v2M12 4v16M9 20h6',
   arrow: 'M5 19L19 5M10 5h9v9',
+  help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.3a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2.2-2.5 3.7M12 17.2h.01',
 };
 
 export function icon(name, { size = 18, cls = '' } = {}) {

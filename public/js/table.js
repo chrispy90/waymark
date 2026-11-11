@@ -1,6 +1,6 @@
 // Hosted Feature Layers & Editable Attribute Table Studio.
 // Provides pure schema/table/field-calculator operations (Node-testable) plus interactive DOM UI.
-import { h, icon, toast, dialog, copyText } from './ui.js';
+import { h, icon, toast, dialog, copyText, fill } from './ui.js';
 import { api } from './api.js';
 import { loadLayerData, invalidateLayerCache, reloadLayer, rebuildLayer, FEATURE_STYLE_KEYS, PALETTE } from './maps.js';
 import { csvToGeoJSON } from './csv.js';
@@ -889,7 +889,7 @@ export async function renderAttributeTable(container, layer, { map, onChange, on
   const headBar = h('div', { class: 'me-table-head' });
 
   function renderToolbar() {
-    headBar.replaceChildren(
+    fill(headBar,
       h('strong', {}, layer.name || 'Layer'),
       statusBadge,
       countBadge,
