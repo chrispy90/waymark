@@ -2,7 +2,7 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
-## Unreleased
+## 1.6.0 (2026-11-10)
 
 ### Added
 - **Teams and sharing.** Make groups on the new **Team** tab and add people by the email of their account. Share any story, map, hosted layer or dashboard with people or groups as a viewer or an editor. Shared items show whose they are and what you can do with them. Only the owner can delete, publish or change sharing. A shared story brings the maps and layers it uses.
