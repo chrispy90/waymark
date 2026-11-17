@@ -2,7 +2,7 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
-## Unreleased
+## 1.7.0 (2026-11-16)
 
 ### Added
 - **Scenarios.** Tabletop exercises on a map, for playing out "what if?" in a meeting. A new **Scenarios** tab on the home screen; start one on a plain basemap or on a saved map.
