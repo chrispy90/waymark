@@ -2,6 +2,23 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
+## Unreleased
+
+### Added
+- **Terrain for scenarios.** Build a hex grid over the play area from elevation data and OpenStreetMap: ground cover, roads, rivers and height. Units then move along the quickest route over the ground instead of a straight line, the selected unit shows where it can reach this turn, and each move records its time and the supply it used. Six kinds of mobility with an editable movement table, slopes that slow vehicles, and a "how fast" view for briefing.
+- **Areas** that slow movement, block it, use more supply, or jam radios, starting on a turn or when an inject is released.
+- **Lines of communication.** Depots, ports, airfields and relays, and the roads, rail, bridges, rivers, sea lanes, air routes, pipelines and signal links between them. Each unit is in supply, strained or out of supply, with a supply level that moves use up and open lines refill. Lines and depots are cut or degraded by hand, by an inject, or by enemy units near them. Cutting a bridge also takes the crossing out of the terrain.
+- **Command and contact.** Units can report to a headquarters and need radio range (not jammed) or a signal link to stay in contact.
+- **Supply effects** (optional): units out of supply lose strength each turn and their moves cost double.
+- **Planned moves** (optional): each side plans its moves, then they're revealed and made at once, with contacts logged.
+- **Combat.** Pick a defender and attackers; Waymark works out combat values (kind, size, strength, supply, contact, the ground, higher ground), finds the odds on a 1d6 combat results table, and applies the result. Roll in the app or enter a real die roll. The table can be edited.
+- **Objectives and scoring.** Points for holding places, contested ground, a victory condition, and the score in the turn bar and the branch comparison.
+- **Planning graphics.** Phase lines, boundaries, axes of advance, areas and labels, kept per turn and per side.
+- **Automatic spotting** (optional) from each unit's sensor range and line of sight over the terrain.
+- **Import from a spreadsheet**: units (with sides, kinds, sizes, ranges and headquarters) and injects, with downloadable templates.
+- The after-action story's maps show lines of communication, objectives and planning graphics; the branch comparison shows supply and score.
+- A **Terrain, supply and combat** page in the user guide.
+
 ## 1.7.0 (2026-11-16)
 
 ### Added

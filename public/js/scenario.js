@@ -10,8 +10,10 @@ import { openShare } from './share.js';
 import { TOOLS } from './analysis.js';
 import {
   KINDS, ECHELONS, STATUSES, statusLabel, sidcOf, distanceKm, circle, branchOf, turnOf, sideOf, lastTurn, turnLabel, moveAllowanceKm,
-  addUnit, removeUnit, moveUnit, updateUnit, logEvent, fireInject, nextTurn, branchFrom, deleteBranch, rewind, sideSummary, compareBranches, branchLog, storyFromScenario,
+  addUnit, removeUnit, moveUnit, updateUnit, logEvent, fireInject, branchFrom, deleteBranch, rewind, sideSummary, compareBranches, branchLog, storyFromScenario, hoursLabel,
 } from './scenario-core.js';
+import * as R from './scenario-rules.js';
+import { createTools } from './scenario-tools.js';
 
 const params = new URLSearchParams(location.search);
 const publicId = /^\/w\/([\w-]+)/.exec(location.pathname)?.[1];
@@ -41,6 +43,10 @@ let wholeLog = false;
 let lastRoll = null;
 const markers = new Map(); // unit id → { marker, key }
 const pins = [];
+let rev = 0; // bumped on every change, so worked-out facts (supply, control…) are recalculated only when needed
+let drawing = null; // { mode: 'line' | 'polygon' | 'point', coords, cursor, snap, hint, done(coords) }
+let factsCache = { key: '', v: null };
+let reachCache = { key: '', features: [] };
 
 /* ---------- loading ---------- */
 
@@ -100,6 +106,7 @@ function mutate(fn, { redraw = true } = {}) {
   undoStack.push(JSON.stringify({ doc, branchId, turnIx }));
   if (undoStack.length > 40) undoStack.shift();
   const out = fn();
+  rev++;
   changed();
   if (redraw) render();
   return out;
@@ -111,6 +118,7 @@ function undo() {
   doc = s.doc;
   branchId = branchOf(doc, s.branchId).id;
   turnIx = Math.min(s.turnIx, lastTurn(doc, branchId));
+  rev++;
   changed();
   render();
   toast('Undone');
@@ -123,7 +131,20 @@ const turn = () => turnOf(doc, branchId, turnIx);
 const atLatest = () => turnIx === lastTurn(doc, branchId);
 const live = () => canEdit && atLatest(); // moves and edits apply to the newest turn of a branch
 const unitById = (uidOf) => turn().units.find((u) => u.id === uidOf);
-const shown = (u) => viewAs === 'all' || u.side === viewAs || u.spotted;
+const shown = (u) => viewAs === 'all' || u.side === viewAs || u.spotted || (facts().rules.autoSpot && facts().spotted.has(u.id));
+
+/** What the rules work out for the turn on screen: terrain, supply, contact, lines cut, spotting, objectives. */
+function facts() {
+  const key = `${rev}|${branchId}|${turnIx}`;
+  if (factsCache.key === key) return factsCache.v;
+  const t = turn();
+  const T = R.terrainOf(doc.terrain);
+  const rules = R.rulesOf(doc);
+  const v = { T, rules, supply: R.supplyStates(doc, t), command: R.commandStates(doc, t, turnIx), cuts: R.interdictions(doc, t),
+    spotted: rules.autoSpot ? R.autoSpotted(doc, t, T) : new Set(), control: R.controlAt(doc, branch(), turnIx), score: (doc.objectives || []).length ? R.scoreAt(doc, branch(), turnIx) : null };
+  factsCache = { key, v };
+  return v;
+}
 
 function goTo(b, n) {
   branchId = branchOf(doc, b).id;
@@ -160,15 +181,22 @@ function symbol(unit, size = 30) {
 function unitEl(u) {
   const el = h('div', { class: `wg-unit${u.id === selected ? ' is-sel' : ''}${u.status === 'destroyed' ? ' is-out' : ''} is-${u.status}`, title: `${u.name} · ${statusLabel(u.status)} · ${u.strength}%` },
     symbol(u),
+    flagsEl(u),
     h('span', { class: 'wg-str' }, h('i', { style: `width:${u.strength}%;background:${u.strength > 60 ? '#16a34a' : u.strength > 30 ? '#d97706' : '#dc2626'}` })),
     h('span', { class: 'wg-name' }, u.name));
   el.addEventListener('click', (e) => { e.stopPropagation(); if (placing) return; select(u.id); });
   return el;
 }
 
+function flagsEl(u) {
+  const flags = tools.unitFlags(u, facts());
+  return flags.length ? h('span', { class: 'wg-flags' }, flags.map(([k, l, title]) => h('b', { class: `is-${k}`, title }, l))) : null;
+}
+
 function select(uidOf, { fly = false } = {}) {
+  if (uidOf && tools.onUnitClick(unitById(uidOf))) return;
   selected = uidOf;
-  if (uidOf && tool !== 'units' && !root.classList.contains('is-present')) tool = 'units';
+  if (uidOf && !['units', 'combat'].includes(tool) && !root.classList.contains('is-present')) tool = 'units';
   const u = uidOf && unitById(uidOf);
   if (fly && u) map.easeTo({ center: u.lngLat, duration: 500 });
   render();
@@ -179,12 +207,14 @@ function select(uidOf, { fly = false } = {}) {
 const empty = () => ({ type: 'FeatureCollection', features: [] });
 function ensureLayers() {
   if (map.getSource('wg-moves')) return;
+  tools.layersBelow(map);
   map.addSource('wg-overlay', { type: 'geojson', data: empty() });
   map.addSource('wg-moves', { type: 'geojson', data: empty() });
   map.addLayer({ id: 'wg-overlay-fill', type: 'fill', source: 'wg-overlay', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['coalesce', ['get', 'color'], '#7c3aed'], 'fill-opacity': ['coalesce', ['get', 'opacity'], 0.2] } });
   map.addLayer({ id: 'wg-overlay-line', type: 'line', source: 'wg-overlay', paint: { 'line-color': ['coalesce', ['get', 'color'], '#7c3aed'], 'line-width': ['coalesce', ['get', 'width'], 1.5], 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] } });
   map.addLayer({ id: 'wg-moves-line', type: 'line', source: 'wg-moves', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-dasharray': [1.5, 1.6] } });
   map.addLayer({ id: 'wg-moves-start', type: 'circle', source: 'wg-moves', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2 } });
+  tools.layersAbove(map);
 }
 
 function drawMap() {
@@ -196,17 +226,13 @@ function drawMap() {
   const keep = new Set(units.map((u) => u.id));
   for (const [uidOf, m] of markers) if (!keep.has(uidOf)) { m.marker.remove(); markers.delete(uidOf); }
   for (const u of units) {
-    const key = JSON.stringify([u.name, u.side, u.kind, u.echelon, u.strength, u.status, u.id === selected, live(), sideOf(doc, u.side).color, sideOf(doc, u.side).affiliation]);
+    const key = JSON.stringify([u.name, u.side, u.kind, u.echelon, u.strength, u.status, u.id === selected, live(), sideOf(doc, u.side).color, sideOf(doc, u.side).affiliation, tools.unitFlags(u, facts()).map((f) => f[0])]);
     let m = markers.get(u.id);
     if (!m || m.key !== key) {
       m?.marker.remove();
       const marker = new maplibregl.Marker({ element: unitEl(u), anchor: 'center', draggable: live() }).setLngLat(u.lngLat).addTo(map);
       marker.on('dragstart', () => { if (selected !== u.id) { selected = u.id; } });
-      marker.on('dragend', () => {
-        const p = marker.getLngLat();
-        const r = mutate(() => moveUnit(doc, turn(), u.id, [p.lng, p.lat]));
-        if (r?.overBy) toast(`${u.name} moved ${km(r.km)}: ${km(r.overBy)} more than it can cover in a turn (${km(r.allowance)}).`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
-      });
+      marker.on('dragend', () => dropUnit(u.id, marker));
       m = { marker, key };
       markers.set(u.id, m);
     } else m.marker.setLngLat(u.lngLat);
@@ -216,7 +242,7 @@ function drawMap() {
   for (const u of units) {
     if (!u.from || distanceKm(u.from, u.lngLat) < 0.005) continue;
     const color = sideOf(doc, u.side).color;
-    moves.push({ type: 'Feature', properties: { color }, geometry: { type: 'LineString', coordinates: [u.from, u.lngLat] } }, { type: 'Feature', properties: { color }, geometry: { type: 'Point', coordinates: u.from } });
+    moves.push({ type: 'Feature', properties: { color }, geometry: { type: 'LineString', coordinates: u.path?.length > 1 ? u.path : [u.from, u.lngLat] } }, { type: 'Feature', properties: { color }, geometry: { type: 'Point', coordinates: u.from } });
   }
   map.getSource('wg-moves').setData({ type: 'FeatureCollection', features: moves });
   // rings for the selected unit: its range, and how far it can move this turn
@@ -225,10 +251,15 @@ function drawMap() {
   if (u && shown(u)) {
     const color = sideOf(doc, u.side).color;
     if (Number(u.rangeKm) > 0) rings.push({ type: 'Feature', properties: { color, opacity: 0.08, width: 2 }, geometry: { type: 'Polygon', coordinates: [circle(u.lngLat, Number(u.rangeKm))] } });
-    const reach = moveAllowanceKm(doc, u);
-    if (reach && live()) rings.push({ type: 'Feature', properties: { color: '#475569', width: 1.5 }, geometry: { type: 'LineString', coordinates: circle(u.from || u.lngLat, reach) } });
+    const F = facts();
+    if (F.T && live()) rings.push(...reachOutline(u, F));
+    else {
+      const reach = moveAllowanceKm(doc, u);
+      if (reach && live()) rings.push({ type: 'Feature', properties: { color: '#475569', width: 1.5 }, geometry: { type: 'LineString', coordinates: circle(u.from || u.lngLat, reach) } });
+    }
   }
   map.getSource('wg-overlay').setData({ type: 'FeatureCollection', features: [...overlay.features, ...rings] });
+  tools.draw(map, facts());
   // injects that have been released, where they were pinned
   pins.splice(0).forEach((p) => p.remove());
   for (const x of (doc.injects || []).filter((i) => t.fired.includes(i.id) && Array.isArray(i.lngLat))) {
@@ -236,7 +267,84 @@ function drawMap() {
     el.addEventListener('click', (e) => { e.stopPropagation(); showInject(x); });
     pins.push(new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(x.lngLat).addTo(map));
   }
-  map.getCanvas().style.cursor = placing ? 'crosshair' : '';
+  map.getCanvas().style.cursor = placing || drawing ? 'crosshair' : '';
+}
+
+// Where the selected unit can get this turn over the terrain, as an outline of hexes.
+function reachOutline(u, F) {
+  const key = `${rev}|${branchId}|${turnIx}|${u.id}`;
+  if (reachCache.key !== key) {
+    const hours = (Number(doc.clock?.stepMinutes) || 60) / 60;
+    const cells = R.reachCells(doc, turn(), turnIx, F.T, u, hours);
+    reachCache = { key, features: cells.size > 1 ? [{ type: 'Feature', properties: { color: '#334155', width: 1.6 }, geometry: R.cellsOutline(F.T, cells) }] : [] };
+  }
+  return reachCache.features;
+}
+
+/** A unit dropped on the map: it moves along the quickest route over the terrain, or plans the move. */
+function dropUnit(id, marker) {
+  const u = unitById(id);
+  if (!u || !live()) { render(); return; }
+  const p = marker.getLngLat();
+  const to = [p.lng, p.lat];
+  const F = facts();
+  let route = null;
+  if (F.T) route = R.routeUnit(doc, turn(), turnIx, F.T, u, to, { costMult: F.rules.auto && F.supply.get(u.id)?.state === 'out' ? 2 : 1 });
+  const blocked = route?.blocked;
+  if (blocked) toast(`${route.reason} Moved straight there anyway.`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
+  const usable = route && !blocked ? route : null;
+  if (F.rules.planning) {
+    mutate(() => { unitById(id).plan = { to: [+to[0].toFixed(6), +to[1].toFixed(6)], ...(usable || {}) }; });
+    if (!blocked) toast(`Move planned for ${u.name}${usable ? `: ${hoursLabel(usable.hours)}` : ''}. Reveal moves from the turn bar.`, { duration: 3500 });
+    return;
+  }
+  const r = mutate(() => moveUnit(doc, turn(), id, to, usable));
+  const left = Math.round((u.supply ?? 100) - (Number(unitById(id)?.used) || 0));
+  if (r?.overHours) toast(`${u.name} needs ${hoursLabel(r.hours)} to get there: ${hoursLabel(r.overHours)} more than a turn.${left < 0 ? ' It also doesn\'t have the supply for it.' : ''}`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
+  else if (usable && left < 0) toast(`${u.name} doesn't have the supply for that move (it needs ${Math.round(usable.cost)}%).`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
+  else if (r?.overBy) toast(`${u.name} moved ${km(r.km)}: ${km(r.overBy)} more than it can cover in a turn (${km(r.allowance)}).`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
+}
+
+/* ---------- drawing shapes on the map (lines, areas, points) ---------- */
+
+function startDraw(opts) {
+  placing = null;
+  selected = null;
+  drawing = { coords: [], cursor: null, ...opts };
+  map.doubleClickZoom.disable();
+  render();
+}
+function stopDraw() {
+  drawing = null;
+  map.doubleClickZoom.enable();
+  render();
+}
+function finishDraw() {
+  const d = drawing;
+  if (!d) return;
+  const coords = d.coords.filter((p, i, all) => i === 0 || Math.hypot(p[0] - all[i - 1][0], p[1] - all[i - 1][1]) > 1e-7);
+  const need = d.mode === 'polygon' ? 3 : 2;
+  if (coords.length < need) { toast(d.mode === 'polygon' ? 'An area needs at least three corners.' : 'A line needs at least two points.', { tone: 'error' }); return; }
+  stopDraw();
+  d.done(coords.map((p) => [+p[0].toFixed(6), +p[1].toFixed(6)]));
+}
+// Line ends snap to other lines' points and to depots, so a network joins up.
+function snapPoint(ll) {
+  const p = map.project(ll);
+  let best = null;
+  const pts = [...(doc.network?.links || []).flatMap((l) => l.coords || []), ...(doc.network?.nodes || []).map((x) => x.lngLat)];
+  for (const q of pts) { const d = Math.hypot(map.project(q).x - p.x, map.project(q).y - p.y); if (d < 12 && (!best || d < best.d)) best = { d, q }; }
+  return best ? [...best.q] : [ll.lng, ll.lat];
+}
+function drawBar() {
+  const el = $('#wg-drawbar');
+  if (!el) return;
+  el.hidden = !drawing;
+  if (!drawing) return;
+  fill(el, h('span', {}, drawing.hint || 'Click the map.'),
+    drawing.mode !== 'point' && drawing.coords.length ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { drawing.coords.pop(); drawMap(); drawBar(); } }, 'Undo point') : null,
+    drawing.mode !== 'point' ? h('button', { type: 'button', class: 'btn btn-sm btn-primary', onclick: finishDraw }, 'Finish') : null,
+    h('button', { type: 'button', class: 'btn btn-sm', onclick: stopDraw }, 'Cancel'));
 }
 
 function clearOverlay(redraw = true) {
@@ -300,10 +408,12 @@ function editInject(existing) {
   const text = h('textarea', { class: 'input', rows: 3, placeholder: 'What the facilitator reads out', maxlength: 1200 }, x.text || '');
   const last = lastTurn(doc, branchId);
   const when = h('select', {}, h('option', { value: '' }, 'When I release it'), Array.from({ length: Math.max(12, last + 8) }, (_, i) => i + 1).map((n) => h('option', { value: n, selected: Number(x.turn) === n }, `At the start of ${lower(turnLabel(doc, n)) === 'setup' ? 'setup' : turnLabel(doc, n)}`)));
+  const [effectField, readEffects] = tools.injectEffectField(x);
   const where = h('span', { class: 'muted' }, Array.isArray(x.lngLat) ? `Pinned at ${x.lngLat[1].toFixed(4)}, ${x.lngLat[0].toFixed(4)}` : 'Not on the map');
   const done = () => {
     if (!title.value.trim()) { toast('Give the inject a title.', { tone: 'error' }); return false; }
-    Object.assign(x, { title: title.value.trim(), text: text.value.trim(), turn: when.value ? Number(when.value) : null });
+    Object.assign(x, { title: title.value.trim(), text: text.value.trim(), turn: when.value ? Number(when.value) : null, effects: readEffects() });
+    if (!x.effects) delete x.effects;
     mutate(() => { doc.injects ||= []; const i = doc.injects.findIndex((y) => y.id === x.id); if (i >= 0) doc.injects[i] = x; else doc.injects.push(x); });
     return true;
   };
@@ -311,6 +421,7 @@ function editInject(existing) {
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Title'), title),
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Details'), text),
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Release'), when),
+    effectField,
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Place'),
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn btn-sm', onclick: () => {
         if (!done()) return;
@@ -328,7 +439,7 @@ function editInject(existing) {
 
 function advance() {
   if (!live()) return;
-  const r = mutate(() => nextTurn(doc, branchId), { redraw: false });
+  const r = mutate(() => R.startTurn(doc, branchId), { redraw: false });
   turnIx = r.index;
   clearOverlay(false);
   render();
@@ -368,6 +479,8 @@ function openCompare() {
     maps.splice(0).forEach((m) => m.remove());
     const cmp = compareBranches(doc, a, b);
     const col = (which, c, other) => {
+      const extra = tools.compareExtras(c.id);
+      const hasScore = (doc.objectives || []).length > 0;
       const el = h('div', { class: 'wg-cmp-map' });
       const t = branchOf(doc, c.id).turns.at(-1);
       setTimeout(() => {
@@ -380,8 +493,9 @@ function openCompare() {
       return h('div', { class: 'wg-cmp-col' },
         h('select', { 'aria-label': `Branch ${which}`, onchange: (e) => { if (which === 'A') a = e.target.value; else b = e.target.value; draw(); } }, doc.branches.map((x) => h('option', { value: x.id, selected: x.id === c.id, disabled: x.id === other }, x.name))),
         h('p', { class: 'muted' }, `Ended at ${lower(c.label)}`), el,
-        h('table', { class: 'wg-cmp-table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Side'), h('th', {}, 'In action'), h('th', {}, 'Lost'), h('th', {}, 'Strength'))),
-          h('tbody', {}, c.sides.map((s) => h('tr', {}, h('td', {}, h('i', { style: `background:${s.color}` }), s.name), h('td', {}, `${s.active} of ${s.units}`), h('td', {}, String(s.lost)), h('td', {}, `${s.strength}%`))))));
+        h('table', { class: 'wg-cmp-table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Side'), h('th', {}, 'In action'), h('th', {}, 'Lost'), h('th', {}, 'Strength'), h('th', {}, 'In supply'), hasScore ? h('th', {}, 'Score') : null)),
+          h('tbody', {}, c.sides.map((s) => h('tr', {}, h('td', {}, h('i', { style: `background:${s.color}` }), s.name), h('td', {}, `${s.active} of ${s.units}`), h('td', {}, String(s.lost)), h('td', {}, `${s.strength}%`),
+            h('td', {}, extra[s.id]?.supply || '—'), hasScore ? h('td', {}, extra[s.id]?.score ?? '—') : null)))));
     };
     fill(body, col('A', cmp.a, b), col('B', cmp.b, a));
   };
@@ -403,7 +517,7 @@ function writeUp() {
       const win = window.open('', '_blank'); // opened now, while the click still counts, so it isn't blocked
       try {
         await save();
-        const r = await api('POST', '/api/stories', { story: storyFromScenario(doc, { branches: doc.branches.filter((x) => picks.has(x.id)).map((x) => x.id) }) });
+        const r = await api('POST', '/api/stories', { story: storyFromScenario(doc, { branches: doc.branches.filter((x) => picks.has(x.id)).map((x) => x.id), decorate: (b, n) => R.storyFeatures(doc, b, n) }) });
         dlg.close();
         if (win) win.location = `/builder.html?id=${r.id}&new=1`; else location.href = `/builder.html?id=${r.id}&new=1`;
         toast('Story created', { tone: 'ok' });
@@ -438,10 +552,11 @@ function unitEditor(u) {
       h('input', { type: 'range', min: 0, max: 100, step: 5, value: u.strength, disabled: ro, oninput: (e) => { e.target.closest('.field').querySelector('.muted').textContent = `${e.target.value}%`; }, onchange: (e) => set({ strength: +e.target.value }) })),
     h('div', { class: 'grid-2' },
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Range (km)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.rangeKm || '', placeholder: 'None', disabled: ro, onchange: (e) => set({ rangeKm: Math.max(0, +e.target.value || 0) }) })),
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed (km/h)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.speedKmh || '', placeholder: 'Any distance', disabled: ro, onchange: (e) => set({ speedKmh: Math.max(0, +e.target.value || 0) }) }))),
-    h('p', { class: 'field-hint', style: 'margin-top:-4px' }, [Number(u.rangeKm) > 0 ? `The solid ring is its ${km(Number(u.rangeKm))} range.` : null, reachKm ? `The dashed ring is how far it can move this turn (${km(reachKm)}).` : null,
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed (km/h)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.speedKmh || '', placeholder: facts().T ? `Usual: ${R.typicalSpeed(u)}` : 'Any distance', disabled: ro, onchange: (e) => set({ speedKmh: Math.max(0, +e.target.value || 0) }) }))),
+    h('p', { class: 'field-hint', style: 'margin-top:-4px' }, [Number(u.rangeKm) > 0 ? `The solid ring is its ${km(Number(u.rangeKm))} range.` : null, facts().T ? `The outline shows where it can get this turn over the ground.` : reachKm ? `The dashed ring is how far it can move this turn (${km(reachKm)}).` : null,
       moved > 0.005 ? `Moved ${km(moved)} this turn.` : null].filter(Boolean).join(' ') || 'Give it a range to draw a range ring, and a speed to check its moves against the clock.'),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!u.spotted, disabled: ro, onchange: (e) => set({ spotted: e.target.checked }) }), 'Seen by the other sides'),
+    facts().rules.autoSpot && facts().spotted.has(u.id) && !u.spotted ? h('p', { class: 'field-hint', style: 'margin-top:-6px' }, 'Spotted by an opposing unit\'s sensors this turn.') : null,
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Notes'), h('textarea', { class: 'input', rows: 2, disabled: ro, placeholder: 'Orders, condition, anything worth remembering', onchange: (e) => set({ notes: e.target.value }, false) }, u.notes || '')),
     foes.length ? h('div', { class: 'wg-near' }, h('span', { class: 'field-label' }, 'Nearest opposing units'),
       foes.map(({ x, d }) => h('button', { type: 'button', class: 'wg-near-row', onclick: () => select(x.id, { fly: true }) }, h('i', { style: `background:${sideOf(doc, x.side).color}` }), h('span', {}, x.name),
@@ -450,6 +565,7 @@ function unitEditor(u) {
       h('button', { type: 'button', class: 'btn btn-sm', title: 'What this unit can see, given the terrain', onclick: () => lineOfSight(u) }, icon('eye', { size: 14 }), 'Line of sight'),
       h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get by road in one turn', onclick: () => reach(u, 'auto') }, icon('route', { size: 14 }), 'Reach by road'),
       h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get on foot in one turn', onclick: () => reach(u, 'pedestrian') }, icon('route', { size: 14 }), 'On foot')),
+    tools.unitSection(u, facts()),
     ro ? null : h('div', { class: 'row', style: 'margin-top:10px' },
       h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { const c = mutate(() => addUnit(doc, turn(), { ...u, id: undefined, name: `${u.name} (copy)`, lngLat: [u.lngLat[0] + 0.01, u.lngLat[1] - 0.01] }), { redraw: false }); select(c.id); } }, icon('copy', { size: 14 }), 'Duplicate'),
       h('span', { class: 'spacer' }),
@@ -471,13 +587,15 @@ function unitsPanel() {
         h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Size'), h('select', { disabled: !KINDS[template.kind]?.fn, onchange: (e) => { template.echelon = e.target.value; if (isPlacing) placing = { what: 'unit', ...template }; } }, ECHELONS.map(([v, l]) => h('option', { value: v, selected: template.echelon === v }, l))))),
       h('button', { type: 'button', class: `btn btn-block ${isPlacing ? '' : 'btn-primary'}`, onclick: () => { placing = isPlacing ? null : { what: 'unit', ...template }; render(); } },
         isPlacing ? [icon('check', { size: 15 }), 'Done placing'] : [icon('plus', { size: 15 }), 'Place on the map']),
-      isPlacing ? h('p', { class: 'field-hint' }, 'Click the map to place a unit. Keep clicking to place more.') : null) : null,
+      isPlacing ? h('p', { class: 'field-hint' }, 'Click the map to place a unit. Keep clicking to place more.') : null,
+      h('div', { class: 'row wg-import' }, h('button', { type: 'button', class: 'link-btn', onclick: tools.importUnits }, icon('upload', { size: 14 }), 'Import from a spreadsheet'), h('span', { class: 'spacer' }),
+        h('button', { type: 'button', class: 'link-btn', onclick: tools.templates.units }, 'Template'))) : null,
     doc.sides.map((s) => {
       const list = t.units.filter((x) => x.side === s.id && shown(x));
       if (!list.length) return null;
       return [h('div', { class: 'rail-section-title wg-side-title' }, h('i', { style: `background:${s.color}` }), `${s.name} · ${list.filter((x) => x.status !== 'destroyed').length} of ${list.length} in action`),
         h('div', { class: 'wg-list' }, list.map((x) => h('button', { type: 'button', class: `wg-row${x.id === selected ? ' is-on' : ''}${x.status === 'destroyed' ? ' is-out' : ''}`, onclick: () => select(x.id, { fly: true }) },
-          symbol(x, 20), h('span', { class: 'wg-row-name' }, x.name), x.status !== 'ready' ? h('span', { class: `pill no-dot ${x.status === 'destroyed' ? 'is-error' : 'is-warn'}` }, statusLabel(x.status)) : null, h('span', { class: 'muted' }, `${x.strength}%`))))];
+          symbol(x, 20), h('span', { class: 'wg-row-name' }, x.name), flagsEl(x), x.status !== 'ready' ? h('span', { class: `pill no-dot ${x.status === 'destroyed' ? 'is-error' : 'is-warn'}` }, statusLabel(x.status)) : null, h('span', { class: 'muted' }, `${x.strength}%`))))];
     }),
   ];
 }
@@ -502,6 +620,8 @@ function injectsPanel() {
           canEdit ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Delete ${x.title}`, onclick: () => mutate(() => { doc.injects = doc.injects.filter((y) => y.id !== x.id); doc.branches.forEach((b) => b.turns.forEach((tt) => { tt.fired = tt.fired.filter((f) => f !== x.id); })); }) }, icon('trash', { size: 15 })) : null));
     })) : h('p', { class: 'muted' }, 'No injects yet.'),
     canEdit ? h('button', { type: 'button', class: 'btn btn-primary btn-block', style: 'margin-top:12px', onclick: () => editInject(null) }, icon('plus', { size: 15 }), 'New inject') : null,
+    canEdit ? h('div', { class: 'row wg-import' }, h('button', { type: 'button', class: 'link-btn', onclick: tools.importInjects }, icon('upload', { size: 14 }), 'Import from a spreadsheet'), h('span', { class: 'spacer' }),
+      h('button', { type: 'button', class: 'link-btn', onclick: tools.templates.injects }, 'Template')) : null,
     t.fired.length ? null : null,
   ];
 }
@@ -509,7 +629,7 @@ function injectsPanel() {
 function logPanel() {
   const t = turn();
   const events = wholeLog ? branchLog(doc, branchId).filter((e) => e.turn <= turnIx) : t.events.map((e) => ({ ...e, turn: turnIx, label: turnLabel(doc, turnIx) }));
-  const ICON = { move: 'route', inject: 'target', roll: 'hex', status: 'sliders', strength: 'chart', add: 'plus', remove: 'trash', note: 'text' };
+  const ICON = { move: 'route', inject: 'target', roll: 'hex', status: 'sliders', strength: 'chart', add: 'plus', remove: 'trash', note: 'text', combat: 'swords', contact: 'target', supply: 'database', command: 'link', link: 'line' };
   let lastLabel = null;
   return [
     ...head('Log and notes', `What happened on ${lower(turnLabel(doc, turnIx))}, and the decisions the room made. Notes go into the after-action story.`),
@@ -584,7 +704,7 @@ function setupPanel() {
   const ro = !canEdit;
   const c = doc.clock ||= { mode: 'turns', stepMinutes: 60, start: '' };
   return [
-    ...head('Setup', 'The scenario\'s description, sides and clock.'),
+    ...head('Setup', 'The scenario\'s description, sides, clock and rules.'),
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'What this scenario tests'), h('textarea', { class: 'input', rows: 3, disabled: ro, placeholder: 'The question the room is here to answer', onchange: (e) => mutate(() => { doc.summary = e.target.value; }, { redraw: false }) }, doc.summary || '')),
     h('div', { class: 'rail-section-title' }, 'Sides'),
     h('div', { class: 'wg-list' }, doc.sides.map((s, i) => h('div', { class: 'row wg-side-row' },
@@ -603,6 +723,7 @@ function setupPanel() {
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Minutes per turn'), h('input', { class: 'input', type: 'number', min: 1, step: 1, value: c.stepMinutes || 60, disabled: ro, onchange: (e) => mutate(() => { c.stepMinutes = Math.max(1, Math.round(+e.target.value || 60)); }) })),
       c.mode === 'time' ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Game starts'), h('input', { class: 'input', type: 'datetime-local', value: c.start || '', disabled: ro, onchange: (e) => mutate(() => { c.start = e.target.value; }) })) : h('span')),
     h('p', { class: 'field-hint', style: 'margin-top:-4px' }, 'Minutes per turn sets how far a unit with a speed can move in a turn, and the size of "reach" areas.'),
+    ...tools.rulesSection(),
     h('div', { class: 'rail-section-title' }, 'Map'),
     mapDoc ? h('p', { class: 'muted' }, 'Played on your saved map ', h('a', { href: `/map.html?id=${doc.map}`, target: '_blank', rel: 'noopener' }, mapDoc.title || 'Untitled map'), '. Edit the map to change its layers and basemap.')
       : h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Basemap'), h('select', { disabled: ro, onchange: (e) => { mutate(() => { doc.view.basemap = e.target.value; }, { redraw: false }); location.reload(); } }, Object.entries(BASEMAPS).map(([k, b]) => h('option', { value: k, selected: (doc.view.basemap || 'light') === k }, b.label)))),
@@ -610,8 +731,17 @@ function setupPanel() {
   ];
 }
 
-const TOOLBAR = [['units', 'Units', 'pin'], ['injects', 'Injects', 'target'], ['log', 'Log', 'text'], ['dice', 'Dice', 'hex'], ['branches', 'Branches', 'copy'], ['setup', 'Setup', 'sliders']];
-const PANELS = { units: unitsPanel, injects: injectsPanel, log: logPanel, dice: dicePanel, branches: branchesPanel, setup: setupPanel };
+const ctx = {
+  get doc() { return doc; }, get map() { return map; }, get canEdit() { return canEdit; }, get branchId() { return branchId; }, get turnIx() { return turnIx; },
+  get viewAs() { return viewAs; }, get tool() { return tool; }, get rev() { return rev; },
+  turn, branch, live, mutate, render, select, unitById, symbol, shown, facts, startDraw,
+  drawing: () => drawing,
+  setTool: (k) => { tool = k; render(); },
+};
+const tools = createTools(ctx);
+const TOOLBAR = [['units', 'Units', 'pin'], ['combat', 'Combat', 'swords'], ['lines', 'Lines', 'line'], ['terrain', 'Terrain', 'mountain'], ['objectives', 'Objectives', 'flag'], ['draw', 'Draw', 'pen'],
+  ['injects', 'Injects', 'target'], ['log', 'Log', 'text'], ['dice', 'Dice', 'hex'], ['branches', 'Branches', 'copy'], ['setup', 'Setup', 'sliders']];
+const PANELS = { units: unitsPanel, injects: injectsPanel, log: logPanel, dice: dicePanel, branches: branchesPanel, setup: setupPanel, ...tools.panels };
 
 /* ---------- the turn bar ---------- */
 
@@ -619,6 +749,7 @@ function turnBar() {
   const b = branch();
   const last = b.turns.length - 1;
   const summary = sideSummary(doc, turn());
+  const planned = turn().units.filter((u) => u.plan);
   return [
     h('select', { class: 'wg-branch-pick', 'aria-label': 'Branch', title: 'Branch', onchange: (e) => goTo(e.target.value, lastTurn(doc, e.target.value)) }, doc.branches.map((x) => h('option', { value: x.id, selected: x.id === branchId }, x.name))),
     h('div', { class: 'wg-steps' },
@@ -629,13 +760,28 @@ function turnBar() {
       h('button', { type: 'button', class: 'icon-btn wg-fwd', 'aria-label': 'Latest turn', disabled: turnIx === last, onclick: () => goTo(branchId, last) }, icon('back', { size: 16 }), icon('back', { size: 16, cls: 'wg-dbl' }))),
     h('div', { class: 'wg-dots', role: 'group', 'aria-label': 'Turns' }, b.turns.map((_, n) => h('button', { type: 'button', class: `${n === turnIx ? 'is-on' : ''}${n === b.forkTurn && b.parent ? ' is-fork' : ''}`, title: turnLabel(doc, n), 'aria-label': turnLabel(doc, n), onclick: () => goTo(branchId, n) }))),
     h('div', { class: 'wg-tally' }, summary.map((s) => h('span', { title: `${s.name}: ${s.active} of ${s.units} in action, ${s.strength}% strength` }, h('i', { style: `background:${s.color}` }), `${s.active}/${s.units}`))),
+    scoreChips(),
     h('span', { class: 'spacer' }),
+    canEdit && atLatest() && planned.length ? h('button', { type: 'button', class: 'btn wg-reveal', title: 'Reveal every planned move and move the units at once', onclick: revealMoves }, icon('eye', { size: 15 }), `Reveal ${planned.length} ${planned.length === 1 ? 'move' : 'moves'}`) : null,
     !canEdit ? null
       : atLatest() ? h('button', { type: 'button', class: 'btn btn-primary wg-next', title: 'Start the next turn (N)', onclick: advance }, turnIx === 0 ? 'Start turn 1' : 'Next turn', icon('back', { size: 16, cls: 'wg-flip' }))
         : [h('span', { class: 'wg-past' }, 'An earlier turn'),
           h('button', { type: 'button', class: 'btn', onclick: branchHere }, icon('copy', { size: 15 }), 'Branch from here'),
           h('button', { type: 'button', class: 'btn', onclick: replayFromHere }, 'Replay from here')],
   ];
+}
+
+function scoreChips() {
+  const sc = facts().score;
+  if (!sc) return null;
+  const mode = doc.victory?.mode === 'total' ? sc.total : sc.held;
+  return h('div', { class: 'wg-score-chips', title: 'Objective points', onclick: () => { tool = 'objectives'; render(); } }, icon('flag', { size: 14 }),
+    doc.sides.filter((s) => s.affiliation !== 'N').map((s) => h('span', { class: sc.winner === s.id ? 'is-win' : '' }, h('i', { style: `background:${s.color}` }), String(mode[s.id] || 0))));
+}
+
+function revealMoves() {
+  const r = mutate(() => R.executePlans(doc, turn()));
+  toast(`${r.moved.length} ${r.moved.length === 1 ? 'unit' : 'units'} moved${r.contacts.length ? `, ${r.contacts.length} ${r.contacts.length === 1 ? 'contact' : 'contacts'}` : ''}.`, { duration: 6000, ...(r.contacts.length ? { action: { label: 'Fight', onClick: () => { tool = 'combat'; render(); } } } : {}) });
 }
 
 /* ---------- drawing everything ---------- */
@@ -649,14 +795,20 @@ function render() {
   fill($('#wg-bar'), turnBar());
   const card = $('#wg-card');
   const u = selected && unitById(selected);
-  if (card) fill(card, u && root.classList.contains('is-present') ? [symbol(u, 26), h('div', {}, h('strong', {}, u.name), h('span', {}, `${sideOf(doc, u.side).name} · ${KINDS[u.kind]?.label || ''} · ${statusLabel(u.status)} · ${u.strength}%`))] : null);
+  if (card) fill(card, u && root.classList.contains('is-present') ? [symbol(u, 26), h('div', {}, h('strong', {}, u.name), h('span', {}, [`${sideOf(doc, u.side).name} · ${KINDS[u.kind]?.label || ''} · ${statusLabel(u.status)} · ${u.strength}%`, ...tools.unitFlags(u, facts()).map((f) => ` · ${f[2]}`)].join('')))] : null);
   if (card) card.hidden = !(u && root.classList.contains('is-present'));
-  root.classList.toggle('is-placing', !!placing);
+  root.classList.toggle('is-placing', !!placing || !!drawing);
+  drawBar();
   drawMap();
 }
 
 addEventListener('keydown', (e) => {
   if (!doc || document.querySelector('dialog[open]')) return;
+  if (drawing && !typing(e)) {
+    if (e.key === 'Escape') { e.preventDefault(); stopDraw(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); finishDraw(); return; }
+    if (e.key === 'Backspace' && drawing.coords.length) { e.preventDefault(); drawing.coords.pop(); drawMap(); drawBar(); return; }
+  }
   if (e.key === 'Escape') {
     if ($('.wg-banner')) { $('.wg-banner').remove(); return; }
     if (placing) { placing = null; render(); return; }
@@ -714,7 +866,8 @@ if (!mode || !doc) {
     h('main', { class: 'wg-stage' }, mapEl,
       h('button', { type: 'button', class: 'btn btn-sm wg-clear', id: 'wg-clear', hidden: true, onclick: () => clearOverlay() }, icon('x', { size: 14 }), 'Clear the overlay'),
       h('button', { type: 'button', class: 'btn btn-sm wg-exit', onclick: () => present(false) }, icon('x', { size: 14 }), 'Exit'),
-      h('div', { class: 'wg-card', id: 'wg-card', hidden: true })),
+      h('div', { class: 'wg-card', id: 'wg-card', hidden: true }),
+      h('div', { class: 'wg-drawbar', id: 'wg-drawbar', hidden: true, role: 'status' })),
     h('footer', { class: 'wg-bar', id: 'wg-bar' }));
 
   const base = mapDoc?.view || {};
@@ -722,6 +875,14 @@ if (!mode || !doc) {
   if (!embed) map.scrollZoom.enable();
   map.on('style.load', () => { markers.forEach((m) => m.marker.remove()); markers.clear(); drawMap(); });
   map.on('click', (e) => {
+    if (drawing) {
+      const p = drawing.snap ? snapPoint(e.lngLat) : [e.lngLat.lng, e.lngLat.lat];
+      if (drawing.mode === 'point') { const d = drawing; stopDraw(); d.done([[+p[0].toFixed(6), +p[1].toFixed(6)]]); return; }
+      drawing.coords.push(p);
+      drawMap();
+      drawBar();
+      return;
+    }
     if (placing?.what === 'unit' && live()) {
       const u = mutate(() => addUnit(doc, turn(), { side: placing.side, kind: placing.kind, echelon: KINDS[placing.kind]?.fn ? placing.echelon : '', lngLat: [e.lngLat.lng, e.lngLat.lat] }));
       toast(`${u.name} placed`, { duration: 1800 });
@@ -729,6 +890,13 @@ if (!mode || !doc) {
     }
     if (placing?.what === 'inject') { const done = placing.done; placing = null; done([+e.lngLat.lng.toFixed(6), +e.lngLat.lat.toFixed(6)]); toast('Inject pinned', { tone: 'ok' }); render(); return; }
     if (selected) select(null);
+  });
+  map.on('dblclick', (e) => { if (drawing) { e.preventDefault(); finishDraw(); } });
+  let moveFrame = 0;
+  map.on('mousemove', (e) => {
+    if (!drawing || drawing.mode === 'point' || !drawing.coords.length) return;
+    drawing.cursor = drawing.snap ? snapPoint(e.lngLat) : [e.lngLat.lng, e.lngLat.lat];
+    if (!moveFrame) moveFrame = requestAnimationFrame(() => { moveFrame = 0; if (drawing) tools.draw(map, facts()); });
   });
   render();
   if (canEdit && params.has('new') && !turn().units.length) { placing = { what: 'unit', ...template }; render(); }

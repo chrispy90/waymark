@@ -22,10 +22,10 @@ Changes save by themselves. The top bar shows **Saved** when everything is store
 
 | Part | What it's for |
 | --- | --- |
-| **Tools** (far left) | Switch the panel between **Units**, **Injects**, **Log**, **Dice**, **Branches** and **Setup**. |
+| **Tools** (far left) | Switch the panel between **Units**, **Combat**, **Lines**, **Terrain**, **Objectives**, **Draw**, **Injects**, **Log**, **Dice**, **Branches** and **Setup**. |
 | **Panel** | The controls for the chosen tool. |
 | **Map** | The game board. Drag units here. |
-| **Turn bar** (bottom) | The branch you're playing, the current turn, a tally of each side's units still in action, and **Next turn**. |
+| **Turn bar** (bottom) | The branch you're playing, the current turn, a tally of each side's units still in action, the score if there are objectives, and **Next turn**. |
 | **Top bar** | **Show everything** (choose whose view to show), undo, help, **Share**, **Write it up** and **Present**. |
 
 ## Set up the game
@@ -43,7 +43,10 @@ Open **Setup** to describe the scenario before you start.
   | **Date and time** | The real date and time, counted from **Game starts** |
 
   **Minutes per turn** is how much game time one turn covers. It also sets how far a unit with a speed can move in a turn.
+- **Rules**: planned moves, automatic spotting, supply effects, ranges, and the combat and movement tables. See [Terrain, supply and combat](scenario-rules.md#rules).
 - **Map**: for a scenario on a plain map, choose the **Basemap**. Select **Open on this view** to make the scenario open where the map is now.
+
+Everything on this page works on its own. For a deeper game, [Terrain, supply and combat](scenario-rules.md) adds ground that slows units down, supply lines that can be cut, a combat table, objectives and planning graphics.
 
 ## Place units
 
@@ -57,6 +60,26 @@ Military kinds (infantry, armor, artillery, engineers, aircraft, warships and so
 
 The turn before the first one is called **Setup**. Place everyone's starting positions there, then select **Start turn 1**.
 
+### Import units from a spreadsheet
+
+For a large order of battle, list the units in a spreadsheet and import it as a CSV file.
+
+1. In **Units**, select **Template** to download an example file, and fill it in. One row per unit.
+2. Select **Import from a spreadsheet** and choose your file.
+3. Check the summary (how many units for each side, and anything that couldn't be read), then select **Add units**.
+
+| Column | What to put |
+| --- | --- |
+| `name` | The unit's name. Required. |
+| `side` | The side's name, such as Blue. A name Waymark doesn't know becomes a new side. |
+| `kind` | Such as Infantry, Armor, Artillery, Headquarters, Police or Civilians. Common words like "tank" work too. |
+| `size` | Team, squad, platoon, company, battalion, brigade or division. |
+| `strength`, `status` | 0 to 100, and ready, engaged, degraded or out of action. |
+| `latitude`, `longitude` | Where it starts. Rows without them are laid out in a block in the middle of the map. |
+| `range_km`, `speed_kmh`, `sensor_km` | Optional ranges and speed. |
+| `reports_to` | The name of its headquarters, for the [command rules](scenario-rules.md#command-and-contact). |
+| `mobility`, `seen`, `notes` | Optional: how it moves (on foot, wheeled, tracked…), whether the other sides can see it (yes or no), and notes. |
+
 ## Edit a unit
 
 Click a unit on the map or in the list to open it.
@@ -68,11 +91,13 @@ Click a unit on the map or in the list to open it.
 | **Status** | **Ready**, **Engaged**, **Degraded** or **Out of action**. A unit that is out of action stays on the map, faded, and no longer counts in its side's tally. |
 | **Strength** | From 0 to 100%. Shown as a bar under the symbol. |
 | **Range (km)** | Draws a solid ring around the unit when it's selected, and marks which opposing units are in range. |
-| **Speed (km/h)** | Sets how far the unit can move in one turn. A dashed ring shows the limit. Leave it empty to allow any distance. |
+| **Speed (km/h)** | Sets how far the unit can move in one turn. A dashed ring shows the limit. Leave it empty to allow any distance. With [terrain](scenario-rules.md#terrain), an empty speed means the usual speed for that kind of unit. |
 | **Seen by the other sides** | Whether the unit appears when the map is shown as another side. See [Hide what a side can't see](#hide-what-a-side-cant-see). |
 | **Notes** | Orders, condition, or anything else worth remembering. |
 
 **Nearest opposing units** lists the three closest units of other sides with their distances, and says which are in range.
+
+Below that, **Movement and supply** and **Command and sensors** hold the settings for the deeper rules: how the unit moves, its supply, the headquarters it reports to, its sensor range and its combat value. See [Terrain, supply and combat](scenario-rules.md).
 
 Every change to status or strength is written to the turn's log. You can also remove a unit from the board with the button at the bottom of its panel.
 
@@ -81,6 +106,8 @@ Every change to status or strength is written to the turn's log. You can also re
 Drag a unit to move it. A dashed line shows where it started the turn, and the unit's panel shows how far it has moved.
 
 If the unit has a speed and you drag it farther than it could travel in one turn, Waymark still lets you, and tells you by how much it went over, with an **Undo** button. The room decides whether the move stands.
+
+With [terrain](scenario-rules.md#terrain), the move follows the quickest route over the ground instead of a straight line, and the log records how long it took and how much supply it used. With [planned moves](scenario-rules.md#planned-moves) turned on, dragging plans the move instead of making it.
 
 ## Planning aids
 
@@ -107,7 +134,10 @@ An inject is an event the facilitator springs on the room: a bridge is blown, th
 1. Open **Injects** and select **New inject**.
 2. Give it a **Title**, and under **Details** write what the facilitator reads out.
 3. Under **Release**, choose when it happens: **When I release it** waits until you select **Release now**; choosing a turn makes it appear by itself when that turn starts.
-4. Optionally select **Pin to the map**, then click where it happens. Without a pin, select **Add inject**.
+4. If the scenario has [lines of communication](scenario-rules.md#lines-of-communication), choose what **When released, it changes**: for example, "Rail bridge" and **Cuts it**.
+5. Optionally select **Pin to the map**, then click where it happens. Without a pin, select **Add inject**.
+
+To load a whole script of injects at once, select **Template** under the list for an example CSV file (columns `title`, `details`, `turn`, `latitude`, `longitude`; leave `turn` empty for injects you release by hand), fill it in, then select **Import from a spreadsheet**.
 
 When an inject is released, a banner appears over the map with its title and text until you select **Continue**. It's written to the log, and if it has a pin, a marker stays on the map from that turn on. **Show again** brings the banner back.
 
@@ -140,11 +170,11 @@ The new branch starts as a copy of the game up to that turn. Switch between bran
 
 ### Compare branches
 
-Open **Branches** and select **Compare branches**. Two branches are shown side by side, each with a map of how it ended and a table of every side's units in action, units lost and average strength. Change either picker to compare a different pair.
+Open **Branches** and select **Compare branches**. Two branches are shown side by side, each with a map of how it ended and a table of every side's units in action, units lost, average strength, units in supply and, if there are objectives, the score. Change either picker to compare a different pair.
 
 ## Hide what a side can't see
 
-The picker at the top (**Show everything**) changes whose view the map shows. Choose a side to hide every unit of the other sides that isn't marked **Seen by the other sides**. Use it when you turn the screen toward one team, or to check what a side knows before it decides.
+The picker at the top (**Show everything**) changes whose view the map shows. Choose a side to hide every unit of the other sides that isn't marked **Seen by the other sides**, along with the other sides' lines, depots, graphics and planned moves. Use it when you turn the screen toward one team, or to check what a side knows before it decides. With [automatic spotting](scenario-rules.md#spotting) on, units seen by the other side's sensors appear too.
 
 This is a display setting for the room. It isn't a security control: anyone who can open the scenario can switch back to **Show everything**.
 
@@ -164,7 +194,7 @@ Select **Write it up** to turn the game into a [story](stories.md).
 The story opens in the story editor in a new tab. It has:
 
 - The scenario's title and what it tests.
-- For each branch, a moving map with one card per turn: what happened, the injects released, and your notes, with the map moving to where the action was.
+- For each branch, a moving map with one card per turn: what happened, the injects released, and your notes, with the map moving to where the action was. The maps also show lines of communication (cut ones in red), objectives with who held them, and your planning graphics.
 - Big numbers for how each branch ended.
 - A comparison of the branches, and a section for what you learned.
 
@@ -184,5 +214,7 @@ Select **Share** to give other people or groups access, as with any other item. 
 | --- | --- |
 | `N` | Start the next turn |
 | `←` `→` | Previous or next turn |
-| `Esc` | Stop placing, close the selected unit, or leave Present |
+| `Esc` | Stop placing or drawing, close the selected unit, or leave Present |
+| `Enter` | Finish the line or area you're drawing |
+| `Backspace` | Remove the last point while drawing |
 | `Ctrl+Z` | Undo |

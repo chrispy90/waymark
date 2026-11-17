@@ -9,9 +9,12 @@
 //   injects: [{ id, title, text, turn: 3 | null, lngLat?: [x, y] }],
 //   branches: [{ id, name, parent: "<branch id>" | null, forkTurn, turns: [Turn] }]
 // }
-// Turn: { units: [Unit], events: [Event], notes, fired: ["<inject id>"] }   (a full snapshot, so any turn can be shown or branched from)
-// Unit: { id, name, side, kind, echelon, strength 0–100, status, rangeKm, speedKmh, spotted, notes, lngLat, from }
+// Turn: { units: [Unit], events: [Event], notes, fired: ["<inject id>"], links: { "<link or node id>": status }, graphics: [Graphic] }
+//   (a full snapshot, so any turn can be shown or branched from)
+// Unit: { id, name, side, kind, echelon, strength 0–100, status, rangeKm, speedKmh, spotted, notes, lngLat, from,
+//         mobility?, sensorKm?, power?, parent?, supply?, used?, path?, hours?, plan? }
 //   `from` is where the unit stood when the turn began, so the turn's move can be drawn and measured.
+// Terrain, lines of communication, objectives, combat and the other optional rules are in scenario-rules.js.
 
 const uid = (p) => p + Math.random().toString(36).slice(2, 8);
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -156,15 +159,37 @@ export function removeUnit(turn, id) {
  * Moves a unit within a turn. The turn keeps one move per unit (the latest), measured from where the unit started the
  * turn. Returns { km, allowance, overBy } so the screen can warn when the move is longer than the unit's speed allows.
  */
-export function moveUnit(doc, turn, id, lngLat) {
+export function moveUnit(doc, turn, id, lngLat, route) {
   const unit = turn.units.find((u) => u.id === id);
   if (!unit) return null;
   unit.lngLat = [round(lngLat[0], 6), round(lngLat[1], 6)];
-  const km = round(distanceKm(unit.from || unit.lngLat, unit.lngLat), 2);
   turn.events = turn.events.filter((e) => !(e.type === 'move' && e.unit === id));
-  if (km > 0.005) turn.events.push({ type: 'move', unit: id, km, text: `${unit.name} moved ${km < 10 ? km : Math.round(km)} km` });
+  // With terrain, a move follows the route it was given: its length, the hours it takes and the supply it uses.
+  if (route?.path?.length > 1) {
+    unit.path = route.path.map((p) => [round(p[0], 5), round(p[1], 5)]);
+    unit.path[0] = [...(unit.from || unit.lngLat)];
+    unit.path[unit.path.length - 1] = [...unit.lngLat];
+    unit.used = round(route.cost || 0, 1);
+    unit.hours = round(route.hours || 0, 2);
+  } else { delete unit.path; delete unit.hours; unit.used = 0; }
+  const km = unit.path ? round(route.km, 2) : round(distanceKm(unit.from || unit.lngLat, unit.lngLat), 2);
+  if (km > 0.005) {
+    const dist = `${km < 10 ? km : Math.round(km)} km`;
+    turn.events.push({ type: 'move', unit: id, km, text: unit.path ? `${unit.name} moved ${dist} in ${hoursLabel(unit.hours)}${unit.used ? `, using ${Math.round(unit.used)}% of its supply` : ''}` : `${unit.name} moved ${dist}` });
+  }
+  if (unit.path) {
+    const limit = (Number(doc.clock?.stepMinutes) || 60) / 60;
+    return { km, hours: unit.hours, allowanceHours: limit, overHours: unit.hours > limit + 1e-6 ? round(unit.hours - limit, 2) : 0, cost: unit.used };
+  }
   const allowance = moveAllowanceKm(doc, unit);
   return { km, allowance, overBy: allowance != null && km > allowance ? round(km - allowance, 1) : 0 };
+}
+
+/** "45 min", "2 h 30 min". */
+export function hoursLabel(h) {
+  const mins = Math.round((Number(h) || 0) * 60);
+  if (mins < 60) return `${mins} min`;
+  return mins % 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins / 60} h`;
 }
 
 /** Changes a unit's fields; changes to status and strength are written to the turn's log. */
@@ -194,6 +219,13 @@ export function fireInject(doc, turn, injectId) {
   if (!inject || turn.fired.includes(injectId)) return null;
   turn.fired.push(injectId);
   turn.events.push({ type: 'inject', inject: injectId, text: `Inject: ${inject.title || 'Untitled'}` });
+  // An inject can change lines of communication: "the rail bridge is down" cuts that link from now on.
+  for (const e of inject.effects || []) {
+    if (!e?.target || !e.status) continue;
+    turn.links = { ...(turn.links || {}), [e.target]: e.status };
+    const item = [...(doc.network?.links || []), ...(doc.network?.nodes || [])].find((x) => x.id === e.target);
+    if (item) turn.events.push({ type: 'link', link: item.id, text: `${item.name || 'A line'} ${{ open: 'is open again', degraded: 'is degraded', cut: item.lngLat ? 'is lost' : 'is cut' }[e.status] || e.status}` });
+  }
   return inject;
 }
 
@@ -204,7 +236,8 @@ export function fireInject(doc, turn, injectId) {
 export function nextTurn(doc, branchId) {
   const branch = branchOf(doc, branchId);
   const prev = branch.turns.at(-1);
-  const turn = { units: clone(prev.units).map((u) => ({ ...u, from: [...u.lngLat] })), events: [], notes: '', fired: [...prev.fired] };
+  const turn = { units: clone(prev.units).map((u) => ({ ...u, from: [...u.lngLat] })), events: [], notes: '', fired: [...prev.fired],
+    links: { ...(prev.links || {}) }, graphics: clone(prev.graphics || []) };
   branch.turns.push(turn);
   const index = branch.turns.length - 1;
   const injects = (doc.injects || []).filter((x) => Number(x.turn) === index).map((x) => fireInject(doc, turn, x.id)).filter(Boolean);
@@ -274,14 +307,14 @@ function viewFor(doc, units) {
 }
 
 // One turn as a map layer: a point per unit (colored by side, gray when out of action), a dashed arrow for each move.
-function turnLayer(doc, branch, n, id) {
+function turnLayer(doc, branch, n, id, decorate) {
   const turn = branch.turns[n];
-  const features = [];
+  const features = decorate ? decorate(branch, n) || [] : [];
   for (const u of turn.units) {
     const side = sideOf(doc, u.side);
     const out = u.status === 'destroyed';
     if (u.from && distanceKm(u.from, u.lngLat) > 0.005) {
-      features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [u.from, u.lngLat] }, properties: { stroke: side.color, 'stroke-width': 2.5, 'stroke-dash': 'dashed', arrow: true } });
+      features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: u.path?.length > 1 ? u.path : [u.from, u.lngLat] }, properties: { stroke: side.color, 'stroke-width': 2.5, 'stroke-dash': 'dashed', arrow: true } });
     }
     features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: u.lngLat },
       properties: { name: u.name, side: side.name, kind: KINDS[u.kind]?.label || 'Unit', status: statusLabel(u.status), strength: `${u.strength}%`, 'marker-color': out ? '#9ca3af' : side.color, 'marker-size': 'large' } });
@@ -297,7 +330,7 @@ function turnLayer(doc, branch, n, id) {
  * A story that replays the scenario: a moving map with one card per turn (what happened, and the notes taken), a
  * chapter per branch when there are several, and a summary of how each branch ended.
  */
-export function storyFromScenario(doc, { branches } = {}) {
+export function storyFromScenario(doc, { branches, decorate } = {}) {
   const chosen = (branches?.length ? branches.map((id) => branchOf(doc, id)) : doc.branches).filter((b, i, all) => all.indexOf(b) === i);
   const layers = [];
   const blocks = [{ type: 'text', style: 'large', html: `<p>${esc(doc.summary || 'What we set out to test, and who took part.')}</p>` }];
@@ -314,7 +347,7 @@ export function storyFromScenario(doc, { branches } = {}) {
     for (let n = first; n < branch.turns.length; n++) {
       const turn = branch.turns[n];
       const id = `wg-${branch.id}-${n}`;
-      layers.push(turnLayer(doc, branch, n, id));
+      layers.push(turnLayer(doc, branch, n, id, decorate));
       const events = turn.events.filter((e) => e.type !== 'add' || n > 0);
       const html = `<h3>${esc(turnLabel(doc, n))}</h3>${events.length ? `<ul>${events.map((e) => `<li>${esc(e.text)}</li>`).join('')}</ul>` : n === 0 ? `<p>${turn.units.length} units in their starting positions.</p>` : '<p>No moves this turn.</p>'}${turn.notes ? `<p>${esc(turn.notes)}</p>` : ''}`;
       slides.push({ html, media: { type: 'map', view: { ...viewFor(doc, turn.units), layers: [id], legend: false, ...(doc.map ? { map: doc.map } : {}) } } });

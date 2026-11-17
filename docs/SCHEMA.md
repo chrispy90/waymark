@@ -189,6 +189,32 @@ A scenario keeps every turn of every branch as a full snapshot, so any turn can 
 }
 ```
 
+Optional rules add more to the document (see `public/js/scenario-rules.js` for the full list and defaults):
+
+```jsonc
+{
+  "terrain": { "origin": [-77.2, 38.8], "size": 0.144, "cols": 90, "rows": 60, "kx": 86.7, "cellKm": 0.25,
+               "cover": "<one base64 character per hex: ground 0–4 | road level << 3 | river << 5>",
+               "elev": "<base64 of an Int16Array, metres per hex, −32768 = unknown>", "built": "2026-11-16T…", "partial": "map features" },
+  "zones": [{ "id": "z1", "name": "Minefield", "coords": [[x, y], …], "effect": "slow", "factor": 0.5, "costMult": 2,   // effect: slow | block | cost | jam
+              "mobility": ["tracked", "wheeled"] | null, "from": 0, "until": null, "inject": null }],
+  "movement": { "tracked": { "forest": 0.2 } },                    // overrides of the movement table
+  "network": {
+    "nodes": [{ "id": "n1", "name": "Main depot", "type": "depot", "side": "blue", "lngLat": [x, y] }],          // depot | port | airfield | relay
+    "links": [{ "id": "l1", "name": "MSR", "type": "road", "side": "blue" | null, "coords": [[x, y], …] }]      // road | rail | bridge | river | sea | air | pipeline | signal
+  },
+  "objectives": [{ "id": "o1", "name": "Bridge", "lngLat": [x, y], "radiusKm": 1, "points": 10, "holder": null }],
+  "victory": { "text": "…", "target": 30, "mode": "held" },        // mode: held | total
+  "combat": { "columns": ["1:3", …], "rows": [["A50 AR", …], …] },  // 6 rows, one per die roll
+  "rules": { "planning": false, "autoSpot": false, "auto": false, "lossPct": 10, "resupply": 50, "reachKm": 5, "radioKm": 25, "interdictKm": 2 }
+}
+```
+
+Each turn may also have `links` (`{ "<link or node id>": "open" | "degraded" | "cut" }`, carried to the next turn) and `graphics`
+(`[{ id, type: phase | boundary | arrow | area | label, side, label, coords }]`). Units may have `mobility`, `sensorKm`, `power`,
+`parent` (a headquarters unit id), `supply` (0–100 at the start of the turn), `used`, `path` and `hours` (this turn's move over terrain),
+and `plan` (a planned move: `{ to, path?, km?, hours?, cost? }`). Injects may have `effects: [{ target: "<link or node id>", status }]`.
+
 Unit kinds and sizes are listed in `public/js/scenario-core.js` (`KINDS`, `ECHELONS`). Military kinds are drawn with [milsymbol](https://github.com/spatialillusions/milsymbol); civil kinds are drawn as a badge.
 
 ## Blocks

@@ -218,6 +218,15 @@ A **scenario** plays out "what if?" in a meeting, on one screen. Place units for
 - **Present.** Full screen for a projector, with the panels hidden.
 - **Write it up.** One click turns the turns, injects and notes into a story with a moving map that replays the game.
 
+For a deeper game, each of these is optional:
+
+- **Terrain.** Build a hex grid over the play area from open elevation data and OpenStreetMap (roads, rivers, water, forest, built-up areas). Units then move along the quickest route over the ground, at speeds set by how they move (on foot, wheeled, tracked, amphibious, air, naval) in an editable movement table, and rough ground uses more supply. Draw areas that slow, block, cost more or jam radios, from a turn or when an inject is released.
+- **Lines of communication.** Depots, ports, airfields and the roads, rail, bridges, sea lanes and signal links between them. Units are in supply, strained or out of supply depending on what's open; lines are cut by hand, by an inject, or by enemy units sitting on them. Cutting a bridge also takes the crossing out of the terrain. Units with a headquarters need radio range or a signal link to stay in contact.
+- **Planned moves.** Each side plans its moves, then they're revealed and made all at once, and the resulting contacts are logged.
+- **Combat.** A 1d6 combat results table (editable) with combat values from each unit's kind, size, strength, supply and the ground it defends.
+- **Objectives and scoring.** Points for holding places, a victory condition, and the score in the turn bar and the branch comparison.
+- **Planning graphics, spotting and spreadsheets.** Phase lines, boundaries, axes of advance, areas and labels per turn; automatic spotting from sensor ranges and line of sight; units and injects imported from CSV.
+
 Scenarios are shared like everything else, and have a read-only public page at `/w/…`. There is no live multiplayer: one person drives.
 
 ### Collect data with a form
@@ -431,6 +440,9 @@ public/                the web app (plain ES modules, no build step)
   js/dashboard.js      dashboards (editor and public page)
   js/scenario.js       scenarios: the play screen (units, turns, branches, injects, dice, present)
   js/scenario-core.js  scenario rules with no page code: turns, moves, branches, comparison, the after-action story
+  js/scenario-rules.js terrain grid and routes, lines of communication, supply, command, combat, objectives, spotting, CSV import
+  js/scenario-terrain.js builds a scenario's terrain from elevation tiles and OpenStreetMap
+  js/scenario-tools.js the Combat, Lines, Terrain, Objectives and Draw panels
   js/print.js          map export to PDF and PNG
   js/mapview.js · form-page.js · profile.js   public map, form and profile pages
   js/layer-form.js     layer settings, shared by the story editor and the map editor

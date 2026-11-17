@@ -16,7 +16,7 @@ Waymark is a place to tell stories with maps. You write a story that scrolls, ad
 | Find patterns in your data | [Analysis overview](analysis.md) and the [Analysis tool reference](analysis-tools.md) |
 | Work with other people | [Sharing and teams](sharing.md) |
 | Show numbers and charts next to a map | [Dashboards](dashboards.md) |
-| Play out "what if?" on a map in a meeting | [Scenarios](scenarios.md) |
+| Play out "what if?" on a map in a meeting | [Scenarios](scenarios.md), and [Terrain, supply and combat](scenario-rules.md) for a deeper game |
 | Collect points from the public | [Forms](forms.md) |
 | Print a map, or host a story somewhere else | [Export and print](export.md) |
 | Install or run Waymark for your organization | [For administrators](admin.md) |
@@ -33,7 +33,7 @@ Waymark is a place to tell stories with maps. You write a story that scrolls, ad
 
 **Dashboards.** A saved map beside big numbers, bar charts, donuts and tables that filter each other. See [Dashboards](dashboards.md).
 
-**Scenarios.** A tabletop exercise on a map: units for each side, moved turn by turn, with scripted events, dice, notes and branches, and a one-click write-up as a story. See [Scenarios](scenarios.md).
+**Scenarios.** A tabletop exercise on a map: units for each side, moved turn by turn, with scripted events, dice, notes and branches, and a one-click write-up as a story. Add terrain, supply lines, a combat table and objectives for a deeper game. See [Scenarios](scenarios.md).
 
 **Forms.** A phone-friendly public page where anyone with the link can add a point, with answers and a photo, to one of your layers. See [Forms](forms.md).
 

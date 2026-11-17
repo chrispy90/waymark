@@ -8,7 +8,7 @@ export const GUIDE = [
   { title: 'Stories', pages: [['stories', 'The story editor'], ['blocks', 'Blocks reference'], ['story-maps', 'Maps in stories'], ['publish', 'Publish and update']] },
   { title: 'Maps and data', pages: [['map-editor', 'The map editor'], ['add-data', 'Add data'], ['layer-settings', 'Style and configure layers'], ['hosted-layers', 'Hosted layers'], ['draw-measure', 'Draw and measure']] },
   { title: 'Analysis', pages: [['analysis', 'Analysis overview'], ['analysis-tools', 'Analysis tool reference']] },
-  { title: 'Share and collaborate', pages: [['sharing', 'Sharing and teams'], ['dashboards', 'Dashboards'], ['scenarios', 'Scenarios'], ['forms', 'Forms'], ['export', 'Export and print']] },
+  { title: 'Share and collaborate', pages: [['sharing', 'Sharing and teams'], ['dashboards', 'Dashboards'], ['scenarios', 'Scenarios'], ['scenario-rules', 'Terrain, supply and combat'], ['forms', 'Forms'], ['export', 'Export and print']] },
   { title: 'Reference', pages: [['formats', 'Data formats and limits'], ['shortcuts', 'Keyboard shortcuts'], ['troubleshooting', 'Troubleshooting and FAQ'], ['admin', 'For administrators']] },
 ];
 const PAGES = GUIDE.flatMap((s) => s.pages.map(([slug, title]) => ({ slug, title, section: s.title })));
