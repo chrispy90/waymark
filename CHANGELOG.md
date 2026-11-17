@@ -2,7 +2,7 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
-## Unreleased
+## 1.8.0 (2026-11-16)
 
 ### Added
 - **Terrain for scenarios.** Build a hex grid over the play area from elevation data and OpenStreetMap: ground cover, roads, rivers and height. Units then move along the quickest route over the ground instead of a straight line, the selected unit shows where it can reach this turn, and each move records its time and the supply it used. Six kinds of mobility with an editable movement table, slopes that slow vehicles, and a "how fast" view for briefing.
