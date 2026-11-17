@@ -140,6 +140,19 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS dashboards_owner ON dashboards(owner_id, updated_at DESC);
+  -- Scenarios: units on a map, played turn by turn, with branches for "what if" alternatives.
+  CREATE TABLE IF NOT EXISTS scenarios (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    shared INTEGER NOT NULL DEFAULT 0,
+    listed INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS scenarios_owner ON scenarios(owner_id, updated_at DESC);
   -- Public forms that add points to a hosted layer.
   CREATE TABLE IF NOT EXISTS forms (
     id TEXT PRIMARY KEY,

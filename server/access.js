@@ -2,8 +2,8 @@
 // as a viewer (open it) or an editor (change it). Only the owner can delete, publish or change sharing.
 const { db } = require('./db');
 
-const TABLES = { story: 'stories', map: 'maps', layer: 'layers', dashboard: 'dashboards' };
-const LABEL = { story: 'Story', map: 'Map', layer: 'Layer', dashboard: 'Dashboard' };
+const TABLES = { story: 'stories', map: 'maps', layer: 'layers', dashboard: 'dashboards', scenario: 'scenarios' };
+const LABEL = { story: 'Story', map: 'Map', layer: 'Layer', dashboard: 'Dashboard', scenario: 'Scenario' };
 const RANK = { viewer: 1, editor: 2, owner: 3 };
 
 class AccessError extends Error {
@@ -59,10 +59,12 @@ function reachable(user, type, id) {
   const ownerCan = (ownerId) => ownerId === target.owner_id || !!roleFor({ id: ownerId }, type, target);
   const s = visible('story', user);
   const d = visible('dashboard', user);
+  const w = visible('scenario', user);
   const needles = type === 'map' ? [`"map":"${id}"`] : [`/api/layers/${id}`, `"hostedLayerId":"${id}"`];
   for (const n of needles) {
     if (db.prepare(`SELECT owner_id FROM stories WHERE ${s.where} AND instr(draft, ?) > 0`).all(...s.params, n).some((r) => ownerCan(r.owner_id))) return true;
     if (type === 'map' && db.prepare(`SELECT owner_id FROM dashboards WHERE ${d.where} AND instr(data, ?) > 0`).all(...d.params, n).some((r) => ownerCan(r.owner_id))) return true;
+    if (type === 'map' && db.prepare(`SELECT owner_id FROM scenarios WHERE ${w.where} AND instr(data, ?) > 0`).all(...w.params, n).some((r) => ownerCan(r.owner_id))) return true;
     if (type === 'layer') {
       const maps = db.prepare('SELECT id, owner_id FROM maps WHERE instr(data, ?) > 0').all(n);
       if (maps.some((m) => ownerCan(m.owner_id) && (roleFor(user, 'map', m) || reachable(user, 'map', m.id)))) return true;

@@ -984,6 +984,66 @@ route('GET', '/api/public/dashboards/:id', async (req, p) => {
   return [200, JSON.parse(row.data), { 'Cache-Control': 'public, max-age=15' }];
 });
 
+/* ---------------- Scenarios (wargames) ---------------- */
+
+function validateScenario(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) throw new HttpError(400, 'Scenario must be an object');
+  if (!Array.isArray(s.branches) || !s.branches.length) throw new HttpError(400, 'Scenario needs at least one branch');
+  if (s.branches.some((b) => !b || !Array.isArray(b.turns) || !b.turns.length)) throw new HttpError(400, 'Every branch needs at least one turn');
+  if (!Array.isArray(s.sides)) throw new HttpError(400, 'Scenario needs a sides array');
+  return String(s.title || 'Untitled scenario').slice(0, 300);
+}
+const scenarioSummary = (r) => ({ id: r.id, title: r.title, version: r.version, shared: !!r.shared, listed: !!r.listed, updatedAt: r.updated_at, createdAt: r.created_at,
+  ...(r.branches !== undefined ? { branches: r.branches ?? 0, turns: r.turns ?? 0, units: r.units ?? 0 } : {}), ...access.roleFields(r) });
+
+route('GET', '/api/scenarios', async (req) => {
+  const user = requireUser(req);
+  const v = access.visible('scenario', user);
+  const rows = db.prepare(`SELECT id, owner_id, title, version, shared, listed, created_at, updated_at, json_array_length(data, '$.branches') AS branches,
+    json_array_length(data, '$.branches[0].turns') AS turns, json_array_length(data, '$.branches[0].turns[0].units') AS units FROM scenarios WHERE ${v.where} ORDER BY updated_at DESC`).all(...v.params);
+  return [200, { scenarios: access.withRoles(user, 'scenario', rows).map(scenarioSummary) }];
+});
+
+route('POST', '/api/scenarios', async (req) => {
+  const user = requireUser(req);
+  const { scenario } = await readJson(req, MAX_STORY);
+  const title = validateScenario(scenario);
+  const id = auth.newId();
+  const now = Date.now();
+  db.prepare('INSERT INTO scenarios (id, owner_id, title, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, user.id, title, JSON.stringify({ ...scenario, id }), now, now);
+  return [201, scenarioSummary({ ...db.prepare('SELECT * FROM scenarios WHERE id = ?').get(id), _role: 'owner' })];
+});
+
+route('GET', '/api/scenarios/:id', async (req, p) => {
+  const row = access.getItem(requireUser(req), 'scenario', p.id);
+  return [200, { ...scenarioSummary(row), scenario: JSON.parse(row.data) }];
+});
+
+route('PUT', '/api/scenarios/:id', async (req, p) => {
+  const user = requireUser(req);
+  const row = access.getItem(user, 'scenario', p.id, 'editor');
+  const { scenario, version } = await readJson(req, MAX_STORY);
+  if (version !== row.version) throw new HttpError(409, 'This scenario was changed somewhere else', { version: row.version, updatedAt: row.updated_at });
+  const title = validateScenario(scenario);
+  const json = JSON.stringify({ ...scenario, id: row.id });
+  db.prepare('UPDATE scenarios SET title = ?, data = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?').run(title, json, Math.max(Date.now(), row.updated_at + 1), row.id, version);
+  if (row.shared) access.sharePublic(json, user);
+  return [200, scenarioSummary({ ...db.prepare('SELECT * FROM scenarios WHERE id = ?').get(row.id), _role: row._role })];
+});
+
+route('DELETE', '/api/scenarios/:id', async (req, p) => {
+  const row = access.getItem(requireUser(req), 'scenario', p.id, 'owner');
+  db.prepare('DELETE FROM scenarios WHERE id = ?').run(row.id);
+  db.prepare("DELETE FROM shares WHERE item_type = 'scenario' AND item_id = ?").run(row.id);
+  return [200, { ok: true }];
+});
+
+route('GET', '/api/public/scenarios/:id', async (req, p) => {
+  const row = db.prepare('SELECT data FROM scenarios WHERE id = ? AND shared = 1').get(p.id);
+  if (!row) throw new HttpError(404, 'Scenario not found');
+  return [200, JSON.parse(row.data), { 'Cache-Control': 'public, max-age=15' }];
+});
+
 /* ---------------- Profile and public page ---------------- */
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
@@ -1015,7 +1075,9 @@ route('GET', '/api/public/users/:handle', async (req, p) => {
     .map((m) => ({ title: m.title, summary: m.summary || '', thumbnail: m.thumbnail || null, url: `/m/${m.id}`, updatedAt: m.updated_at }));
   const dashboards = db.prepare('SELECT id, title, updated_at FROM dashboards WHERE owner_id = ? AND shared = 1 AND listed = 1 ORDER BY updated_at DESC').all(u.id)
     .map((d) => ({ title: d.title, url: `/d/${d.id}`, updatedAt: d.updated_at }));
-  return [200, { name: u.name || u.handle, handle: u.handle, bio: u.bio || '', stories, maps, dashboards }, { 'Cache-Control': 'public, max-age=30' }];
+  const scenarios = db.prepare('SELECT id, title, updated_at FROM scenarios WHERE owner_id = ? AND shared = 1 AND listed = 1 ORDER BY updated_at DESC').all(u.id)
+    .map((d) => ({ title: d.title, url: `/w/${d.id}`, updatedAt: d.updated_at }));
+  return [200, { name: u.name || u.handle, handle: u.handle, bio: u.bio || '', stories, maps, dashboards, scenarios }, { 'Cache-Control': 'public, max-age=30' }];
 });
 
 /* ---------------- Outside services ---------------- */
@@ -1144,8 +1206,8 @@ const server = http.createServer(async (req, res) => {
     const pub = /^\/s\/([a-z0-9-]+)\/?$/.exec(urlPath);
     if (pub) return renderPublished(req, res, pub[1]);
     if (/^\/help(\/[\w-]+)?\/?$/.test(urlPath)) return serveFile(res, path.join(PUBLIC, 'help.html')); // help center; pages load from /help/<page>.md
-    const page = /^\/(m|d|f|u)\/([\w-]{2,40})\/?$/.exec(urlPath);
-    if (page) return serveFile(res, path.join(PUBLIC, { m: 'mapview.html', d: 'dashboard.html', f: 'form.html', u: 'profile.html' }[page[1]]));
+    const page = /^\/(m|d|f|u|w)\/([\w-]{2,40})\/?$/.exec(urlPath);
+    if (page) return serveFile(res, path.join(PUBLIC, { m: 'mapview.html', d: 'dashboard.html', f: 'form.html', u: 'profile.html', w: 'scenario.html' }[page[1]]));
     return serveStatic(req, res, urlPath);
   } catch (err) {
     const known = err instanceof HttpError || err instanceof access.AccessError;
