@@ -13,8 +13,12 @@
 //   victory:  { text, target, mode: 'held' | 'total' }
 //   combat:   { columns: ['1:3', …], rows: [['A50 AR', …] × 6] }     a 1d6 combat results table
 //   rules:    see DEFAULT_RULES
-// Turn additions: links: { id: 'open' | 'degraded' | 'cut' }, graphics: [{ id, type, coords, side, label }].
-import { KINDS, distanceKm, sideOf, branchOf, nextTurn, moveUnit, statusLabel } from './scenario-core.js';
+//   schedule: [{ id, type: 'arrive', turn, unit: { …unit fields }, lngLat } | { id, type: 'withdraw', turn, unitId, name }
+//              | { id, type: 'weather', turn, weather }]
+// Turn additions: links: { id: 'open' | 'degraded' | 'cut' }, graphics: [{ id, type, coords, side, label }], weather.
+// Unit additions: fanDir, fanArc (degrees: a unit whose range and sensors only cover an arc).
+import { KINDS, distanceKm, sideOf, branchOf, nextTurn, moveUnit, statusLabel, addUnit, removeUnit } from './scenario-core.js';
+import { bearing } from './mgrs.js';
 import { parseCsv } from './csv.js';
 
 const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
@@ -247,6 +251,91 @@ export function arrowHead(coords, km = 0.6) {
   return [[b[0], b[1]], [back[0] + (-uy * w) / kx, back[1] + (ux * w) / ky], [back[0] - (-uy * w) / kx, back[1] - (ux * w) / ky], [b[0], b[1]]];
 }
 
+/* ---------- weather and daylight ---------- */
+
+// offroad and road: share of speed kept; sensor: share of sensor range kept; air: whether aircraft can fly.
+export const WEATHER = {
+  clear: { label: 'Clear', icon: '☀', offroad: 1, road: 1, sensor: 1, air: true },
+  rain: { label: 'Rain', icon: '🌧', offroad: 0.8, road: 0.95, sensor: 0.8, air: true },
+  storm: { label: 'Heavy rain', icon: '⛈', offroad: 0.55, road: 0.85, sensor: 0.6, air: false },
+  fog: { label: 'Fog', icon: '🌫', offroad: 0.9, road: 0.85, sensor: 0.3, air: false },
+  snow: { label: 'Snow', icon: '❄', offroad: 0.5, road: 0.7, sensor: 0.7, air: true },
+  wind: { label: 'High winds', icon: '💨', offroad: 1, road: 1, sensor: 0.9, air: false },
+};
+export const LIGHT = {
+  day: { label: 'Day', icon: '☀', offroad: 1, sensor: 1 },
+  twilight: { label: 'Twilight', icon: '◐', offroad: 0.9, sensor: 0.7 },
+  night: { label: 'Night', icon: '☾', offroad: 0.75, sensor: 0.4 },
+};
+export const weatherOf = (turn) => (WEATHER[turn?.weather] ? turn.weather : 'clear');
+
+/** The real time a turn starts (UTC), when the clock has a start; local times are read at the play area's time zone. */
+export function turnTime(doc, n) {
+  const c = doc.clock || {};
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(c.start || '');
+  if (!m) return null;
+  const lng = doc.view?.center?.[0] ?? 0;
+  const offset = c.utcOffset !== undefined && c.utcOffset !== '' && Number.isFinite(Number(c.utcOffset)) ? Number(c.utcOffset) : Math.round(lng / 15);
+  const utc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - offset * 3600000;
+  return new Date(utc + n * (Number(c.stepMinutes) || 60) * 60000);
+}
+
+/** The sun's height above the horizon (degrees) at a time and place. Accurate to well under a degree. */
+export function sunAltitude(date, lat, lng) {
+  const d = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
+  const g = (357.529 + 0.98560028 * d) * RAD;
+  const L = (280.459 + 0.98564736 * d + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * RAD;
+  const e = (23.439 - 0.00000036 * d) * RAD;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = (((18.697374558 + 24.06570982441908 * d) % 24) + 24) % 24;
+  const ha = (gmst * 15 + lng) * RAD - ra;
+  return Math.asin(Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(ha)) / RAD;
+}
+
+/** Day, twilight (sun up to 6° below the horizon) or night at the start of turn n; null when the clock has no start. */
+export function lightAt(doc, n) {
+  const time = turnTime(doc, n);
+  if (!time) return null;
+  const [lng, lat] = doc.view?.center || [0, 0];
+  const alt = sunAltitude(time, lat, lng);
+  return { state: alt > 0 ? 'day' : alt > -6 ? 'twilight' : 'night', alt: round(alt, 1), time };
+}
+
+/** What weather and light do to movement and sensors on a turn. */
+export function conditions(doc, turn, n) {
+  const w = WEATHER[weatherOf(turn)];
+  const light = lightAt(doc, n);
+  const l = LIGHT[light?.state] || LIGHT.day;
+  return { weather: weatherOf(turn), light: light?.state || null, alt: light?.alt ?? null, offroad: w.offroad * l.offroad, road: w.road, sensor: w.sensor * l.sensor, air: w.air };
+}
+
+/* ---------- arcs ---------- */
+
+const hasArc = (u) => Number(u.fanArc) > 0 && Number(u.fanArc) < 360;
+/** Whether a point lies inside a unit's arc (always true for an all-round unit). */
+export function inArc(u, p) {
+  if (!hasArc(u)) return true;
+  const diff = Math.abs(((bearing(u.lngLat, p) - Number(u.fanDir || 0) + 540) % 360) - 180);
+  return diff <= Number(u.fanArc) / 2;
+}
+/** A range ring, or a fan when the unit only covers an arc, as a polygon ring. */
+export function rangeShape(u, km, steps = 72) {
+  const [lng, lat] = u.lngLat;
+  const kx = 111.32 * Math.cos(lat * RAD);
+  const at = (deg) => [lng + (km * Math.sin(deg * RAD)) / kx, lat + (km * Math.cos(deg * RAD)) / 110.574];
+  if (!hasArc(u)) { const ring = []; for (let i = 0; i <= steps; i++) ring.push(at((360 * i) / steps)); return ring; }
+  const arc = Number(u.fanArc);
+  const start = Number(u.fanDir || 0) - arc / 2;
+  const n = Math.max(6, Math.round((steps * arc) / 360));
+  const ring = [[lng, lat]];
+  for (let i = 0; i <= n; i++) ring.push(at(start + (arc * i) / n));
+  ring.push([lng, lat]);
+  return ring;
+}
+/** A unit's sensor range on this turn, after weather and light. */
+export const sensorRange = (doc, turn, n, u) => round((Number(u.sensorKm) || 0) * conditions(doc, turn, n).sensor, 2);
+
 /* ---------- zones and the movement field ---------- */
 
 export const ZONE_EFFECTS = {
@@ -296,6 +385,7 @@ export const statusOf = (turn, id) => (turn?.links || {})[id] || 'open';
  */
 export function movementField(doc, turn, n, T, m) {
   const f = factorsFor(doc, m);
+  const cond = conditions(doc, turn, n);
   const speed = new Float32Array(T.n);
   const cost = new Float32Array(T.n).fill(1);
   const broken = new Map();
@@ -312,11 +402,11 @@ export function movementField(doc, turn, n, T, m) {
     const br = broken.get(i);
     if (br === 'cut') road = 0;
     let v;
-    if (m === 'naval') v = c === 3 ? f.water : river ? f.river : 0;
-    else if (m === 'air') v = 1;
+    if (m === 'naval') v = (c === 3 ? f.water : river ? f.river : 0) * (cond.weather === 'storm' ? 0.6 : 1);
+    else if (m === 'air') v = cond.air ? 1 : 0;
     else {
-      const ground = c === 3 ? f.water : river ? Math.min(f[COVER[c].key], f.river) : f[COVER[c].key];
-      v = road ? Math.max(ground, road === 2 ? f.road : f.minor) : ground;
+      const ground = (c === 3 ? f.water : river ? Math.min(f[COVER[c].key], f.river) : f[COVER[c].key]) * cond.offroad;
+      v = road ? Math.max(ground, (road === 2 ? f.road : f.minor) * cond.road) : ground;
       if (br === 'degraded' && road) v = Math.max(ground, v * 0.5);
     }
     speed[i] = v;
@@ -681,15 +771,16 @@ export function lineOfSight(T, a, b, { observerM = 2, targetM = 2 } = {}) {
   return true;
 }
 
-/** Units seen by at least one opposing unit with a sensor range, in range and in line of sight. */
-export function autoSpotted(doc, turn, T) {
+/** Units seen by at least one opposing unit with a sensor range: in range (after weather and light), in its arc, and in line of sight. */
+export function autoSpotted(doc, turn, T, n = 0) {
   const seen = new Set();
+  const factor = conditions(doc, turn, n).sensor;
   const units = activeUnits(turn);
   const watchers = units.filter((w) => Number(w.sensorKm) > 0);
   for (const u of turn.units) {
     for (const w of watchers) {
       if (w.side === u.side || !isOpposed(doc, w.side, u.side)) continue;
-      if (distanceKm(w.lngLat, u.lngLat) <= Number(w.sensorKm) && lineOfSight(T, w.lngLat, u.lngLat)) { seen.add(u.id); break; }
+      if (distanceKm(w.lngLat, u.lngLat) <= Number(w.sensorKm) * factor && inArc(w, u.lngLat) && lineOfSight(T, w.lngLat, u.lngLat)) { seen.add(u.id); break; }
     }
   }
   return seen;
@@ -856,7 +947,9 @@ export function findContacts(doc, turn) {
       const [a, b] = [units[i], units[j]];
       if (!isOpposed(doc, a.side, b.side)) continue;
       const d = distanceKm(a.lngLat, b.lngLat);
-      if (d <= Math.max(Number(a.rangeKm) || 0, Number(b.rangeKm) || 0, 1)) out.push({ a: a.id, b: b.id, km: round(d, 1) });
+      const reachA = inArc(a, b.lngLat) ? Number(a.rangeKm) || 0 : 0;
+      const reachB = inArc(b, a.lngLat) ? Number(b.rangeKm) || 0 : 0;
+      if (d <= Math.max(reachA, reachB, 1)) out.push({ a: a.id, b: b.id, km: round(d, 1) });
     }
   }
   return out.sort((p, q) => p.km - q.km);
@@ -895,6 +988,7 @@ export function startTurn(doc, branchId) {
   const cuts = interdictions(doc, prev);
   const res = nextTurn(doc, branchId);
   const t = b.turns[res.index];
+  applySchedule(doc, t, res.index);
   const lost = [];
   for (const u of t.units) {
     const level = clamp((u.supply ?? 100) - (Number(u.used) || 0), 0, 100);
@@ -918,6 +1012,27 @@ export function startTurn(doc, branchId) {
   const linkNames = [...new Set(cuts.map((c) => (c.link ? doc.network.links.find((l) => l.id === c.link)?.name || 'A line' : doc.network.nodes.find((x) => x.id === c.node)?.name || 'A depot')))];
   if (linkNames.length) t.events.push({ type: 'link', text: `Cut by enemy units: ${linkNames.join(', ')}` });
   return res;
+}
+
+/** Applies what's scheduled for turn n: units arrive or withdraw, the weather changes. */
+export function applySchedule(doc, t, n) {
+  for (const item of (doc.schedule || []).filter((x) => Number(x.turn) === n)) {
+    if (item.type === 'arrive' && item.unit && Array.isArray(item.lngLat)) {
+      const before = t.events.length;
+      const u = addUnit(doc, t, { ...item.unit, lngLat: item.lngLat });
+      t.events.splice(before);
+      t.events.push({ type: 'arrive', unit: u.id, text: `${u.name} arrives` });
+    } else if (item.type === 'withdraw') {
+      const u = t.units.find((x) => x.id === item.unitId);
+      if (!u) continue;
+      removeUnit(t, u.id);
+      t.events = t.events.filter((e) => e.type !== 'remove' || !e.text.startsWith(u.name));
+      t.events.push({ type: 'withdraw', text: `${u.name} withdraws` });
+    } else if (item.type === 'weather' && WEATHER[item.weather]) {
+      t.weather = item.weather;
+      t.events.push({ type: 'weather', text: `Weather: ${WEATHER[item.weather].label}` });
+    }
+  }
 }
 
 /** Sets a line's or depot's status on a turn and logs it. */

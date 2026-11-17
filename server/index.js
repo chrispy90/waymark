@@ -994,13 +994,13 @@ function validateScenario(s) {
   return String(s.title || 'Untitled scenario').slice(0, 300);
 }
 const scenarioSummary = (r) => ({ id: r.id, title: r.title, version: r.version, shared: !!r.shared, listed: !!r.listed, updatedAt: r.updated_at, createdAt: r.created_at,
-  ...(r.branches !== undefined ? { branches: r.branches ?? 0, turns: r.turns ?? 0, units: r.units ?? 0 } : {}), ...access.roleFields(r) });
+  ...(r.branches !== undefined ? { branches: r.branches ?? 0, turns: r.turns ?? 0, units: r.units ?? 0, template: !!r.template } : {}), ...access.roleFields(r) });
 
 route('GET', '/api/scenarios', async (req) => {
   const user = requireUser(req);
   const v = access.visible('scenario', user);
   const rows = db.prepare(`SELECT id, owner_id, title, version, shared, listed, created_at, updated_at, json_array_length(data, '$.branches') AS branches,
-    json_array_length(data, '$.branches[0].turns') AS turns, json_array_length(data, '$.branches[0].turns[0].units') AS units FROM scenarios WHERE ${v.where} ORDER BY updated_at DESC`).all(...v.params);
+    json_array_length(data, '$.branches[0].turns') AS turns, json_array_length(data, '$.branches[0].turns[0].units') AS units, json_extract(data, '$.template') AS template FROM scenarios WHERE ${v.where} ORDER BY updated_at DESC`).all(...v.params);
   return [200, { scenarios: access.withRoles(user, 'scenario', rows).map(scenarioSummary) }];
 });
 

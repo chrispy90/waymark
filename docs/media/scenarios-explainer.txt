@@ -1,0 +1,14 @@
+Waymark scenarios: the explainer video script
+(docs/media/scenarios-explainer.mp4). One line per scene; the video's captions use the same text.
+
+title     | Waymark scenarios turn a map into a tabletop exercise. One person drives on the big screen while the room talks it through, turn by turn.
+units     | Each side's units are standard military symbols. Drag one, and it moves along the quickest route over the real ground. Roads are fast, forests and rivers slow it down, and every move uses supply.
+terrain   | The terrain is built from open elevation data and OpenStreetMap, so you can show the room exactly where armor can and can't go.
+lines     | Depots and supply lines keep units in the fight. Cut a road or a bridge, and every unit beyond it is flagged out of supply.
+turn      | Start the next turn, and scripted events arrive on schedule: a power cut, reinforcements, fog on the river.
+combat    | When units meet, the combat panel adds up each side's strength and the ground it holds, shows the odds before anyone rolls, and applies the result.
+weather   | Weather and daylight matter. At night and in fog, sensors see less and units slow down. A military grid and a measuring tool give grid references, distances and bearings.
+branches  | Branch at any turn to try a different decision, then compare how each branch ended.
+analysis  | Afterward, replay the game, chart each side's strength and supply over time, and see where the fighting happened.
+writeup   | One click writes the whole game up as a story with a moving map: your after-action review, ready to share.
+end       | Waymark is free, open source and self-hosted. Find it on GitHub at chrispy90, slash, waymark.

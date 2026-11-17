@@ -210,8 +210,27 @@ Optional rules add more to the document (see `public/js/scenario-rules.js` for t
 }
 ```
 
+Running the game adds (see `public/js/scenario-report.js`):
+
+```jsonc
+{
+  "schedule": [
+    { "id": "s1", "type": "arrive", "turn": 4, "unit": { "name": "2nd Brigade", "side": "blue", "kind": "armor", "echelon": "H" }, "lngLat": [x, y] },
+    { "id": "s2", "type": "withdraw", "turn": 3, "unitId": "<unit id>", "name": "Bridge Guard" },
+    { "id": "s3", "type": "weather", "turn": 3, "weather": "rain" }          // clear | rain | storm | fog | snow | wind
+  ],
+  "tables": [{ "id": "t1", "name": "Does the bridge hold?", "die": "2d6",      // d6 | 2d6 | d10 | d20 | d100
+               "rows": [{ "min": 2, "max": 5, "result": "It collapses" }], "modifiers": [{ "label": "Engineers on site", "value": 2 }] }],
+  "clock": { "mode": "time", "stepMinutes": 60, "start": "2026-06-21T19:00", "utcOffset": -4 },   // start (any mode) turns on daylight
+  "hotwash": { "layer": "<hosted layer id>", "form": "<form id>" },
+  "template": true                                                         // a template, not a game
+}
+```
+
+A scenario file is `{ "format": "waymark-scenario", "version": 1, "exported": "…", "scenario": { … } }` (without `hotwash`).
+
 Each turn may also have `links` (`{ "<link or node id>": "open" | "degraded" | "cut" }`, carried to the next turn) and `graphics`
-(`[{ id, type: phase | boundary | arrow | area | label, side, label, coords }]`). Units may have `mobility`, `sensorKm`, `power`,
+(`[{ id, type: phase | boundary | arrow | area | label, side, label, coords }]`) and `weather`. Units may also have `fanDir` and `fanArc` (degrees). Units may have `mobility`, `sensorKm`, `power`,
 `parent` (a headquarters unit id), `supply` (0–100 at the start of the turn), `used`, `path` and `hours` (this turn's move over terrain),
 and `plan` (a planned move: `{ to, path?, km?, hours?, cost? }`). Injects may have `effects: [{ target: "<link or node id>", status }]`.
 

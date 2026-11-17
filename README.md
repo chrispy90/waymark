@@ -207,6 +207,10 @@ A **dashboard** puts one of your saved maps beside big numbers, bar charts, donu
 
 ### Scenarios: tabletop exercises on a map
 
+[![The scenarios explainer video: units, supply lines, injects, weather and analysis](docs/media/scenarios-explainer.webp)](docs/media/scenarios-explainer.mp4)
+
+**[▶ Watch the explainer](docs/media/scenarios-explainer.mp4)** (2½ minutes, narrated, with captions): units, terrain, supply lines, injects, combat, weather, branches, analysis and the after-action write-up.
+
 A **scenario** plays out "what if?" in a meeting, on one screen. Place units for each side (standard military symbols, or plain badges for police, fire, shelters and the like), then move them turn by turn while the room talks it through.
 
 - **Units with a side, strength and status.** Drag to move; the path and distance are shown, and a unit with a speed is checked against how far it could get in a turn.
@@ -226,6 +230,16 @@ For a deeper game, each of these is optional:
 - **Combat.** A 1d6 combat results table (editable) with combat values from each unit's kind, size, strength, supply and the ground it defends.
 - **Objectives and scoring.** Points for holding places, a victory condition, and the score in the turn bar and the branch comparison.
 - **Planning graphics, spotting and spreadsheets.** Phase lines, boundaries, axes of advance, areas and labels per turn; automatic spotting from sensor ranges and line of sight; units and injects imported from CSV.
+
+For running the room and reviewing the game:
+
+- **A second screen** for the projector that follows your window (map, turn, view, inject banners), while you keep the panels.
+- **Military grid and measuring.** An MGRS grid overlay, grid references under the pointer and for every unit, and distance and bearing (degrees and mils). Range fans for units that only cover an arc.
+- **Reinforcements, withdrawals and a timeline** of everything scripted: injects, arrivals, withdrawals, weather and timed areas, turn by turn.
+- **Weather and daylight.** Day, twilight and night from the sun at the play area; rain, fog, snow and wind that slow units, shorten sensors and ground aircraft.
+- **Adjudication beyond combat.** Outcome tables with modifiers and matrix-game arguments, with the exact chances shown before anyone rolls, and the odds of each combat result.
+- **Analysis.** Charts over turns (units in action, strength, supply, score), a heat map of where the game was fought, a replay that animates the moves, and a hotwash questionnaire whose answers go into the after-action story.
+- **Templates and scenario files** to reuse a setup, or move a scenario to another Waymark server.
 
 Scenarios are shared like everything else, and have a read-only public page at `/w/…`. There is no live multiplayer: one person drives.
 
@@ -443,6 +457,9 @@ public/                the web app (plain ES modules, no build step)
   js/scenario-rules.js terrain grid and routes, lines of communication, supply, command, combat, objectives, spotting, CSV import
   js/scenario-terrain.js builds a scenario's terrain from elevation tiles and OpenStreetMap
   js/scenario-tools.js the Combat, Lines, Terrain, Objectives and Draw panels
+  js/scenario-extras.js second screen, grid and measuring, schedule and timeline, weather, outcome tables, analysis, replay, files
+  js/scenario-report.js dice odds, outcome tables, matrix arguments, timeline, charts data, hotwash, templates and scenario files
+  js/mgrs.js           UTM and MGRS coordinates, bearings and grid lines
   js/print.js          map export to PDF and PNG
   js/mapview.js · form-page.js · profile.js   public map, form and profile pages
   js/layer-form.js     layer settings, shared by the story editor and the map editor

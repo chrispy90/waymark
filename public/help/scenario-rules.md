@@ -50,7 +50,7 @@ Each unit moves in one of these ways. It's set from its kind, and you can change
 | **Naval** | Warships, submarines | 30 km/h |
 | **Doesn't move** | Shelters, hazards | — |
 
-A unit's **Speed** is its top speed on a main road. Leave it empty to use the usual speed. How far it gets in a turn depends on **Minutes per turn** in Setup.
+A unit's **Speed** is its top speed on a main road. Leave it empty to use the usual speed. How far it gets in a turn depends on **Minutes per turn** in Setup, and on the [weather and light](scenario-run.md#weather-and-daylight): rain, snow and darkness slow units off-road, and some weather grounds aircraft.
 
 ### The movement table
 
@@ -184,6 +184,8 @@ Defenders also get the ground: ×2 in built-up areas, ×1.5 in forest, ×1.2 in 
 
 The panel shows how each number was reached. To set a unit's value yourself, type it under **Combat value** in its panel.
 
+Before you roll, the panel also shows what the table holds at those odds: how often the defenders fall back, and the average losses on each side.
+
 ### The combat table
 
 The columns are the odds (attack ÷ defense, rounded down to the column), and the rows are the die roll, 1 to 6. Each result reads:
@@ -239,7 +241,7 @@ By default, a unit is seen by the other sides only if you tick **Seen by the oth
 
 With terrain, line of sight takes in hills, the curve of the earth, and woods (15 m) and buildings (12 m) in between. Without terrain, range is enough.
 
-Spotting is worked out for each turn as it stands, so moving a unit behind a ridge hides it again.
+Spotting is worked out for each turn as it stands, so moving a unit behind a ridge hides it again. Night, twilight and bad weather shorten sensor ranges, and a unit with a [range fan](scenario-run.md#range-fans) only spots inside its arc. See [Weather and daylight](scenario-run.md#weather-and-daylight).
 
 ## Rules
 

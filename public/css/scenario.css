@@ -255,3 +255,95 @@
 .wg-drawbar { position: absolute; left: 50%; bottom: 14px; z-index: 5; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); padding: 8px 10px 8px 14px; border-radius: 99px; background: #0f172a; color: #fff; box-shadow: var(--shadow-2); font-size: 13.5px; }
 .wg-drawbar[hidden] { display: none; }
 .wg-drawbar .btn:not(.btn-primary) { background: rgba(255, 255, 255, .12); border-color: transparent; color: #fff; }
+
+/* ---------- Second screen, grid, measuring, timeline, weather, adjudication, analysis ---------- */
+.wg.is-screen .wg-exit { display: none; }
+.wg.is-screen .wg-bar { pointer-events: none; }
+
+/* Map grid and coordinates */
+.wg-ctl { display: grid; place-items: center; width: 29px; height: 29px; padding: 0; border: 0; background: none; color: #333; cursor: pointer; }
+.wg-ctl[aria-pressed="true"] { color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, #fff); }
+.wg-grid-label { padding: 0 4px; border-radius: 3px; background: rgba(255, 255, 255, .85); color: #0f172a; font: 700 11px/1.5 var(--mono, ui-monospace, monospace); pointer-events: none; }
+.wg-grid-label.is-zone { font-weight: 600; font-size: 10.5px; opacity: .85; }
+.wg-coords { position: absolute; left: 12px; bottom: 12px; z-index: 2; padding: 3px 8px; border-radius: 6px; background: rgba(15, 23, 42, .78); color: #fff; font: 600 12px/1.5 var(--mono, ui-monospace, monospace); pointer-events: none; white-space: nowrap; }
+.wg-coords[hidden] { display: none; }
+.wg-clear { bottom: 44px; }
+.wg-measure { position: absolute; right: 12px; bottom: 34px; z-index: 4; width: 280px; padding: 10px 12px; border-radius: var(--r); background: var(--panel); box-shadow: var(--shadow-2); font-size: 13px; }
+.wg-measure[hidden] { display: none; }
+.wg-measure ol { margin: 6px 0; padding-left: 20px; font-variant-numeric: tabular-nums; }
+.wg-measure p { margin: 0; font-size: 12px; }
+.wg-gridref { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font: 600 12.5px/1.4 var(--mono, ui-monospace, monospace); color: var(--fg-2); }
+
+/* Turn bar: replay, weather and light */
+.wg-play { display: flex; align-items: center; gap: 2px; }
+.wg-play select { height: 30px; padding: 0 4px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-size: 12.5px; }
+.wg-cond { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; background: var(--panel); color: var(--fg-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.wg-cond:hover { background: var(--panel-2); }
+.wg-weather-add { gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.wg-weather-add select { height: 30px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel); color: inherit; font: inherit; font-size: 13px; }
+
+/* Timeline */
+.wg-timeline { border-collapse: collapse; font-size: 12.5px; }
+.wg-timeline th, .wg-timeline td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: center; }
+.wg-timeline tbody th { text-align: left; font-weight: 500; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.wg-timeline thead th { color: var(--muted); font-weight: 600; min-width: 28px; }
+.wg-timeline .is-played { background: var(--panel-2); }
+.wg-timeline .is-now { box-shadow: inset 0 0 0 2px var(--brand); }
+.wg-tl-group th { padding-top: 12px; text-align: left !important; font-weight: 700 !important; color: var(--fg-2); letter-spacing: .03em; }
+.wg-tl-group .i { vertical-align: -2px; margin-right: 6px; }
+.wg-tl-mark { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: #b45309; }
+.wg-tl-mark.is-done { background: #78716c; }
+.wg-tl-mark.is-arrive { background: #2563eb; border-radius: 50%; }
+.wg-tl-mark.is-withdraw { background: #64748b; border-radius: 50%; }
+.wg-tl-mark.is-weather { background: #0e7490; transform: rotate(45deg); width: 10px; height: 10px; }
+.wg-tl-mark.is-zone { width: 100%; height: 8px; border-radius: 0; background: color-mix(in srgb, #7c3aed 55%, transparent); }
+
+/* Outcome tables and matrix arguments */
+.wg-table-name { margin: 0 0 8px; }
+.wg-chances { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.wg-chances li { display: grid; grid-template-columns: minmax(0, 1fr) 70px 40px; align-items: center; gap: 8px; }
+.wg-chances li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wg-chances i { display: block; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--brand) var(--w), var(--line) var(--w)); }
+.wg-chances b { text-align: right; font-variant-numeric: tabular-nums; }
+.wg-roll.is-table strong { font-size: 22px; text-align: center; line-height: 1.25; }
+.wg-roll.is-table { min-height: 0; }
+.wg-rows { display: grid; gap: 6px; margin-bottom: 6px; }
+.wg-row-edit { gap: 6px; }
+.wg-mx-odds { margin: 2px 0 10px; font-size: 13px; font-weight: 600; color: var(--fg-2); }
+.wg-chance-line { margin: -4px 0 12px; font-size: 12.5px; line-height: 1.45; color: var(--fg-2); }
+
+/* Analysis */
+.wg-analysis-head { gap: 10px; margin-bottom: 12px; }
+.wg-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.wg-stats > div { display: grid; min-width: 110px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); }
+.wg-stats strong { font-size: 22px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.wg-stats span { font-size: 12.5px; color: var(--muted); }
+.wg-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+.wg-chart { margin: 0; }
+.wg-chart figcaption { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.wg-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 4px; font-size: 12.5px; color: var(--fg-2); }
+.wg-chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.wg-chart-plot { position: relative; }
+.wg-chart-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.wg-chart-svg .wg-grid { stroke: var(--line); stroke-width: 1; }
+.wg-chart-svg .wg-tick { fill: var(--muted); font: 11px var(--sans); }
+.wg-chart-svg .wg-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.wg-chart-svg .wg-mark { stroke: var(--panel); stroke-width: 2; }
+.wg-chart-svg .wg-end { fill: var(--fg-2); font: 600 11.5px var(--sans); }
+.wg-chart-svg .wg-cross { stroke: var(--fg-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.wg-tip { position: absolute; top: 4px; z-index: 2; min-width: 150px; padding: 8px 10px; border-radius: 8px; background: var(--panel); box-shadow: var(--shadow-2); border: 1px solid var(--line); font-size: 12.5px; pointer-events: none; }
+.wg-tip[hidden] { display: none; }
+.wg-tip strong { display: block; margin-bottom: 4px; }
+.wg-tip .row { gap: 6px; }
+.wg-tip .row b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.wg-tip-key { display: inline-flex; }
+.wg-analysis caption { text-align: left; font-weight: 700; padding: 8px 0 2px; }
+.wg-heat-map { height: 440px; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); }
+.wg-share-row { display: flex; gap: 8px; }
+.wg-share-row .input { flex: 1; min-width: 0; }
+.wg-quotes h3 { margin: 14px 0 4px; font-size: 14px; }
+.wg-quotes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; line-height: 1.45; }
+@media (max-width: 700px) { .wg-charts { grid-template-columns: 1fr; } }
+
+@media (max-width: 1500px) { .wg-dots { display: none; } }
+@media (max-width: 900px) { .wg.is-present { grid-template-rows: minmax(0, 1fr) auto; height: 100vh; height: 100dvh; } .wg.is-present .wg-stage { grid-row: 1; } .wg.is-present .wg-bar { grid-row: 2; position: static; } }

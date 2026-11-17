@@ -24,7 +24,7 @@ const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 export const DEFAULT_SIDES = [
   { id: 'blue', name: 'Blue', color: '#2563eb', affiliation: 'F' },
   { id: 'red', name: 'Red', color: '#dc2626', affiliation: 'H' },
-  { id: 'neutral', name: 'Neutral', color: '#16a34a', affiliation: 'N' },
+  { id: 'neutral', name: 'Neutral', color: '#0d9488', affiliation: 'N' },
 ];
 
 // Kinds of unit. Military kinds carry the function part of a MIL-STD-2525C / APP-6 symbol code; the rest are plain badges.
@@ -213,6 +213,8 @@ export const logEvent = (turn, event) => { turn.events.push(event); return event
 
 /* ---------- turns and branches ---------- */
 
+const WEATHER_NAMES = { clear: 'Clear', rain: 'Rain', storm: 'Heavy rain', fog: 'Fog', snow: 'Snow', wind: 'High winds' };
+
 /** Fires an inject on a turn (once). Returns the inject, or null if it had already fired. */
 export function fireInject(doc, turn, injectId) {
   const inject = (doc.injects || []).find((x) => x.id === injectId);
@@ -222,6 +224,7 @@ export function fireInject(doc, turn, injectId) {
   // An inject can change lines of communication: "the rail bridge is down" cuts that link from now on.
   for (const e of inject.effects || []) {
     if (!e?.target || !e.status) continue;
+    if (e.target === 'weather') { turn.weather = e.status; turn.events.push({ type: 'weather', text: `Weather: ${WEATHER_NAMES[e.status] || e.status}` }); continue; }
     turn.links = { ...(turn.links || {}), [e.target]: e.status };
     const item = [...(doc.network?.links || []), ...(doc.network?.nodes || [])].find((x) => x.id === e.target);
     if (item) turn.events.push({ type: 'link', link: item.id, text: `${item.name || 'A line'} ${{ open: 'is open again', degraded: 'is degraded', cut: item.lngLat ? 'is lost' : 'is cut' }[e.status] || e.status}` });
@@ -237,7 +240,7 @@ export function nextTurn(doc, branchId) {
   const branch = branchOf(doc, branchId);
   const prev = branch.turns.at(-1);
   const turn = { units: clone(prev.units).map((u) => ({ ...u, from: [...u.lngLat] })), events: [], notes: '', fired: [...prev.fired],
-    links: { ...(prev.links || {}) }, graphics: clone(prev.graphics || []) };
+    links: { ...(prev.links || {}) }, graphics: clone(prev.graphics || []), ...(prev.weather ? { weather: prev.weather } : {}) };
   branch.turns.push(turn);
   const index = branch.turns.length - 1;
   const injects = (doc.injects || []).filter((x) => Number(x.turn) === index).map((x) => fireInject(doc, turn, x.id)).filter(Boolean);
@@ -330,7 +333,7 @@ function turnLayer(doc, branch, n, id, decorate) {
  * A story that replays the scenario: a moving map with one card per turn (what happened, and the notes taken), a
  * chapter per branch when there are several, and a summary of how each branch ended.
  */
-export function storyFromScenario(doc, { branches, decorate } = {}) {
+export function storyFromScenario(doc, { branches, decorate, extra = [] } = {}) {
   const chosen = (branches?.length ? branches.map((id) => branchOf(doc, id)) : doc.branches).filter((b, i, all) => all.indexOf(b) === i);
   const layers = [];
   const blocks = [{ type: 'text', style: 'large', html: `<p>${esc(doc.summary || 'What we set out to test, and who took part.')}</p>` }];
@@ -362,6 +365,7 @@ export function storyFromScenario(doc, { branches, decorate } = {}) {
   if (several) {
     blocks.push({ type: 'text', html: `<h2>How the branches compare</h2><ul>${chosen.map((b) => `<li><strong>${esc(b.name)}</strong>: ${sideSummary(doc, b.turns.at(-1)).map((s) => `${esc(s.name)} ${s.active} of ${s.units} in action at ${s.strength}% strength`).join('; ') || 'no units'}</li>`).join('')}</ul>` });
   }
+  blocks.push(...extra);
   blocks.push({ type: 'text', html: '<h2>What we learned</h2><p>Write the conclusions the group reached, and what to do next.</p>' });
   return { title: `${doc.title || 'Scenario'}: after-action review`, subtitle: doc.summary || '', theme: 'light', motion: 'subtle', cover: { image: '' }, layers, blocks };
 }

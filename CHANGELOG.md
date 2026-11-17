@@ -2,6 +2,28 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
+## Unreleased
+
+### Added
+- **Second screen.** Open a window for the projector that shows only the map and the turn bar and follows the main window: the turn, branch, view, whose view is shown, overlays, the grid and inject banners.
+- **Military grid and measuring.** An MGRS grid overlay whose spacing follows the zoom, the grid reference under the pointer and for each unit, and a measuring tool with distance and true bearing in degrees and mils.
+- **Range fans.** Give a unit a facing and an arc; its range and sensors become fans, and it only spots and contacts units inside the arc. The selected unit's sensor range is drawn too.
+- **Reinforcements and withdrawals** scheduled for a turn, on every branch.
+- **Timeline** of everything scripted: injects, reinforcements, withdrawals, weather changes and timed areas.
+- **Weather and daylight.** With a start time, each turn is day, twilight or night at the play area, worked out from the sun. Six kinds of weather, set from the turn bar, scheduled, or changed by an inject. Night and weather shorten sensor ranges and slow units off-road; fog, heavy rain and high winds ground aircraft. The map is shaded at night and in fog.
+- **Outcome tables** with modifiers and exact chances, rolled in the app or entered from real dice.
+- **Matrix arguments**: reasons for and against, a facilitator modifier, two dice, with the chance of success shown first.
+- **Combat odds before rolling**: how often the defenders fall back and the average losses at the current odds.
+- **Analysis**: charts of units in action, strength, supply and score over turns (with marker shapes, end labels, hover values and a table view), a heat map of positions, fights and contacts, and totals.
+- **Replay** of a branch with units gliding along their moves, at 1, 2 or 4 seconds a turn. Stepping forward a turn animates the moves too.
+- **Hotwash questionnaire**: one click makes a public form for participants; answers show in the analysis and go into the after-action story.
+- **Templates and scenario files**: save a scenario's setup as a template and start new ones from it; download a scenario as a file and import it on another server.
+- A **Running and reviewing a game** page in the user guide.
+- A narrated **explainer video** of scenarios, linked from the README (docs/media/scenarios-explainer.mp4, with its script beside it).
+
+### Changed
+- The default color of the Neutral side is now teal, so it can be told apart from Red with red-green color blindness. Existing scenarios keep their colors.
+
 ## 1.8.0 (2026-11-16)
 
 ### Added

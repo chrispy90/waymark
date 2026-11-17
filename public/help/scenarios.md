@@ -9,12 +9,12 @@ Scenarios are made for one screen in a meeting room: one person drives, everyone
 ## Create a scenario
 
 1. On the **Scenarios** tab of the home screen, select **New scenario**.
-2. Choose what it's played on:
+2. Choose a [template](scenario-run.md#templates), or what it's played on:
    - **A plain map**: just a basemap. Pan and zoom to your area.
    - One of your **saved maps**: its layers, styling and basemap appear under the units. Use this when the game depends on your own data, such as facilities, boundaries or routes.
 3. The scenario opens ready to place units. Select the title at the top to rename it.
 
-You can also start from the **Maps** tab: open a map's **⋯** menu and choose **New scenario on this map**.
+You can also start from the **Maps** tab: open a map's **⋯** menu and choose **New scenario on this map**. To bring in a scenario from another Waymark server, select **Import a scenario file** in the New scenario dialog. See [Scenario files](scenario-run.md#scenario-files).
 
 Changes save by themselves. The top bar shows **Saved** when everything is stored.
 
@@ -26,7 +26,7 @@ Changes save by themselves. The top bar shows **Saved** when everything is store
 | **Panel** | The controls for the chosen tool. |
 | **Map** | The game board. Drag units here. |
 | **Turn bar** (bottom) | The branch you're playing, the current turn, a tally of each side's units still in action, the score if there are objectives, and **Next turn**. |
-| **Top bar** | **Show everything** (choose whose view to show), undo, help, **Share**, **Write it up** and **Present**. |
+| **Top bar** | **Show everything** (choose whose view to show), undo, help, **⋯** (second screen, timeline, analysis, scenario files and templates), **Share**, **Write it up** and **Present**. |
 
 ## Set up the game
 
@@ -46,7 +46,7 @@ Open **Setup** to describe the scenario before you start.
 - **Rules**: planned moves, automatic spotting, supply effects, ranges, and the combat and movement tables. See [Terrain, supply and combat](scenario-rules.md#rules).
 - **Map**: for a scenario on a plain map, choose the **Basemap**. Select **Open on this view** to make the scenario open where the map is now.
 
-Everything on this page works on its own. For a deeper game, [Terrain, supply and combat](scenario-rules.md) adds ground that slows units down, supply lines that can be cut, a combat table, objectives and planning graphics.
+Everything on this page works on its own. For a deeper game, [Terrain, supply and combat](scenario-rules.md) adds ground that slows units down, supply lines that can be cut, a combat table, objectives and planning graphics. [Running and reviewing a game](scenario-run.md) covers the second screen, the map grid, reinforcements, the timeline, weather and daylight, outcome tables, charts, the hotwash questionnaire, and templates.
 
 ## Place units
 
@@ -121,7 +121,7 @@ Select **Clear the overlay** on the map to remove the shading. Both aids need an
 ## Play turns
 
 - Select **Next turn**, or press `N`, to start the next turn. Every unit begins it where it ended the last one.
-- Use the arrows in the turn bar, or the left and right arrow keys, to step back and forward through the game. The dots show how many turns have been played.
+- Use the arrows in the turn bar, or the left and right arrow keys, to step back and forward through the game. Stepping forward animates the moves. The dots (on wide screens) show how many turns have been played. To watch the whole branch play out, use [Replay](scenario-run.md#replay).
 - Earlier turns are read-only, so history can't be changed by accident. From an earlier turn you can:
   - **Branch from here** to play a different choice from that point. See [Branches](#branches).
   - **Replay from here** to throw away the later turns of this branch and carry on from this one.
@@ -180,7 +180,7 @@ This is a display setting for the room. It isn't a security control: anyone who 
 
 ## Present
 
-Select **Present** to fill the screen with the map and the turn bar, with the panels hidden. Everything still works: drag units, start turns, release scheduled injects. Click a unit to see a card with its side, kind, status and strength.
+Select **Present** to fill the screen with the map and the turn bar, with the panels hidden. To keep the panels on your own screen while the projector shows the map, use a [second screen](scenario-run.md#second-screen) instead. Everything still works: drag units, start turns, release scheduled injects. Click a unit to see a card with its side, kind, status and strength.
 
 Press `Esc`, or select **Exit**, to bring the panels back.
 

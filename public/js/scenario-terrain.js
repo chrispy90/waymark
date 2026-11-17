@@ -6,7 +6,8 @@ import { gridSize, packCell, encodeElevation, pointInRing, terrainOf } from './s
 
 export const MAX_CELLS = 30000;
 export const CELL_SIZES = [0.1, 0.25, 0.5, 1, 2, 5, 10];
-const OVERPASS = 'https://overpass-api.de/api/interpreter';
+// The main Overpass server, then a public mirror if it's busy.
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 export const TERRAIN_CREDIT = 'Terrain: elevation from Mapzen Terrarium / AWS Open Data; roads, rivers, water, forest and built-up areas © OpenStreetMap contributors';
 
 /** The smallest cell size that keeps the grid to a comfortable number of cells for an area. */
@@ -87,11 +88,17 @@ export async function buildTerrain(bounds, cellKm, { onProgress = () => {} } = {
   // Map features
   onProgress('Getting roads, rivers, water, forest and towns from OpenStreetMap…');
   let elements = [];
-  try {
-    const res = await fetch(OVERPASS, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(query(bounds, cellKm))}` });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    elements = (await res.json()).elements || [];
-  } catch { partial.push('map features'); }
+  let got = false;
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(query(bounds, cellKm))}` });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      elements = (await res.json()).elements || [];
+      got = true;
+      break;
+    } catch { onProgress('OpenStreetMap is busy, trying a mirror…'); }
+  }
+  if (!got) partial.push('map features');
 
   onProgress(`Laying ${elements.length.toLocaleString()} map features onto the grid…`);
   const setCover = (i, c) => { if (i >= 0 && RANK[c] > RANK[cover[i]]) cover[i] = c; };

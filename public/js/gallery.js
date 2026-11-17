@@ -8,6 +8,7 @@ import { hostedLayerDef } from './maps.js';
 import { openShare, renderTeam, openProfile } from './share.js';
 import { openHistory, openSync, openForms, uploadLayerFiles } from './layer-tools.js';
 import { newScenario } from './scenario-core.js';
+import { fromTemplate, unpackScenario } from './scenario-report.js';
 import { openExport } from './export.js';
 import { openNewHostedLayerDialog, openAttributeTableDialog } from './table.js';
 
@@ -348,7 +349,7 @@ async function newDashboard(map) {
   const dlg = dialog({ title: 'Which map is this dashboard about?', body: h('div', { class: 'sub-list', style: 'max-height:360px;overflow:auto' },
     maps.map((m) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); make(m); } },
       h('span', { class: 'pick-icon' }, icon('map', { size: 18 })), h('span', {}, h('strong', {}, m.title || 'Untitled map'), h('span', {}, `${m.layers} ${m.layers === 1 ? 'layer' : 'layers'} · edited ${relTime(m.updatedAt)}`))))),
-  actions: [h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel')] });
+  actions: [h('button', { type: 'button', class: 'btn', onclick: () => { dlg.close(); importScenarioFile(); } }, icon('upload', { size: 15 }), 'Import a scenario file'), h('span', { class: 'spacer' }), h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel')] });
   return dlg;
 }
 
@@ -415,11 +416,39 @@ async function createScenario(map) {
   location.href = `/scenario.html?id=${r.id}&new=1`;
 }
 
+async function fromTemplateScenario(t) {
+  const { scenario } = await api('GET', `/api/scenarios/${t.id}`);
+  const { id, ...copy } = fromTemplate(scenario);
+  const r = await api('POST', '/api/scenarios', { scenario: copy });
+  location.href = `/scenario.html?id=${r.id}`;
+}
+
+function importScenarioFile() {
+  const input = h('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: async () => {
+    const f = input.files[0];
+    input.remove();
+    if (!f) return;
+    try {
+      const scenario = unpackScenario(await f.text());
+      const r = await api('POST', '/api/scenarios', { scenario });
+      toast('Scenario imported', { tone: 'ok' });
+      location.href = `/scenario.html?id=${r.id}`;
+    } catch (e) { toast(e.message, { tone: 'error', duration: 8000 }); }
+  } });
+  document.body.append(input);
+  input.click();
+}
+
 async function newScenarioDialog() {
-  const { maps } = await api('GET', '/api/maps');
-  const dlg = dialog({ title: 'What map is it played on?', body: h('div', { class: 'sub-list', style: 'max-height:380px;overflow:auto' },
-    h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); createScenario(null); } },
-      h('span', { class: 'pick-icon' }, icon('globe', { size: 18 })), h('span', {}, h('strong', {}, 'A plain map'), h('span', {}, 'Just a basemap. Pan to your area and start placing units.'))),
+  const [{ maps }, { scenarios }] = await Promise.all([api('GET', '/api/maps'), api('GET', '/api/scenarios')]);
+  const templates = scenarios.filter((x) => x.template);
+  const pick = (iconName, title, sub, onClick) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: onClick },
+    h('span', { class: 'pick-icon' }, icon(iconName, { size: 18 })), h('span', {}, h('strong', {}, title), h('span', {}, sub)));
+  const dlg = dialog({ title: 'New scenario', body: h('div', { class: 'sub-list', style: 'max-height:440px;overflow:auto' },
+    templates.length ? [h('div', { class: 'rail-section-title', style: 'margin-top:0' }, 'From a template'),
+      templates.map((t) => pick('copy', t.title.replace(/ \(template\)$/, ''), `Template · ${t.units} ${t.units === 1 ? 'unit' : 'units'} ready to play`, () => { dlg.close(); fromTemplateScenario(t); })),
+      h('div', { class: 'rail-section-title' }, 'Or start fresh on')] : null,
+    pick('globe', 'A plain map', 'Just a basemap. Pan to your area and start placing units.', () => { dlg.close(); createScenario(null); }),
     maps.map((m) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); createScenario(m); } },
       h('span', { class: 'pick-icon' }, icon('map', { size: 18 })), h('span', {}, h('strong', {}, m.title || 'Untitled map'), h('span', {}, `Your saved map · ${m.layers} ${m.layers === 1 ? 'layer' : 'layers'}`))))),
   actions: [h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel')] });
@@ -431,7 +460,8 @@ function scenarioCard(s, i) {
     e.preventDefault();
     e.stopPropagation();
     menu(e.currentTarget, [
-      { label: canEdit(s) ? 'Open scenario' : 'Watch scenario', icon: 'pin', onClick: () => { location.href = `/scenario.html?id=${s.id}`; } },
+      s.template ? { label: 'New scenario from this template', icon: 'plus', onClick: () => fromTemplateScenario(s) } : null,
+      { label: s.template ? 'Edit the template' : canEdit(s) ? 'Open scenario' : 'Watch scenario', icon: 'pin', onClick: () => { location.href = `/scenario.html?id=${s.id}`; } },
       mine(s) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'scenario', id: s.id, title: s.title }, { onChange: load }) } : null,
       s.shared ? { label: 'Open public page', icon: 'external', onClick: () => window.open(`/w/${s.id}`, '_blank', 'noopener') } : null,
       { label: 'Duplicate', icon: 'copy', onClick: async () => {
@@ -454,7 +484,7 @@ function scenarioCard(s, i) {
     h('div', { class: 'card-cover', style: `background-image:${coverGradient('scenario-' + s.id + s.title)}` }, h('span', { class: 'card-cover-title' }, s.title || 'Untitled scenario')),
     more,
     h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
-      s.shared ? h('span', { class: 'pill is-live' }, 'Public') : h('span', { class: 'pill no-dot' }, 'Scenario'), sharedPill(s),
+      s.template ? h('span', { class: 'pill no-dot is-warn' }, 'Template') : s.shared ? h('span', { class: 'pill is-live' }, 'Public') : h('span', { class: 'pill no-dot' }, 'Scenario'), sharedPill(s),
       h('span', { class: 'muted' }, `${s.units} ${s.units === 1 ? 'unit' : 'units'} · ${Math.max(0, s.turns - 1)} ${s.turns - 1 === 1 ? 'turn' : 'turns'}${s.branches > 1 ? ` · ${s.branches} branches` : ''} · edited ${relTime(s.updatedAt)}`))));
 }
 

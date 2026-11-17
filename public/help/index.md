@@ -16,7 +16,7 @@ Waymark is a place to tell stories with maps. You write a story that scrolls, ad
 | Find patterns in your data | [Analysis overview](analysis.md) and the [Analysis tool reference](analysis-tools.md) |
 | Work with other people | [Sharing and teams](sharing.md) |
 | Show numbers and charts next to a map | [Dashboards](dashboards.md) |
-| Play out "what if?" on a map in a meeting | [Scenarios](scenarios.md), and [Terrain, supply and combat](scenario-rules.md) for a deeper game |
+| Play out "what if?" on a map in a meeting | [Scenarios](scenarios.md), [Terrain, supply and combat](scenario-rules.md) for a deeper game, and [Running and reviewing a game](scenario-run.md) |
 | Collect points from the public | [Forms](forms.md) |
 | Print a map, or host a story somewhere else | [Export and print](export.md) |
 | Install or run Waymark for your organization | [For administrators](admin.md) |

@@ -14,11 +14,13 @@ import {
 } from './scenario-core.js';
 import * as R from './scenario-rules.js';
 import { createTools } from './scenario-tools.js';
+import { createExtras } from './scenario-extras.js';
 
 const params = new URLSearchParams(location.search);
 const publicId = /^\/w\/([\w-]+)/.exec(location.pathname)?.[1];
 const id = publicId || params.get('id');
 const embed = params.has('embed');
+const screenMode = params.has('screen'); // the second screen for a projector: follows the main window
 document.documentElement.classList.toggle('is-embed', embed);
 const root = $('#page');
 const uid = (p) => p + Math.random().toString(36).slice(2, 8);
@@ -141,17 +143,57 @@ function facts() {
   const T = R.terrainOf(doc.terrain);
   const rules = R.rulesOf(doc);
   const v = { T, rules, supply: R.supplyStates(doc, t), command: R.commandStates(doc, t, turnIx), cuts: R.interdictions(doc, t),
-    spotted: rules.autoSpot ? R.autoSpotted(doc, t, T) : new Set(), control: R.controlAt(doc, branch(), turnIx), score: (doc.objectives || []).length ? R.scoreAt(doc, branch(), turnIx) : null };
+    spotted: rules.autoSpot ? R.autoSpotted(doc, t, T, turnIx) : new Set(), control: R.controlAt(doc, branch(), turnIx), score: (doc.objectives || []).length ? R.scoreAt(doc, branch(), turnIx) : null };
   factsCache = { key, v };
   return v;
 }
 
 function goTo(b, n) {
+  const forward = branchOf(doc, b).id === branchId && n === turnIx + 1;
   branchId = branchOf(doc, b).id;
   turnIx = Math.max(0, Math.min(lastTurn(doc, branchId), n));
   if (selected && !unitById(selected)) selected = null;
   clearOverlay(false);
   render();
+  if (forward) animateMoves();
+}
+
+// Units glide along this turn's moves, so a step forward (or a replay) shows what happened.
+function animateMoves() {
+  const t = turn();
+  const moving = t.units.filter((u) => u.from && markers.has(u.id) && distanceKm(u.from, u.lngLat) > 0.005).map((u) => {
+    const path = u.path?.length > 1 ? u.path : [u.from, u.lngLat];
+    const legs = path.slice(1).map((p, i) => distanceKm(path[i], p));
+    return { m: markers.get(u.id).marker, path, legs, total: legs.reduce((a, b) => a + b, 0) || 1, end: u.lngLat };
+  });
+  if (!moving.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const start = performance.now();
+  const at = (x, f) => { let run = f * x.total; for (let i = 0; i < x.legs.length; i++) { if (run <= x.legs[i] || i === x.legs.length - 1) { const k = x.legs[i] ? Math.min(1, run / x.legs[i]) : 1; return [x.path[i][0] + (x.path[i + 1][0] - x.path[i][0]) * k, x.path[i][1] + (x.path[i + 1][1] - x.path[i][1]) * k]; } run -= x.legs[i]; } return x.end; };
+  const frame = (now) => {
+    const f = Math.min(1, (now - start) / 900);
+    const e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
+    for (const x of moving) x.m.setLngLat(f >= 1 ? x.end : at(x, e));
+    if (f < 1) requestAnimationFrame(frame);
+  };
+  for (const x of moving) x.m.setLngLat(x.path[0]);
+  requestAnimationFrame(frame);
+}
+
+/** On the second screen: show what the main window sends. */
+function applyRemote(m) {
+  if (m.type === 'camera') { map?.jumpTo({ center: m.center, zoom: m.zoom, bearing: m.bearing, pitch: m.pitch }); return; }
+  if (m.type !== 'state') return;
+  const prev = { branchId, turnIx };
+  if (m.doc) { doc = m.doc; rev++; }
+  branchId = branchOf(doc, m.branchId).id;
+  turnIx = Math.max(0, Math.min(m.turnIx, lastTurn(doc, branchId)));
+  viewAs = m.viewAs || 'all';
+  selected = m.selected && unitById(m.selected) ? m.selected : null;
+  overlay = m.overlay || empty();
+  if (m.grid !== undefined && m.grid !== extras.gridOn) extras.setGrid(m.grid);
+  render();
+  if (prev.branchId === branchId && turnIx === prev.turnIx + 1) animateMoves();
+  if (m.banner !== undefined) { if (m.banner) showInject(m.banner); else $('.wg-banner')?.remove(); }
 }
 
 /* ---------- unit symbols ---------- */
@@ -184,7 +226,12 @@ function unitEl(u) {
     flagsEl(u),
     h('span', { class: 'wg-str' }, h('i', { style: `width:${u.strength}%;background:${u.strength > 60 ? '#16a34a' : u.strength > 30 ? '#d97706' : '#dc2626'}` })),
     h('span', { class: 'wg-name' }, u.name));
-  el.addEventListener('click', (e) => { e.stopPropagation(); if (placing) return; select(u.id); });
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (drawing) { addDrawPoint(u.lngLat); return; } // while drawing or measuring, a unit is just a point on the map
+    if (placing) return;
+    select(u.id);
+  });
   return el;
 }
 
@@ -207,6 +254,7 @@ function select(uidOf, { fly = false } = {}) {
 const empty = () => ({ type: 'FeatureCollection', features: [] });
 function ensureLayers() {
   if (map.getSource('wg-moves')) return;
+  extras.lightLayers(map);
   tools.layersBelow(map);
   map.addSource('wg-overlay', { type: 'geojson', data: empty() });
   map.addSource('wg-moves', { type: 'geojson', data: empty() });
@@ -215,6 +263,7 @@ function ensureLayers() {
   map.addLayer({ id: 'wg-moves-line', type: 'line', source: 'wg-moves', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-dasharray': [1.5, 1.6] } });
   map.addLayer({ id: 'wg-moves-start', type: 'circle', source: 'wg-moves', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2 } });
   tools.layersAbove(map);
+  extras.layers(map);
 }
 
 function drawMap() {
@@ -250,7 +299,9 @@ function drawMap() {
   const u = selected && unitById(selected);
   if (u && shown(u)) {
     const color = sideOf(doc, u.side).color;
-    if (Number(u.rangeKm) > 0) rings.push({ type: 'Feature', properties: { color, opacity: 0.08, width: 2 }, geometry: { type: 'Polygon', coordinates: [circle(u.lngLat, Number(u.rangeKm))] } });
+    if (Number(u.rangeKm) > 0) rings.push({ type: 'Feature', properties: { color, opacity: 0.08, width: 2 }, geometry: { type: 'Polygon', coordinates: [R.rangeShape(u, Number(u.rangeKm))] } });
+    const sensor = R.sensorRange(doc, turn(), turnIx, u);
+    if (sensor > 0) rings.push({ type: 'Feature', properties: { color: '#0f766e', width: 1.3 }, geometry: { type: 'LineString', coordinates: R.rangeShape(u, sensor) } });
     const F = facts();
     if (F.T && live()) rings.push(...reachOutline(u, F));
     else {
@@ -260,6 +311,7 @@ function drawMap() {
   }
   map.getSource('wg-overlay').setData({ type: 'FeatureCollection', features: [...overlay.features, ...rings] });
   tools.draw(map, facts());
+  extras.drawLight(map);
   // injects that have been released, where they were pinned
   pins.splice(0).forEach((p) => p.remove());
   for (const x of (doc.injects || []).filter((i) => t.fired.includes(i.id) && Array.isArray(i.lngLat))) {
@@ -319,6 +371,13 @@ function stopDraw() {
   map.doubleClickZoom.enable();
   render();
 }
+function addDrawPoint(p) {
+  if (!drawing) return;
+  if (drawing.mode === 'point') { const d = drawing; stopDraw(); d.done([[+p[0].toFixed(6), +p[1].toFixed(6)]]); return; }
+  drawing.coords.push([...p]);
+  drawMap();
+  drawBar();
+}
 function finishDraw() {
   const d = drawing;
   if (!d) return;
@@ -341,13 +400,15 @@ function drawBar() {
   if (!el) return;
   el.hidden = !drawing;
   if (!drawing) return;
-  fill(el, h('span', {}, drawing.hint || 'Click the map.'),
+  fill(el, h('span', {}, drawing.measure ? extras.measureText([...drawing.coords, ...(drawing.cursor ? [drawing.cursor] : [])]) : drawing.hint || 'Click the map.'),
     drawing.mode !== 'point' && drawing.coords.length ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { drawing.coords.pop(); drawMap(); drawBar(); } }, 'Undo point') : null,
     drawing.mode !== 'point' ? h('button', { type: 'button', class: 'btn btn-sm btn-primary', onclick: finishDraw }, 'Finish') : null,
     h('button', { type: 'button', class: 'btn btn-sm', onclick: stopDraw }, 'Cancel'));
 }
 
 function clearOverlay(redraw = true) {
+  const card = $('#wg-measure');
+  if (card) card.hidden = true;
   overlay = empty();
   if (redraw) drawMap();
   $('#wg-clear')?.toggleAttribute('hidden', true);
@@ -392,8 +453,10 @@ function showInject(x) {
     h('div', { class: 'row' },
       Array.isArray(x.lngLat) ? h('button', { type: 'button', class: 'btn', onclick: () => { map.easeTo({ center: x.lngLat, zoom: Math.max(map.getZoom(), 11), duration: 700 }); } }, icon('pin', { size: 15 }), 'Show on the map') : null,
       h('span', { class: 'spacer' }),
-      h('button', { type: 'button', class: 'btn btn-primary', onclick: () => el.remove() }, 'Continue')));
+      h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { el.remove(); if (!screenMode) extras.sync({ banner: null }); } }, 'Continue')));
   $('.wg-stage').append(el);
+  if (screenMode) return;
+  extras.sync({ banner: x });
   el.querySelector('.btn-primary').focus();
 }
 
@@ -517,7 +580,8 @@ function writeUp() {
       const win = window.open('', '_blank'); // opened now, while the click still counts, so it isn't blocked
       try {
         await save();
-        const r = await api('POST', '/api/stories', { story: storyFromScenario(doc, { branches: doc.branches.filter((x) => picks.has(x.id)).map((x) => x.id), decorate: (b, n) => R.storyFeatures(doc, b, n) }) });
+        const extra = await extras.hotwashBlocks();
+        const r = await api('POST', '/api/stories', { story: storyFromScenario(doc, { branches: doc.branches.filter((x) => picks.has(x.id)).map((x) => x.id), decorate: (b, n) => R.storyFeatures(doc, b, n), extra }) });
         dlg.close();
         if (win) win.location = `/builder.html?id=${r.id}&new=1`; else location.href = `/builder.html?id=${r.id}&new=1`;
         toast('Story created', { tone: 'ok' });
@@ -566,6 +630,7 @@ function unitEditor(u) {
       h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get by road in one turn', onclick: () => reach(u, 'auto') }, icon('route', { size: 14 }), 'Reach by road'),
       h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get on foot in one turn', onclick: () => reach(u, 'pedestrian') }, icon('route', { size: 14 }), 'On foot')),
     tools.unitSection(u, facts()),
+    canEdit ? extras.withdrawField(u) : null,
     ro ? null : h('div', { class: 'row', style: 'margin-top:10px' },
       h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { const c = mutate(() => addUnit(doc, turn(), { ...u, id: undefined, name: `${u.name} (copy)`, lngLat: [u.lngLat[0] + 0.01, u.lngLat[1] - 0.01] }), { redraw: false }); select(c.id); } }, icon('copy', { size: 14 }), 'Duplicate'),
       h('span', { class: 'spacer' }),
@@ -590,6 +655,7 @@ function unitsPanel() {
       isPlacing ? h('p', { class: 'field-hint' }, 'Click the map to place a unit. Keep clicking to place more.') : null,
       h('div', { class: 'row wg-import' }, h('button', { type: 'button', class: 'link-btn', onclick: tools.importUnits }, icon('upload', { size: 14 }), 'Import from a spreadsheet'), h('span', { class: 'spacer' }),
         h('button', { type: 'button', class: 'link-btn', onclick: tools.templates.units }, 'Template'))) : null,
+    u ? null : extras.arrivalsSection(),
     doc.sides.map((s) => {
       const list = t.units.filter((x) => x.side === s.id && shown(x));
       if (!list.length) return null;
@@ -605,6 +671,7 @@ function injectsPanel() {
   const firedAt = (x) => branch().turns.findIndex((tt) => tt.fired.includes(x.id));
   return [
     ...head('Injects', 'Events you spring on the room: a bridge is destroyed, a storm arrives, a rumor spreads. Schedule one for a turn, or release it when the moment is right.'),
+    h('button', { type: 'button', class: 'btn btn-sm', style: 'margin-bottom:10px', onclick: () => extras.openTimeline() }, icon('clock', { size: 14 }), 'Timeline of the game'),
     (doc.injects || []).length ? h('div', { class: 'wg-list' }, doc.injects.map((x) => {
       const at = firedAt(x);
       const done = at >= 0 && at <= turnIx;
@@ -675,6 +742,8 @@ function dicePanel() {
     h('div', { class: 'row' }, h('input', { class: 'input', type: 'number', min: 1, max: 99, value: chance, style: 'width:86px', 'aria-label': 'Chance of success, percent', oninput: (e) => { chance = Math.max(1, Math.min(99, +e.target.value || 50)); } }), h('span', { class: 'muted' }, '%'),
       h('span', { class: 'spacer' }), h('button', { type: 'button', class: 'btn btn-primary', onclick: () => rollChance(chance, rollLabel.trim()) }, 'Roll')),
     h('p', { class: 'field-hint' }, live() ? 'Rolls are added to this turn\'s log.' : 'Rolls on an earlier turn aren\'t logged.'),
+    ...extras.tablesSection(),
+    ...extras.matrixSection(),
   ];
 }
 
@@ -697,6 +766,7 @@ function branchesPanel() {
     })),
     canEdit ? h('button', { type: 'button', class: 'btn btn-primary btn-block', style: 'margin-top:12px', onclick: branchHere }, icon('copy', { size: 15 }), `Branch from ${lower(turnLabel(doc, turnIx))}`) : null,
     h('button', { type: 'button', class: 'btn btn-block', style: 'margin-top:8px', onclick: openCompare }, icon('compare', { size: 15 }), 'Compare branches'),
+    h('button', { type: 'button', class: 'btn btn-block', style: 'margin-top:8px', onclick: () => extras.openAnalysis() }, icon('chart', { size: 15 }), 'Charts, heat map and hotwash'),
   ];
 }
 
@@ -721,9 +791,10 @@ function setupPanel() {
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Turns are shown as'), h('div', { class: 'seg seg-block' }, [['turns', 'Turn numbers'], ['elapsed', 'Hours elapsed'], ['time', 'Date and time']].map(([v, l]) => h('button', { type: 'button', class: c.mode === v ? 'is-on' : '', disabled: ro, onclick: () => mutate(() => { c.mode = v; }) }, l)))),
     h('div', { class: 'grid-2' },
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Minutes per turn'), h('input', { class: 'input', type: 'number', min: 1, step: 1, value: c.stepMinutes || 60, disabled: ro, onchange: (e) => mutate(() => { c.stepMinutes = Math.max(1, Math.round(+e.target.value || 60)); }) })),
-      c.mode === 'time' ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Game starts'), h('input', { class: 'input', type: 'datetime-local', value: c.start || '', disabled: ro, onchange: (e) => mutate(() => { c.start = e.target.value; }) })) : h('span')),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, c.mode === 'time' ? 'Game starts' : 'Game starts (for daylight)'), h('input', { class: 'input', type: 'datetime-local', value: c.start || '', disabled: ro, onchange: (e) => mutate(() => { c.start = e.target.value; }) }))),
     h('p', { class: 'field-hint', style: 'margin-top:-4px' }, 'Minutes per turn sets how far a unit with a speed can move in a turn, and the size of "reach" areas.'),
     ...tools.rulesSection(),
+    ...extras.weatherSection(),
     h('div', { class: 'rail-section-title' }, 'Map'),
     mapDoc ? h('p', { class: 'muted' }, 'Played on your saved map ', h('a', { href: `/map.html?id=${doc.map}`, target: '_blank', rel: 'noopener' }, mapDoc.title || 'Untitled map'), '. Edit the map to change its layers and basemap.')
       : h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Basemap'), h('select', { disabled: ro, onchange: (e) => { mutate(() => { doc.view.basemap = e.target.value; }, { redraw: false }); location.reload(); } }, Object.entries(BASEMAPS).map(([k, b]) => h('option', { value: k, selected: (doc.view.basemap || 'light') === k }, b.label)))),
@@ -737,8 +808,11 @@ const ctx = {
   turn, branch, live, mutate, render, select, unitById, symbol, shown, facts, startDraw,
   drawing: () => drawing,
   setTool: (k) => { tool = k; render(); },
+  get scenarioId() { return meta.id || id; }, get selected() { return selected; }, get overlay() { return overlay; }, get template() { return template; },
+  setOverlay: (features) => setOverlay(features), clearOverlay: () => clearOverlay(), goTo: (b, n) => goTo(b, n), lastTurn: () => lastTurn(doc, branchId),
 };
 const tools = createTools(ctx);
+const extras = createExtras(ctx);
 const TOOLBAR = [['units', 'Units', 'pin'], ['combat', 'Combat', 'swords'], ['lines', 'Lines', 'line'], ['terrain', 'Terrain', 'mountain'], ['objectives', 'Objectives', 'flag'], ['draw', 'Draw', 'pen'],
   ['injects', 'Injects', 'target'], ['log', 'Log', 'text'], ['dice', 'Dice', 'hex'], ['branches', 'Branches', 'copy'], ['setup', 'Setup', 'sliders']];
 const PANELS = { units: unitsPanel, injects: injectsPanel, log: logPanel, dice: dicePanel, branches: branchesPanel, setup: setupPanel, ...tools.panels };
@@ -758,10 +832,13 @@ function turnBar() {
       h('div', { class: 'wg-now', 'aria-live': 'polite' }, h('strong', {}, turnLabel(doc, turnIx)), h('span', {}, last ? `${turnIx} of ${last}` : 'before the first turn')),
       h('button', { type: 'button', class: 'icon-btn wg-fwd', 'aria-label': 'Next turn played', disabled: turnIx === last, onclick: () => goTo(branchId, turnIx + 1) }, icon('back', { size: 18 })),
       h('button', { type: 'button', class: 'icon-btn wg-fwd', 'aria-label': 'Latest turn', disabled: turnIx === last, onclick: () => goTo(branchId, last) }, icon('back', { size: 16 }), icon('back', { size: 16, cls: 'wg-dbl' }))),
+    screenMode ? null : extras.playControls(),
     h('div', { class: 'wg-dots', role: 'group', 'aria-label': 'Turns' }, b.turns.map((_, n) => h('button', { type: 'button', class: `${n === turnIx ? 'is-on' : ''}${n === b.forkTurn && b.parent ? ' is-fork' : ''}`, title: turnLabel(doc, n), 'aria-label': turnLabel(doc, n), onclick: () => goTo(branchId, n) }))),
     h('div', { class: 'wg-tally' }, summary.map((s) => h('span', { title: `${s.name}: ${s.active} of ${s.units} in action, ${s.strength}% strength` }, h('i', { style: `background:${s.color}` }), `${s.active}/${s.units}`))),
     scoreChips(),
+    extras.conditionsChip(),
     h('span', { class: 'spacer' }),
+    extras.screenOn && !screenMode ? h('span', { class: 'pill is-live', title: 'A second screen is following this window' }, 'Second screen') : null,
     canEdit && atLatest() && planned.length ? h('button', { type: 'button', class: 'btn wg-reveal', title: 'Reveal every planned move and move the units at once', onclick: revealMoves }, icon('eye', { size: 15 }), `Reveal ${planned.length} ${planned.length === 1 ? 'move' : 'moves'}`) : null,
     !canEdit ? null
       : atLatest() ? h('button', { type: 'button', class: 'btn btn-primary wg-next', title: 'Start the next turn (N)', onclick: advance }, turnIx === 0 ? 'Start turn 1' : 'Next turn', icon('back', { size: 16, cls: 'wg-flip' }))
@@ -800,17 +877,18 @@ function render() {
   root.classList.toggle('is-placing', !!placing || !!drawing);
   drawBar();
   drawMap();
+  if (!screenMode) extras.sync();
 }
 
 addEventListener('keydown', (e) => {
-  if (!doc || document.querySelector('dialog[open]')) return;
+  if (!doc || screenMode || document.querySelector('dialog[open]')) return;
   if (drawing && !typing(e)) {
     if (e.key === 'Escape') { e.preventDefault(); stopDraw(); return; }
     if (e.key === 'Enter') { e.preventDefault(); finishDraw(); return; }
     if (e.key === 'Backspace' && drawing.coords.length) { e.preventDefault(); drawing.coords.pop(); drawMap(); drawBar(); return; }
   }
   if (e.key === 'Escape') {
-    if ($('.wg-banner')) { $('.wg-banner').remove(); return; }
+    if ($('.wg-banner')) { $('.wg-banner').remove(); extras.sync({ banner: null }); return; }
     if (placing) { placing = null; render(); return; }
     if (root.classList.contains('is-present') && !document.fullscreenElement) { present(false); return; }
     if (selected) { select(null); }
@@ -836,7 +914,7 @@ const mode = await load();
 if (!mode || !doc) {
   fill(root, h('main', { class: 'pv-missing' }, h('h1', {}, 'This scenario isn\'t available'), h('p', {}, 'It may have been deleted, or it isn\'t shared with you.'), h('a', { class: 'btn btn-primary', href: '/?tab=scenarios' }, 'Go to Waymark')));
 } else {
-  canEdit = mode === 'editor';
+  canEdit = mode === 'editor' && !screenMode;
   doc.injects ||= [];
   branchId = doc.branches[0].id;
   turnIx = canEdit ? lastTurn(doc, branchId) : 0;
@@ -858,6 +936,7 @@ if (!mode || !doc) {
       viewPick,
       canEdit ? h('button', { type: 'button', class: 'icon-btn', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', onclick: undo }, icon('undo')) : null,
       mode === 'public' ? null : h('a', { class: 'icon-btn', href: '/help/scenarios', target: '_blank', rel: 'noopener', title: 'Help', 'aria-label': 'Help' }, icon('help')),
+      h('button', { type: 'button', class: 'icon-btn', title: 'Second screen, timeline, analysis, files', 'aria-label': 'More', onclick: (e) => extras.moreMenu(e.currentTarget) }, icon('more')),
       canEdit && meta.role === 'owner' ? h('button', { type: 'button', class: 'btn', onclick: () => openShare({ type: 'scenario', id: meta.id, title: doc.title }) }, icon('link', { size: 15 }), 'Share') : null,
       canEdit ? h('button', { type: 'button', class: 'btn', onclick: writeUp }, icon('scrollmap', { size: 15 }), 'Write it up') : null,
       h('button', { type: 'button', class: 'btn btn-primary', title: 'Full screen, with the panels hidden', onclick: () => present(true) }, icon('monitor', { size: 15 }), 'Present')),
@@ -867,22 +946,18 @@ if (!mode || !doc) {
       h('button', { type: 'button', class: 'btn btn-sm wg-clear', id: 'wg-clear', hidden: true, onclick: () => clearOverlay() }, icon('x', { size: 14 }), 'Clear the overlay'),
       h('button', { type: 'button', class: 'btn btn-sm wg-exit', onclick: () => present(false) }, icon('x', { size: 14 }), 'Exit'),
       h('div', { class: 'wg-card', id: 'wg-card', hidden: true }),
-      h('div', { class: 'wg-drawbar', id: 'wg-drawbar', hidden: true, role: 'status' })),
+      h('div', { class: 'wg-drawbar', id: 'wg-drawbar', hidden: true, role: 'status' }),
+      h('div', { class: 'wg-measure', id: 'wg-measure', hidden: true })),
     h('footer', { class: 'wg-bar', id: 'wg-bar' }));
 
   const base = mapDoc?.view || {};
   map = createMap(mapEl, { ...base, ...doc.view, basemap: mapDoc ? base.basemap : doc.view.basemap, markers: [], layers: base.layers || [], legend: !!mapDoc && base.legend !== false }, { library: mapDoc?.layers || [] });
   if (!embed) map.scrollZoom.enable();
-  map.on('style.load', () => { markers.forEach((m) => m.marker.remove()); markers.clear(); drawMap(); });
+  map.on('style.load', () => { markers.forEach((m) => m.marker.remove()); markers.clear(); drawMap(); extras.drawGrid(); });
+  if (!embed) extras.mapControls(map, $('.wg-stage'));
+  if (screenMode) { root.classList.add('is-present', 'is-screen'); setTitle(`${doc.title || 'Scenario'} · second screen`); extras.follow(applyRemote); } else extras.listen();
   map.on('click', (e) => {
-    if (drawing) {
-      const p = drawing.snap ? snapPoint(e.lngLat) : [e.lngLat.lng, e.lngLat.lat];
-      if (drawing.mode === 'point') { const d = drawing; stopDraw(); d.done([[+p[0].toFixed(6), +p[1].toFixed(6)]]); return; }
-      drawing.coords.push(p);
-      drawMap();
-      drawBar();
-      return;
-    }
+    if (drawing) { addDrawPoint(drawing.snap ? snapPoint(e.lngLat) : [e.lngLat.lng, e.lngLat.lat]); return; }
     if (placing?.what === 'unit' && live()) {
       const u = mutate(() => addUnit(doc, turn(), { side: placing.side, kind: placing.kind, echelon: KINDS[placing.kind]?.fn ? placing.echelon : '', lngLat: [e.lngLat.lng, e.lngLat.lat] }));
       toast(`${u.name} placed`, { duration: 1800 });
@@ -896,7 +971,7 @@ if (!mode || !doc) {
   map.on('mousemove', (e) => {
     if (!drawing || drawing.mode === 'point' || !drawing.coords.length) return;
     drawing.cursor = drawing.snap ? snapPoint(e.lngLat) : [e.lngLat.lng, e.lngLat.lat];
-    if (!moveFrame) moveFrame = requestAnimationFrame(() => { moveFrame = 0; if (drawing) tools.draw(map, facts()); });
+    if (!moveFrame) moveFrame = requestAnimationFrame(() => { moveFrame = 0; if (drawing) { tools.draw(map, facts()); if (drawing.measure) drawBar(); } });
   });
   render();
   if (canEdit && params.has('new') && !turn().units.length) { placing = { what: 'unit', ...template }; render(); }

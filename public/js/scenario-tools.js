@@ -6,6 +6,8 @@ import { h, icon, toast, dialog, confirmDialog } from './ui.js';
 import { KINDS, sideOf, distanceKm, circle, turnLabel, hoursLabel, addUnit } from './scenario-core.js';
 import * as R from './scenario-rules.js';
 import { buildTerrain, suggestCellKm, CELL_SIZES, MAX_CELLS, TERRAIN_CREDIT } from './scenario-terrain.js';
+import { crtChances } from './scenario-report.js';
+import { toMgrs } from './mgrs.js';
 
 const uid = (p) => p + Math.random().toString(36).slice(2, 8);
 const km = (n) => (n < 10 ? `${Math.round(n * 10) / 10} km` : `${Math.round(n)} km`);
@@ -204,7 +206,9 @@ export function createTools(ctx) {
     const hqs = ctx.turn().units.filter((x) => x.side === u.side && !descendants.has(x.id));
     const power = R.unitPower(d, ctx.turn(), ctx.turnIx, F.T, u, 'attack', F);
     const foes = ctx.turn().units.some((x) => R.isOpposed(d, x.side, u.side) && x.status !== 'destroyed');
+    const sensorNow = R.sensorRange(d, ctx.turn(), ctx.turnIx, u);
     return h('div', { class: 'wg-more' },
+      h('p', { class: 'wg-gridref', title: 'Military grid reference (MGRS)' }, icon('grid', { size: 13 }), toMgrs(u.lngLat, 5) || `${u.lngLat[1].toFixed(5)}, ${u.lngLat[0].toFixed(5)}`),
       h('div', { class: 'rail-section-title' }, 'Movement and supply'),
       h('div', { class: 'grid-2' },
         field('Moves', h('select', { disabled: ro, onchange: (e) => set({ mobility: e.target.value || undefined }) },
@@ -222,8 +226,12 @@ export function createTools(ctx) {
         h('option', { value: '', selected: !u.parent }, 'No one (not tracked)'), hqs.map((x) => h('option', { value: x.id, selected: u.parent === x.id }, x.name)))),
       cmd ? h('p', { class: `wg-state is-${cmd.state === 'ok' ? 'in' : 'out'}` }, dot(cmd.state === 'ok' ? '#16a34a' : '#dc2626'), cmd.state === 'ok' ? `In contact: ${cmd.why}` : `Out of contact: ${cmd.why}`) : null,
       h('div', { class: 'grid-2' },
-        field('Sensor range (km)', numberInput(u.sensorKm || '', (v) => set({ sensorKm: v || 0 }), { placeholder: 'None', disabled: ro })),
+        field('Sensor range (km)', numberInput(u.sensorKm || '', (v) => set({ sensorKm: v || 0 }), { placeholder: 'None', disabled: ro }), Number(u.sensorKm) > 0 && sensorNow < Number(u.sensorKm) ? `${sensorNow} km now, with the weather and light` : null),
         field('Combat value', numberInput(u.power ?? '', (v) => set({ power: v === '' ? undefined : v }), { placeholder: `Worked out: ${power.value}`, disabled: ro }))),
+      h('div', { class: 'grid-2' },
+        field('Facing (°)', numberInput(u.fanDir ?? '', (v) => set({ fanDir: v === '' ? undefined : ((Math.round(v) % 360) + 360) % 360 }), { min: 0, max: 359, placeholder: 'North 0, east 90', disabled: ro })),
+        field('Arc (°)', numberInput(u.fanArc ?? '', (v) => set({ fanArc: v === '' || v >= 360 ? undefined : Math.max(10, Math.round(v)) }), { min: 10, max: 360, placeholder: 'All round', disabled: ro }))),
+      Number(u.fanArc) > 0 && Number(u.fanArc) < 360 ? h('p', { class: 'field-hint', style: 'margin-top:-4px' }, `Its range, sensors and contact only cover ${u.fanArc}° centred on ${u.fanDir || 0}°.`) : null,
       h('div', { class: 'row row-wrap wg-aids' },
         foes && live() && ctx.shown(u) ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => attack(u) }, icon('swords', { size: 14 }), 'Attack this unit') : null,
         u.plan && live() ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => ctx.mutate(() => { delete ctx.turn().units.find((x) => x.id === u.id).plan; }) }, icon('x', { size: 14 }), 'Cancel planned move') : null));
@@ -511,6 +519,7 @@ export function createTools(ctx) {
           ctx.symbol(x.u, 18), h('span', {}, x.u.name), h('span', { class: 'muted' }, km(x.d)), h('b', {}, String(R.unitPower(d, ctx.turn(), ctx.turnIx, F.T, x.u, 'attack', F).value))))) : h('p', { class: 'muted' }, 'No opposing units to attack with.'),
         h('p', { class: 'field-hint' }, 'Units in contact are ticked. Tick others to add support, such as artillery in range. Click units on the map to add or remove them.')),
       o ? h('div', { class: 'wg-odds' }, h('span', {}, `${o.attack} against ${o.defense}`), h('strong', {}, o.column), h('span', { class: 'muted' }, o.below ? 'Worse than the table goes, so the first column' : `Odds ${o.ratio}:1`)) : null,
+      o ? (() => { const c = crtChances(d, o.column); return c ? h('p', { class: 'wg-chance-line' }, `At ${o.column}, before rolling: the defenders fall back ${Math.round(c.defenderFallsBack * 6)} times in 6 and lose ${c.defenderLoss}% on average; the attackers lose ${c.attackerLoss}%${c.attackerFallsBack ? ` and fall back ${Math.round(c.attackerFallsBack * 6)} times in 6` : ''}.`) : null; })() : null,
       o && live() ? h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Roll one die'),
         h('div', { class: 'row row-wrap' },
           h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { const b = new Uint32Array(1); crypto.getRandomValues(b); roll((b[0] % 6) + 1); } }, icon('hex', { size: 15 }), 'Roll'),
@@ -686,10 +695,17 @@ export function createTools(ctx) {
   function injectEffectField(x) {
     const targets = [...(doc().network?.links || []), ...(doc().network?.nodes || [])];
     const e = x.effects?.[0] || {};
-    const target = h('select', {}, h('option', { value: '' }, 'Nothing'), targets.map((l) => h('option', { value: l.id, selected: e.target === l.id }, l.name || 'Unnamed')));
-    const status = h('select', {}, R.LINK_STATUSES.map(([v, l]) => h('option', { value: v, selected: (e.status || 'cut') === v }, l === 'Open' ? 'Opens it again' : l === 'Cut' ? 'Cuts it' : 'Degrades it')));
-    const el = targets.length ? h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'When released, it changes'), h('div', { class: 'grid-2' }, target, status)) : null;
-    return [el, () => (target.value ? [{ target: target.value, status: status.value }] : undefined)];
+    const isWeather = e.target === 'weather';
+    const target = h('select', {}, h('option', { value: '' }, 'Nothing'),
+      h('option', { value: 'weather', selected: isWeather }, 'The weather'),
+      targets.length ? h('optgroup', { label: 'Lines and depots' }, targets.map((l) => h('option', { value: l.id, selected: e.target === l.id }, l.name || 'Unnamed'))) : null);
+    const status = h('select', {}, R.LINK_STATUSES.map(([v, l]) => h('option', { value: v, selected: !isWeather && (e.status || 'cut') === v }, l === 'Open' ? 'Opens it again' : l === 'Cut' ? 'Cuts it' : 'Degrades it')));
+    const weather = h('select', {}, Object.entries(R.WEATHER).map(([k, w]) => h('option', { value: k, selected: isWeather && e.status === k }, `To ${w.label.toLowerCase()}`)));
+    const sync = () => { status.hidden = target.value === 'weather' || !target.value; weather.hidden = target.value !== 'weather'; };
+    target.addEventListener('change', sync);
+    sync();
+    const el = h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'When released, it changes'), h('div', { class: 'grid-2' }, target, h('div', {}, status, weather)));
+    return [el, () => (!target.value ? undefined : target.value === 'weather' ? [{ target: 'weather', status: weather.value }] : [{ target: target.value, status: status.value }])];
   }
 
   /** Extra rows for comparing branches: supply and score at the end of each. */
