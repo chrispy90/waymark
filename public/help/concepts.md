@@ -64,6 +64,9 @@ A new layer made by an analysis tool, such as a buffer or hex bins. It remembers
 ### Dashboard
 A saved map beside numbers and charts that filter each other. See [Dashboards](dashboards.md).
 
+### Scenario
+A tabletop exercise played on a map, turn by turn, with units for each side. See [Scenarios](scenarios.md).
+
 ### Form
 A public page that adds a point to a hosted layer for each submission. See [Forms](forms.md).
 

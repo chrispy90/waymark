@@ -50,6 +50,17 @@ These work in every map, in the editor and for readers.
 | <kbd>Shift</kbd>+drag | Zoom to a box |
 | Double-click | Zoom in |
 
+## Scenarios
+
+| Keys | Action |
+| --- | --- |
+| <kbd>N</kbd> | Start the next turn |
+| <kbd>←</kbd> <kbd>→</kbd> | Previous or next turn |
+| <kbd>Ctrl</kbd>+<kbd>Z</kbd> | Undo |
+| <kbd>Esc</kbd> | Stop placing units, close the selected unit, or leave Present |
+
+See [Scenarios](scenarios.md).
+
 ## Home screen and help
 
 | Keys | Action |

@@ -163,6 +163,34 @@ there once a published story of the same owner uses it. Exported websites get a 
 }
 ```
 
+## Scenarios
+
+A scenario keeps every turn of every branch as a full snapshot, so any turn can be shown, branched from or compared without replaying moves.
+
+```jsonc
+{
+  "title": "Potomac crossing", "summary": "What the scenario tests",
+  "map": "<map id>" | null,                // the saved map it is played on, or null for a plain basemap
+  "view": { "center": [-77.05, 38.88], "zoom": 11, "bearing": 0, "pitch": 0, "basemap": "light" },
+  "sides": [{ "id": "blue", "name": "Blue", "color": "#2563eb", "affiliation": "F" }],   // affiliation: F friendly | H hostile | N neutral | U unknown
+  "clock": { "mode": "turns", "stepMinutes": 60, "start": "" },                          // mode: turns | elapsed | time ("start" is a local date-time)
+  "injects": [{ "id": "i1", "title": "Bridge destroyed", "text": "…", "turn": 2, "lngLat": [-77.07, 38.90] }],  // turn: null = released by hand
+  "branches": [{
+    "id": "main", "name": "Main line", "parent": null, "forkTurn": null,                 // a branch copies its parent's turns 0..forkTurn
+    "turns": [{                                                                           // turns[0] is setup
+      "units": [{ "id": "u1", "name": "1st Battalion", "side": "blue", "kind": "infantry", "echelon": "F",
+                  "strength": 100, "status": "ready",                                     // status: ready | engaged | degraded | destroyed
+                  "rangeKm": 3, "speedKmh": 12, "spotted": false, "notes": "",
+                  "lngLat": [-77.045, 38.887], "from": [-77.05, 38.88] }],                // "from": where it started this turn, if it moved
+      "events": [{ "type": "move", "text": "…" }],                                        // type: move | inject | roll | status | strength | add | remove | note
+      "notes": "", "fired": ["i1"]                                                        // ids of the injects released on this turn
+    }]
+  }]
+}
+```
+
+Unit kinds and sizes are listed in `public/js/scenario-core.js` (`KINDS`, `ECHELONS`). Military kinds are drawn with [milsymbol](https://github.com/spatialillusions/milsymbol); civil kinds are drawn as a badge.
+
 ## Blocks
 
 Every block has a `type`. Rich-text fields (`html`) are sanitized at render time. The allowed tags are p, br, b/strong, i/em, u, a, ul/ol/li, h2–h4, blockquote, code, span and small.

@@ -15,6 +15,7 @@
 
 const uid = (p) => p + Math.random().toString(36).slice(2, 8);
 const clone = (x) => JSON.parse(JSON.stringify(x));
+const lower = (label) => (/^(Setup|Turn )/.test(label) ? label.toLowerCase() : label); // "after turn 3", but "after H+01:30"
 const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
 export const DEFAULT_SIDES = [
@@ -305,7 +306,7 @@ export function storyFromScenario(doc, { branches } = {}) {
     if (several) {
       const parent = branch.parent ? branchOf(doc, branch.parent) : null;
       blocks.push({ type: 'chapter', kicker: bi === 0 ? 'The game' : 'What if', title: branch.name,
-        text: parent && branch.parent !== branch.id ? `Branches from ${parent.name} after ${turnLabel(doc, branch.forkTurn).toLowerCase()}.` : '', bg: bi % 2 ? '#1f2937' : '#13233a', fg: '#f3efe6', align: 'center' });
+        text: parent && branch.parent !== branch.id ? `Branches from ${parent.name} after ${lower(turnLabel(doc, branch.forkTurn))}.` : '', bg: bi % 2 ? '#1f2937' : '#13233a', fg: '#f3efe6', align: 'center' });
     }
     // A branch replays from where it left its parent; the shared turns were already shown.
     const first = several && branch.parent && chosen.some((b) => b.id === branch.parent) ? Math.min(branch.forkTurn + 1, branch.turns.length - 1) : 0;
@@ -322,7 +323,7 @@ export function storyFromScenario(doc, { branches } = {}) {
     const end = sideSummary(doc, branch.turns.at(-1));
     if (end.length) {
       blocks.push({ type: 'stats', items: end.slice(0, 4).map((s) => ({ value: `${s.active} of ${s.units}`, label: `${s.name} units still in action` })),
-        caption: `${branch.name}, after ${turnLabel(doc, branch.turns.length - 1).toLowerCase()}` });
+        caption: `${branch.name}, after ${lower(turnLabel(doc, branch.turns.length - 1))}` });
     }
   });
   if (several) {

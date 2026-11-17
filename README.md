@@ -205,6 +205,21 @@ Make a group on the **Team** tab, add people by the email of their account, and 
 
 A **dashboard** puts one of your saved maps beside big numbers, bar charts, donuts and tables made from its layers. Click a bar or a slice and the map and every other chart filter to match; tick **Only what's in view** and the charts follow the map as you pan. Share a dashboard with your team, by public link, or embedded in a website.
 
+### Scenarios: tabletop exercises on a map
+
+A **scenario** plays out "what if?" in a meeting, on one screen. Place units for each side (standard military symbols, or plain badges for police, fire, shelters and the like), then move them turn by turn while the room talks it through.
+
+- **Units with a side, strength and status.** Drag to move; the path and distance are shown, and a unit with a speed is checked against how far it could get in a turn.
+- **Turn-by-turn history.** Every turn is kept. Step back and forward, or replay from any point.
+- **Branches.** Copy the game at any turn to try a different choice, then compare two branches side by side.
+- **Planning aids.** Range rings, line of sight over real terrain, and how far a unit can get by road or on foot in one turn.
+- **Injects.** Scripted events that appear on a turn or when the facilitator releases them, as a banner and a pin on the map.
+- **Dice and notes.** Roll a die or a percentage chance, and keep notes for every turn.
+- **Present.** Full screen for a projector, with the panels hidden.
+- **Write it up.** One click turns the turns, injects and notes into a story with a moving map that replays the game.
+
+Scenarios are shared like everything else, and have a read-only public page at `/w/…`. There is no live multiplayer: one person drives.
+
 ### Collect data with a form
 
 Give a hosted point layer a **form**: a public page, built for phones, where anyone with the link answers your questions, marks the place on a map (or uses their location) and can add a photo. Each submission becomes a point in the layer, and shows up in every map and dashboard that uses it. People filling it in never see the layer's other data.
@@ -414,6 +429,8 @@ public/                the web app (plain ES modules, no build step)
   js/services.js       WMS, WMTS, WFS, tile addresses and PMTiles
   js/shapefile.js      zipped shapefile reader
   js/dashboard.js      dashboards (editor and public page)
+  js/scenario.js       scenarios: the play screen (units, turns, branches, injects, dice, present)
+  js/scenario-core.js  scenario rules with no page code: turns, moves, branches, comparison, the after-action story
   js/print.js          map export to PDF and PNG
   js/mapview.js · form-page.js · profile.js   public map, form and profile pages
   js/layer-form.js     layer settings, shared by the story editor and the map editor
@@ -455,8 +472,9 @@ Every request that changes data must send the header `X-Waymark: 1`. This guards
 | `GET /api/layers/:id/history` · `GET /api/layers/:id/history/:version` · `POST /api/layers/:id/restore/:version` · `POST /api/layers/:id/refresh` | Layer history, restore, and refresh from the layer's source URL |
 | `GET` `POST /api/layers/:id/forms` · `PUT` `DELETE /api/forms/:id` · `GET /api/public/forms/:id` · `POST /api/public/forms/:id/submit` · `POST /api/public/forms/:id/photo` | Forms that add points to a hosted layer |
 | `GET /api/dashboards` · `POST /api/dashboards {dashboard}` · `GET` `PUT {dashboard, version}` `DELETE /api/dashboards/:id` · `GET /api/public/dashboards/:id` | Dashboards |
+| `GET /api/scenarios` · `POST /api/scenarios {scenario}` · `GET` `PUT {scenario, version}` `DELETE /api/scenarios/:id` · `GET /api/public/scenarios/:id` | Scenarios |
 | `GET` `POST /api/groups` · `PUT` `DELETE /api/groups/:id` · `POST /api/groups/:id/members {email, role}` · `DELETE /api/groups/:id/members/:userId` | Groups |
-| `GET` `PUT /api/share/:type/:id {shares, link, listed}` (type: story, map, layer, dashboard) | Who an item is shared with, its public link, and whether it is on your public page |
+| `GET` `PUT /api/share/:type/:id {shares, link, listed}` (type: story, map, layer, dashboard, scenario) | Who an item is shared with, its public link, and whether it is on your public page |
 | `PUT /api/me {name, handle, bio}` · `GET /api/public/users/:handle` | Your public page |
 | `GET /api/config` · `GET /api/fetch?url=` | Settings the browser needs, and a guarded fetch of map service descriptions |
 | `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
@@ -489,7 +507,7 @@ Stories are plain JSON. See [docs/SCHEMA.md](docs/SCHEMA.md).
 
 ## 📖 User guide
 
-Waymark has a full user guide built in: open **Help** from the account menu, or go to `/help` on your Waymark server. It covers the story editor and every block, maps in stories, the map editor, every way to add data, layer styling, hosted layers, all 30 analysis tools, sharing and teams, dashboards, forms, export and print, data formats and limits, keyboard shortcuts, troubleshooting, and an administrator's guide. The pages are Markdown in [`public/help/`](public/help/index.md), so you can also read them here on GitHub.
+Waymark has a full user guide built in: open **Help** from the account menu, or go to `/help` on your Waymark server. It covers the story editor and every block, maps in stories, the map editor, every way to add data, layer styling, hosted layers, all 30 analysis tools, sharing and teams, dashboards, scenarios, forms, export and print, data formats and limits, keyboard shortcuts, troubleshooting, and an administrator's guide. The pages are Markdown in [`public/help/`](public/help/index.md), so you can also read them here on GitHub.
 
 ## 🤝 Contributing
 

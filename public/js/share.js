@@ -3,7 +3,7 @@
 import { api } from './api.js';
 import { h, icon, dialog, toast, confirmDialog, copyText, fill } from './ui.js';
 
-const NOUN = { story: 'story', map: 'map', layer: 'layer', dashboard: 'dashboard' };
+const NOUN = { story: 'story', map: 'map', layer: 'layer', dashboard: 'dashboard', scenario: 'scenario' };
 const roleSelect = (value, onchange, opts = [['viewer', 'Can view'], ['editor', 'Can edit']]) =>
   h('select', { class: 'share-role', 'aria-label': 'Access', onchange: (e) => onchange(e.target.value) }, opts.map(([v, l]) => h('option', { value: v, selected: value === v }, l)));
 const copyRow = (label, value) => {
@@ -42,7 +42,7 @@ export async function openShare(item, { onChange } = {}) {
     email.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
     const free = groups.filter((g) => !state.shares.some((s) => s.kind === 'group' && s.id === g.id));
     const origin = location.origin;
-    const publicUrl = item.type === 'story' ? (item.url ? origin + item.url : null) : item.type === 'map' ? `${origin}/m/${item.id}` : item.type === 'dashboard' ? `${origin}/d/${item.id}` : `${origin}/api/public/layers/${item.id}.geojson`;
+    const publicUrl = item.type === 'story' ? (item.url ? origin + item.url : null) : item.type === 'map' ? `${origin}/m/${item.id}` : item.type === 'dashboard' ? `${origin}/d/${item.id}` : item.type === 'scenario' ? `${origin}/w/${item.id}` : `${origin}/api/public/layers/${item.id}.geojson`;
 
     fill(body,
       h('div', { class: 'rail-section-title', style: 'margin-top:0' }, 'People and groups'),

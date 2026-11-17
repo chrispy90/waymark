@@ -2,6 +2,21 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
+## Unreleased
+
+### Added
+- **Scenarios.** Tabletop exercises on a map, for playing out "what if?" in a meeting. A new **Scenarios** tab on the home screen; start one on a plain basemap or on a saved map.
+  - **Units** for each side, as standard military symbols or plain badges, with a size, strength, status, range and speed. Drag to move: the path and distance are shown, and moves are checked against how far the unit could travel in a turn.
+  - **Turns** with a clock (turn numbers, hours elapsed, or date and time). Every turn is kept, so you can step back and forward or replay from any point.
+  - **Branches** copy the game at any turn to try a different choice. **Compare branches** shows two endings side by side with each side's units and strength.
+  - **Planning aids**: range rings, line of sight over terrain, and reach by road or on foot in one turn.
+  - **Injects**: scripted events released on a turn or on demand, shown as a banner and pinned to the map.
+  - **Dice** (d6 to d100, or a percentage chance) and **notes** for every turn, all kept in a log.
+  - **Show the map as** one side, hiding units it hasn't seen.
+  - **Present** mode for a projector, and **Write it up**, which turns the game into a story with a moving map replay.
+  - Scenarios can be shared with people and groups, have a read-only public page at `/w/…`, and can be listed on your public page.
+- A **Scenarios** page in the user guide.
+
 ## 1.6.1 (2026-11-11)
 
 ### Added

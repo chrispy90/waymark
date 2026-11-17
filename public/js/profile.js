@@ -16,7 +16,7 @@ if (!p) {
     h('div', { class: 'card-cover', style: `background-image:${img && SAFE_IMG.test(img) ? `url("${img}")` : coverGradient(x.url + x.title)}` }, h('span', { class: 'card-cover-title' }, x.title || 'Untitled')),
     h('div', { class: 'card-body' }, sub ? h('p', { class: 'pp-sub' }, sub) : null, h('div', { class: 'card-meta' }, h('span', { class: 'pill no-dot' }, kind), h('span', { class: 'muted' }, date(when)))));
   const section = (title, items) => (items.length ? [h('h2', { class: 'pp-h' }, title), h('div', { class: 'cards' }, items)] : null);
-  const empty = !p.stories.length && !p.maps.length && !p.dashboards.length;
+  const empty = !p.stories.length && !p.maps.length && !p.dashboards.length && !(p.scenarios || []).length;
   fill(root,
     h('header', { class: 'pp-head' }, h('a', { href: '/', class: 'pv-logo', 'aria-label': BRAND.name }, logo({ size: 26 }))),
     h('main', { class: 'pp' },
@@ -24,5 +24,6 @@ if (!p) {
       empty ? h('section', { class: 'empty' }, icon('globe', { size: 36 }), h('h2', {}, 'Nothing here yet'), h('p', {}, `${p.name} hasn't put anything on this page.`)) : null,
       section('Stories', p.stories.map((s) => card(s, 'Story', s.cover, s.subtitle, s.publishedAt))),
       section('Maps', p.maps.map((m) => card(m, 'Map', m.thumbnail, m.summary, m.updatedAt))),
-      section('Dashboards', p.dashboards.map((d) => card(d, 'Dashboard', null, '', d.updatedAt)))));
+      section('Dashboards', p.dashboards.map((d) => card(d, 'Dashboard', null, '', d.updatedAt))),
+      section('Scenarios', (p.scenarios || []).map((d) => card(d, 'Scenario', null, '', d.updatedAt)))));
 }

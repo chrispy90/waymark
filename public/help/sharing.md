@@ -19,7 +19,7 @@ Things shared with you appear in your own lists on the home screen, labeled with
 
 ## Share with people and groups
 
-1. On the home screen, open the item's **⋯** menu and choose **Share…**. (Dashboards also have **Share** in their top bar.)
+1. On the home screen, open the item's **⋯** menu and choose **Share…**. (Dashboards and scenarios also have **Share** in their top bar.)
 2. Under **People and groups**, type the email of someone's Waymark account, choose **Can view** or **Can edit**, and select **Share**.
 3. Or select a group under **Share with a group**.
 4. Change anyone's access with the menu beside their name, or remove them with **×**.

@@ -7,12 +7,13 @@ import { newMap, storyFromMap } from './webmap.js';
 import { hostedLayerDef } from './maps.js';
 import { openShare, renderTeam, openProfile } from './share.js';
 import { openHistory, openSync, openForms, uploadLayerFiles } from './layer-tools.js';
+import { newScenario } from './scenario-core.js';
 import { openExport } from './export.js';
 import { openNewHostedLayerDialog, openAttributeTableDialog } from './table.js';
 
 // "Your stories", "Your maps", and "Your layers" share the home screen. (Declared before start() runs, which uses it.)
 const urlTab = new URLSearchParams(location.search).get('tab');
-let tab = ['maps', 'layers', 'dashboards', 'team'].includes(urlTab) ? urlTab : 'stories';
+let tab = ['maps', 'layers', 'dashboards', 'scenarios', 'team'].includes(urlTab) ? urlTab : 'stories';
 const { user, firstRun } = await api('GET', '/api/me');
 if (!user) location.replace(firstRun ? '/login.html' : '/welcome.html');
 else start();
@@ -38,7 +39,7 @@ function start() {
 
 const SAFE_IMG = /^(\/uploads\/|https?:\/\/)[^"'()\\\s]+$/;
 let query = '';
-const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps'], ['layers', 'Layers'], ['dashboards', 'Dashboards'], ['team', 'Team']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
+const tabs = () => h('div', { class: 'seg gallery-tabs', role: 'tablist' }, [['stories', 'Stories'], ['maps', 'Maps'], ['layers', 'Layers'], ['dashboards', 'Dashboards'], ['scenarios', 'Scenarios'], ['team', 'Team']].map(([k, l]) => h('button', { type: 'button', role: 'tab',
   class: tab === k ? 'is-on' : '', 'aria-selected': tab === k ? 'true' : 'false', onclick: () => { tab = k; history.replaceState(null, '', k === 'stories' ? '/' : `?tab=${k}`); skeleton(); load(); } }, l)));
 let sort = (() => { try { return localStorage.getItem('wm.sort') || 'edited'; } catch { return 'edited'; } })();
 
@@ -60,6 +61,7 @@ async function load() {
   if (tab === 'maps') return loadMaps();
   if (tab === 'layers') return loadLayers();
   if (tab === 'dashboards') return loadDashboards();
+  if (tab === 'scenarios') return loadScenarios();
   if (tab === 'team') { await null; const main = $('#gallery'); main.removeAttribute('aria-busy'); const box = h('div'); main.replaceChildren(tabs(), box); return renderTeam(box, { user }); }
   const { stories } = await api('GET', '/api/stories');
   const main = $('#gallery');
@@ -188,6 +190,7 @@ function mapCard(m, i) {
       mine(m) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'map', id: m.id, title: m.title }, { onChange: load }) } : null,
       m.shared ? { label: 'Open public page', icon: 'external', onClick: () => window.open(`/m/${m.id}`, '_blank', 'noopener') } : null,
       { label: 'New dashboard with this map', icon: 'chart', onClick: () => newDashboard(m) },
+      { label: 'New scenario on this map', icon: 'pin', onClick: () => createScenario(m) },
       { label: 'New story with this map', icon: 'scrollmap', onClick: async () => {
         const { map } = await api('GET', `/api/maps/${m.id}`);
         const s = await api('POST', '/api/stories', { story: storyFromMap(map, m.id) });
@@ -379,6 +382,80 @@ function dashCard(d, i) {
     h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
       d.shared ? h('span', { class: 'pill is-live' }, 'Public') : h('span', { class: 'pill no-dot' }, 'Dashboard'), sharedPill(d),
       h('span', { class: 'muted' }, `${d.widgets} ${d.widgets === 1 ? 'chart' : 'charts'} · edited ${relTime(d.updatedAt)}`))));
+}
+
+/* ---------- Scenarios ---------- */
+
+async function loadScenarios() {
+  const { scenarios } = await api('GET', '/api/scenarios');
+  const main = $('#gallery');
+  main.removeAttribute('aria-busy');
+  const create = () => newScenarioDialog();
+  main.replaceChildren(
+    tabs(),
+    h('div', { class: 'gallery-head' },
+      h('div', {}, h('h1', {}, 'Your scenarios'), h('p', {}, scenarios.length ? `${scenarios.length} ${scenarios.length === 1 ? 'scenario' : 'scenarios'} · play out "what if?" on a map, turn by turn` : 'Play out "what if?" on a map, turn by turn.')),
+      h('span', { class: 'spacer' }), h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New scenario')),
+    scenarios.length ? h('div', { class: 'cards' }, scenarios.map((s, i) => scenarioCard(s, i)),
+      h('button', { type: 'button', class: 'card card-new', style: `--i:${scenarios.length}`, onclick: create }, h('span', { class: 'plus' }, icon('plus')), 'New scenario'))
+      : h('section', { class: 'empty' }, icon('pin', { size: 40 }), h('h2', {}, 'Run a tabletop exercise on a map'),
+        h('p', {}, 'Place units for each side, then move them turn by turn while the room talks it through. Spring injects, roll dice, take notes, and branch to try a different choice. When you\'re done, one click writes it up as a story.'),
+        h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New scenario')));
+}
+
+// A scenario is played on one of your saved maps (for its layers and basemap), or on a plain basemap.
+async function createScenario(map) {
+  let view;
+  if (map) {
+    try { view = (await api('GET', `/api/maps/${map.id}`)).map.view; } catch { /* start from the default view */ }
+  }
+  const doc = newScenario({ title: map ? `${map.title || 'Untitled map'} scenario` : 'Untitled scenario', map: map ? map.id : null,
+    view: view ? { center: view.center, zoom: view.zoom, bearing: view.bearing || 0, pitch: view.pitch || 0, basemap: view.basemap || 'light' } : undefined });
+  const r = await api('POST', '/api/scenarios', { scenario: doc });
+  location.href = `/scenario.html?id=${r.id}&new=1`;
+}
+
+async function newScenarioDialog() {
+  const { maps } = await api('GET', '/api/maps');
+  const dlg = dialog({ title: 'What map is it played on?', body: h('div', { class: 'sub-list', style: 'max-height:380px;overflow:auto' },
+    h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); createScenario(null); } },
+      h('span', { class: 'pick-icon' }, icon('globe', { size: 18 })), h('span', {}, h('strong', {}, 'A plain map'), h('span', {}, 'Just a basemap. Pan to your area and start placing units.'))),
+    maps.map((m) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); createScenario(m); } },
+      h('span', { class: 'pick-icon' }, icon('map', { size: 18 })), h('span', {}, h('strong', {}, m.title || 'Untitled map'), h('span', {}, `Your saved map · ${m.layers} ${m.layers === 1 ? 'layer' : 'layers'}`))))),
+  actions: [h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel')] });
+  return dlg;
+}
+
+function scenarioCard(s, i) {
+  const more = h('button', { type: 'button', class: 'icon-btn card-more', 'aria-label': `Options for ${s.title}`, onclick: (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu(e.currentTarget, [
+      { label: canEdit(s) ? 'Open scenario' : 'Watch scenario', icon: 'pin', onClick: () => { location.href = `/scenario.html?id=${s.id}`; } },
+      mine(s) ? { label: 'Share…', icon: 'link', onClick: () => openShare({ type: 'scenario', id: s.id, title: s.title }, { onChange: load }) } : null,
+      s.shared ? { label: 'Open public page', icon: 'external', onClick: () => window.open(`/w/${s.id}`, '_blank', 'noopener') } : null,
+      { label: 'Duplicate', icon: 'copy', onClick: async () => {
+        const { scenario } = await api('GET', `/api/scenarios/${s.id}`);
+        const { id, ...copy } = scenario;
+        await api('POST', '/api/scenarios', { scenario: { ...copy, title: `${scenario.title || 'Untitled scenario'} (copy)` } });
+        toast('Scenario duplicated', { tone: 'ok' });
+        load();
+      } },
+      mine(s) ? 'sep' : null,
+      mine(s) ? { label: 'Delete', icon: 'trash', danger: true, onClick: async () => {
+        if (!await confirmDialog({ title: `Delete "${s.title || 'Untitled scenario'}"?`, danger: true, confirmLabel: 'Delete scenario', message: 'Every branch, turn and note in it is removed. Stories written up from it are kept. This can\'t be undone.' })) return;
+        await api('DELETE', `/api/scenarios/${s.id}`);
+        toast('Scenario deleted');
+        load();
+      } } : null,
+    ].filter(Boolean));
+  } }, icon('more'));
+  return h('a', { class: 'card', href: `/scenario.html?id=${s.id}`, style: `--i:${i}` },
+    h('div', { class: 'card-cover', style: `background-image:${coverGradient('scenario-' + s.id + s.title)}` }, h('span', { class: 'card-cover-title' }, s.title || 'Untitled scenario')),
+    more,
+    h('div', { class: 'card-body' }, h('div', { class: 'card-meta' },
+      s.shared ? h('span', { class: 'pill is-live' }, 'Public') : h('span', { class: 'pill no-dot' }, 'Scenario'), sharedPill(s),
+      h('span', { class: 'muted' }, `${s.units} ${s.units === 1 ? 'unit' : 'units'} · ${Math.max(0, s.turns - 1)} ${s.turns - 1 === 1 ? 'turn' : 'turns'}${s.branches > 1 ? ` · ${s.branches} branches` : ''} · edited ${relTime(s.updatedAt)}`))));
 }
 
 function newStoryDialog() {
