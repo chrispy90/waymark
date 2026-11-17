@@ -2,7 +2,7 @@
 
 All notable changes to Waymark are listed here. Versions follow [semantic versioning](https://semver.org): a **major** version can break existing stories or settings, a **minor** version adds features, and a **patch** fixes bugs.
 
-## Unreleased
+## 1.9.0 (2026-11-17)
 
 ### Added
 - **Second screen.** Open a window for the projector that shows only the map and the turn bar and follows the main window: the turn, branch, view, whose view is shown, overlays, the grid and inject banners.
