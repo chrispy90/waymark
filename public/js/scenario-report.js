@@ -6,7 +6,7 @@
 //   tables:  [{ id, name, die: 'd6' | '2d6' | 'd10' | 'd20' | 'd100', rows: [{ min, max, result }], modifiers: [{ label, value }] }]
 //   hotwash: { layer: "<hosted layer id>", form: "<form id>" }
 //   template: true                       (a scenario kept as a starting point for new ones)
-import { sideSummary, turnLabel, branchOf, distanceKm } from './scenario-core.js';
+import { sideSummary, sideOf, turnLabel, branchOf, distanceKm } from './scenario-core.js';
 import { supplyStates, scoreAt, crtOf, parseResult, WEATHER } from './scenario-rules.js';
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -236,4 +236,237 @@ export function unpackScenario(json) {
   s.injects ||= [];
   delete s.hotwash;
   return s;
+}
+
+/* ---------- ghost branch diff, Monte Carlo COA & synchronization matrix ---------- */
+
+/**
+ * Compares two branches at a specific turn index (clamped to each branch's length).
+ * Returns per-unit position/strength deltas, side-level deltas, and GeoJSON features
+ * for rendering Branch B as a ghost overlay with displacement vectors over Branch A.
+ */
+export function branchDiff(doc, aId, bId, turnIndex = null) {
+  const ba = branchOf(doc, aId);
+  const bb = branchOf(doc, bId);
+  const nA = turnIndex == null ? ba.turns.length - 1 : Math.max(0, Math.min(ba.turns.length - 1, turnIndex));
+  const nB = turnIndex == null ? bb.turns.length - 1 : Math.max(0, Math.min(bb.turns.length - 1, turnIndex));
+  const ta = ba.turns[nA];
+  const tb = bb.turns[nB];
+  const byA = new Map(ta.units.map((u) => [u.id, u]));
+  const byB = new Map(tb.units.map((u) => [u.id, u]));
+  const ids = [...new Set([...byA.keys(), ...byB.keys()])];
+
+  const units = [];
+  const features = [];
+  let movedCount = 0;
+  let totalDispKm = 0;
+
+  for (const id of ids) {
+    const ua = byA.get(id);
+    const ub = byB.get(id);
+    const side = sideOf(doc, (ub || ua).side);
+    const dispKm = ua && ub ? round(distanceKm(ua.lngLat, ub.lngLat), 2) : null;
+    const strengthDelta = ua && ub ? Math.round((Number(ub.strength) || 0) - (Number(ua.strength) || 0)) : null;
+    const statusChanged = !!(ua && ub && ua.status !== ub.status);
+    if (dispKm != null && dispKm > 0.05) { movedCount++; totalDispKm += dispKm; }
+
+    units.push({
+      id,
+      name: (ub || ua).name,
+      side: side.id,
+      inA: !!ua,
+      inB: !!ub,
+      dispKm,
+      strengthA: ua ? ua.strength : null,
+      strengthB: ub ? ub.strength : null,
+      strengthDelta,
+      statusA: ua?.status || null,
+      statusB: ub?.status || null,
+      statusChanged,
+    });
+
+    if (ub) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: ub.lngLat },
+        properties: {
+          kind: 'ghost-unit',
+          id: ub.id,
+          name: `${ub.name} (${bb.name})`,
+          color: side.color,
+          strength: ub.strength,
+          status: ub.status,
+          branch: bb.name,
+        },
+      });
+      if (ua && dispKm > 0.05) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [ua.lngLat, ub.lngLat] },
+          properties: {
+            kind: 'ghost-delta',
+            id: ub.id,
+            name: `${ub.name}: ${dispKm} km`,
+            color: side.color,
+            width: 1.8,
+            opacity: 0.75,
+          },
+        });
+      }
+    }
+  }
+
+  const sumA = new Map(sideSummary(doc, ta).map((s) => [s.id, s]));
+  const sumB = new Map(sideSummary(doc, tb).map((s) => [s.id, s]));
+  const sides = doc.sides.map((s) => {
+    const a = sumA.get(s.id);
+    const b = sumB.get(s.id);
+    if (!a && !b) return null;
+    return {
+      id: s.id,
+      name: s.name,
+      color: s.color,
+      activeA: a?.active ?? 0,
+      activeB: b?.active ?? 0,
+      activeDelta: (b?.active ?? 0) - (a?.active ?? 0),
+      strengthA: a?.strength ?? 0,
+      strengthB: b?.strength ?? 0,
+      strengthDelta: (b?.strength ?? 0) - (a?.strength ?? 0),
+    };
+  }).filter(Boolean);
+
+  return {
+    branchA: { id: ba.id, name: ba.name, turn: nA, label: turnLabel(doc, nA) },
+    branchB: { id: bb.id, name: bb.name, turn: nB, label: turnLabel(doc, nB) },
+    movedCount,
+    avgDispKm: movedCount ? round(totalDispKm / movedCount, 2) : 0,
+    units,
+    sides,
+    features,
+  };
+}
+
+/**
+ * Runs a Monte Carlo COA simulation (default 1,000 trials) over a combat odds column
+ * (with starting attacker/defender strengths) using the scenario's CRT.
+ */
+export function monteCarloCombat(doc, { column, attackerStrength = 100, defenderStrength = 100, trials = 1000, random = Math.random } = {}) {
+  const crt = crtOf(doc);
+  const colIdx = crt.columns.indexOf(column);
+  if (colIdx < 0) return null;
+  const n = Math.max(10, Math.min(20000, Math.round(trials)));
+  const a0 = Math.max(0, Math.min(100, Number(attackerStrength) || 0));
+  const d0 = Math.max(0, Math.min(100, Number(defenderStrength) || 0));
+
+  const aRem = new Float64Array(n);
+  const dRem = new Float64Array(n);
+  const counts = new Map();
+  let aFall = 0; let dFall = 0; let aOut = 0; let dOut = 0;
+
+  for (let i = 0; i < n; i++) {
+    const roll = Math.floor(random() * 6);
+    const code = (crt.rows[roll]?.[colIdx] || '').trim();
+    const fx = parseResult(code);
+    const aAfter = Math.max(0, a0 - fx.a);
+    const dAfter = Math.max(0, d0 - fx.d);
+    aRem[i] = aAfter;
+    dRem[i] = dAfter;
+    if (fx.ar) aFall++;
+    if (fx.dr) dFall++;
+    if (aAfter <= 0) aOut++;
+    if (dAfter <= 0) dOut++;
+    const label = code || 'No effect';
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  const stats = (arr) => {
+    const sorted = [...arr].sort((x, y) => x - y);
+    const mean = sorted.reduce((s, v) => s + v, 0) / n;
+    return {
+      mean: round(mean, 1),
+      p10: round(sorted[Math.floor(n * 0.1)], 1),
+      p50: round(sorted[Math.floor(n * 0.5)], 1),
+      p90: round(sorted[Math.min(n - 1, Math.floor(n * 0.9))], 1),
+    };
+  };
+
+  return {
+    column,
+    trials: n,
+    attacker: { ...stats(aRem), fallbackPct: round((aFall / n) * 100, 1), destroyedPct: round((aOut / n) * 100, 1) },
+    defender: { ...stats(dRem), fallbackPct: round((dFall / n) * 100, 1), destroyedPct: round((dOut / n) * 100, 1) },
+    outcomes: [...counts.entries()].map(([result, count]) => ({ result, count, pct: round((count / n) * 100, 1) })).sort((a, b) => b.count - a.count),
+  };
+}
+
+export const SYNCH_FUNCTIONS = [
+  ['maneuver', 'Maneuver & movement'],
+  ['fires', 'Fires & combat'],
+  ['isr', 'ISR & contacts'],
+  ['logistics', 'Logistics & supply'],
+  ['c2', 'C2, EW & injects'],
+  ['conditions', 'Weather & schedule'],
+];
+
+/**
+ * Builds a military Synchronization Matrix (Warfighting Functions × Turns) from a branch's
+ * played events plus scheduled reinforcements, withdrawals, weather changes, and injects.
+ */
+export function synchMatrix(doc, branchId) {
+  const b = branchOf(doc, branchId);
+  const played = b.turns.length - 1;
+  const scheduledMax = Math.max(
+    played,
+    ...(doc.schedule || []).map((s) => Number(s.turn) || 0),
+    ...(doc.injects || []).map((x) => Number(x.turn) || 0),
+  );
+  const totalTurns = Math.min(40, Math.max(played, scheduledMax));
+  const turns = Array.from({ length: totalTurns + 1 }, (_, n) => ({ n, label: turnLabel(doc, n), future: n > played }));
+  const rows = SYNCH_FUNCTIONS.map(([key, label]) => ({ key, label, cells: turns.map(() => []) }));
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.cells]));
+
+  for (let n = 0; n <= played; n++) {
+    const t = b.turns[n];
+    for (const ev of t.events || []) {
+      if (ev.type === 'move' || ev.type === 'add' || ev.type === 'remove') {
+        if (n > 0 || ev.type === 'move') byKey.maneuver[n].push(ev.text);
+      } else if (ev.type === 'combat' || ev.type === 'roll' || ev.type === 'matrix') {
+        byKey.fires[n].push(ev.text);
+      } else if (ev.type === 'contact') {
+        byKey.isr[n].push(ev.text);
+      } else if (ev.type === 'supply' || ev.type === 'link') {
+        byKey.logistics[n].push(ev.text);
+      } else if (ev.type === 'command' || ev.type === 'inject') {
+        byKey.c2[n].push(ev.text);
+      } else if (ev.type === 'arrive' || ev.type === 'withdraw' || ev.type === 'weather') {
+        byKey.conditions[n].push(ev.text);
+      }
+    }
+    if (n === 0 && t.units.length) byKey.maneuver[0].push(`${t.units.length} units deployed`);
+  }
+
+  // Future scheduled items
+  for (const s of doc.schedule || []) {
+    const n = Number(s.turn);
+    if (n > played && n <= totalTurns) {
+      const txt = s.type === 'arrive' ? `[Sched] ${s.unit?.name || 'Unit'} arrives`
+        : s.type === 'withdraw' ? `[Sched] ${s.name || 'Unit'} withdraws`
+          : `[Sched] Weather: ${WEATHER[s.weather]?.label || s.weather}`;
+      byKey.conditions[n].push(txt);
+    }
+  }
+  for (const x of doc.injects || []) {
+    const n = Number(x.turn);
+    if (n > played && n <= totalTurns) byKey.c2[n].push(`[Sched] Inject: ${x.title || 'Inject'}`);
+  }
+
+  return { branch: b.name, played, turns, rows };
+}
+
+/** Exports a Synchronization Matrix to RFC-4180 CSV. */
+export function synchMatrixCsv(matrix) {
+  const escCsv = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const head = ['Warfighting Function', ...matrix.turns.map((t) => t.label)].map(escCsv).join(',');
+  const body = matrix.rows.map((r) => [r.label, ...r.cells.map((c) => c.join(' | '))].map(escCsv).join(','));
+  return [head, ...body].join('\n');
 }

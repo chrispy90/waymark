@@ -221,3 +221,49 @@ test('hotwash: questions and a summary of the answers', () => {
   assert.deepEqual(sum.roles, { Blue: 2 });
   assert.deepEqual(sum.improve, ['More time']);
 });
+
+test('branchDiff ghost overlay, Monte Carlo combat sensitivity & synchronization matrix', () => {
+  const doc = c.newScenario({ title: 'COA Test' });
+  const t0 = c.turnOf(doc, 'main', 0);
+  const u1 = c.addUnit(doc, t0, { side: 'blue', kind: 'armor', name: '1st Armor', strength: 100, lngLat: [-77.0, 38.9] });
+  const u2 = c.addUnit(doc, t0, { side: 'red', kind: 'infantry', name: 'Red Guard', strength: 80, lngLat: [-76.95, 38.9] });
+  doc.schedule = [{ id: 's1', type: 'weather', turn: 3, weather: 'rain' }];
+  doc.injects = [{ id: 'i1', title: 'Bridge Out', text: 'Span dropped', turn: 2 }];
+
+  // Advance main branch and move u1 east
+  r.startTurn(doc, 'main');
+  const m1 = c.turnOf(doc, 'main', 1);
+  c.moveUnit(doc, m1, u1.id, [-76.96, 38.9]);
+  c.updateUnit(m1, u2.id, { strength: 50 });
+
+  // Branch from setup and move u1 north instead
+  const alt = c.branchFrom(doc, 'main', 0, 'Northern Flank');
+  r.startTurn(doc, alt.id);
+  const a1 = c.turnOf(doc, alt.id, 1);
+  c.moveUnit(doc, a1, u1.id, [-77.0, 38.96]);
+
+  const diff = x.branchDiff(doc, 'main', alt.id, 1);
+  assert.equal(diff.movedCount, 1);
+  assert.ok(diff.avgDispKm > 5);
+  assert.ok(diff.features.some((f) => f.properties.kind === 'ghost-unit' && /1st Armor/.test(f.properties.name)));
+  assert.ok(diff.features.some((f) => f.properties.kind === 'ghost-delta' && f.geometry.type === 'LineString'));
+  const redSide = diff.sides.find((s) => s.id === 'red');
+  assert.equal(redSide.strengthDelta, 30, 'Red is 30% stronger in the Northern Flank branch');
+
+  // Monte Carlo COA simulation
+  const mc = x.monteCarloCombat(doc, { column: '3:1', attackerStrength: 90, defenderStrength: 70, trials: 500 });
+  assert.equal(mc.trials, 500);
+  assert.ok(mc.defender.mean < 70);
+  assert.ok(mc.defender.p10 <= mc.defender.p50 && mc.defender.p50 <= mc.defender.p90);
+  assert.ok(mc.outcomes.length >= 1);
+
+  // Synchronization matrix + CSV export
+  const mx = x.synchMatrix(doc, 'main');
+  assert.equal(mx.rows.length, 6);
+  assert.equal(mx.turns.length, 4, 'Includes played turns 0-1 plus scheduled turns 2-3');
+  assert.ok(mx.rows.find((row) => row.key === 'c2').cells[2].some((s) => /Bridge Out/.test(s)));
+  assert.ok(mx.rows.find((row) => row.key === 'conditions').cells[3].some((s) => /Rain/.test(s)));
+  const csv = x.synchMatrixCsv(mx);
+  assert.ok(csv.includes('Warfighting Function'));
+  assert.ok(csv.includes('Maneuver & movement'));
+});

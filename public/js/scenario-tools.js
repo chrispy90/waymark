@@ -6,7 +6,7 @@ import { h, icon, toast, dialog, confirmDialog } from './ui.js';
 import { KINDS, sideOf, distanceKm, circle, turnLabel, hoursLabel, addUnit } from './scenario-core.js';
 import * as R from './scenario-rules.js';
 import { buildTerrain, suggestCellKm, CELL_SIZES, MAX_CELLS, TERRAIN_CREDIT } from './scenario-terrain.js';
-import { crtChances } from './scenario-report.js';
+import { crtChances, monteCarloCombat } from './scenario-report.js';
 import { toMgrs } from './mgrs.js';
 
 const uid = (p) => p + Math.random().toString(36).slice(2, 8);
@@ -22,7 +22,7 @@ export function createTools(ctx) {
   let linkTpl = { type: 'road', side: '', name: '' };
   let nodeTpl = { type: 'depot', side: '', name: '' };
   let gfxTpl = { type: 'phase', side: '', label: '' };
-  let combat = { defender: null, attackers: null, outcome: null };
+  let combat = { defender: null, attackers: null, outcome: null, mc: null };
   let terrainFC = { key: '', data: null };
   const htmlMarkers = [];
 
@@ -520,6 +520,18 @@ export function createTools(ctx) {
         h('p', { class: 'field-hint' }, 'Units in contact are ticked. Tick others to add support, such as artillery in range. Click units on the map to add or remove them.')),
       o ? h('div', { class: 'wg-odds' }, h('span', {}, `${o.attack} against ${o.defense}`), h('strong', {}, o.column), h('span', { class: 'muted' }, o.below ? 'Worse than the table goes, so the first column' : `Odds ${o.ratio}:1`)) : null,
       o ? (() => { const c = crtChances(d, o.column); return c ? h('p', { class: 'wg-chance-line' }, `At ${o.column}, before rolling: the defenders fall back ${Math.round(c.defenderFallsBack * 6)} times in 6 and lose ${c.defenderLoss}% on average; the attackers lose ${c.attackerLoss}%${c.attackerFallsBack ? ` and fall back ${Math.round(c.attackerFallsBack * 6)} times in 6` : ''}.`) : null; })() : null,
+      o ? h('div', { style: 'margin:8px 0' },
+        h('button', { type: 'button', class: 'btn btn-sm', onclick: () => {
+          const avgAtk = chosen.length ? chosen.reduce((s, u) => s + (Number(u.strength) || 0), 0) / chosen.length : 100;
+          combat.mc = monteCarloCombat(d, { column: o.column, attackerStrength: avgAtk, defenderStrength: Number(def.strength) || 100, trials: 1000 });
+          ctx.render();
+        } }, icon('sparkle', { size: 14 }), 'Run 1,000-trial Monte Carlo'),
+        combat.mc && combat.mc.column === o.column ? h('div', { class: 'wg-roll', style: 'margin-top:8px;text-align:left' },
+          h('div', { class: 'row' }, h('strong', {}, `Monte Carlo (${combat.mc.trials.toLocaleString()} trials at ${combat.mc.column})`), h('span', { class: 'spacer' }),
+            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Hide simulation', onclick: () => { combat.mc = null; ctx.render(); } }, icon('x', { size: 13 }))),
+          h('p', { class: 'muted', style: 'margin:4px 0' }, `Defender remaining: avg ${combat.mc.defender.mean}% (p10–p90: ${combat.mc.defender.p10}%–${combat.mc.defender.p90}%) · falls back ${combat.mc.defender.fallbackPct}%${combat.mc.defender.destroyedPct ? ` · destroyed ${combat.mc.defender.destroyedPct}%` : ''}`),
+          h('p', { class: 'muted', style: 'margin:4px 0' }, `Attacker remaining: avg ${combat.mc.attacker.mean}% (p10–p90: ${combat.mc.attacker.p10}%–${combat.mc.attacker.p90}%) · falls back ${combat.mc.attacker.fallbackPct}%`),
+          h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px' }, combat.mc.outcomes.slice(0, 5).map((r) => h('span', { class: 'pill no-dot' }, `${r.result}: ${r.pct}%`)))) : null) : null,
       o && live() ? h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Roll one die'),
         h('div', { class: 'row row-wrap' },
           h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { const b = new Uint32Array(1); crypto.getRandomValues(b); roll((b[0] % 6) + 1); } }, icon('hex', { size: 15 }), 'Roll'),

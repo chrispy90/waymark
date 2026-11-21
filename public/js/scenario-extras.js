@@ -459,7 +459,7 @@ export function createExtras(ctx) {
       const s = X.seriesFor(d, branchId);
       const labels = s.turns.map((t) => t.label);
       const per = (k) => s.sides.map((side) => ({ name: side.name, color: side.color, values: s.turns.map((t) => t.sides[side.id][k]) }));
-      const tabs = h('div', { class: 'seg', role: 'tablist' }, [['charts', 'Charts'], ['heat', 'Heat map'], ['hotwash', 'Hotwash']].map(([k, l]) => h('button', { type: 'button', role: 'tab', class: tab === k ? 'is-on' : '', 'aria-selected': String(tab === k), onclick: () => { tab = k; draw(); } }, l)));
+      const tabs = h('div', { class: 'seg', role: 'tablist' }, [['charts', 'Charts'], ['synch', 'Synch matrix'], ['heat', 'Heat map'], ['hotwash', 'Hotwash']].map(([k, l]) => h('button', { type: 'button', role: 'tab', class: tab === k ? 'is-on' : '', 'aria-selected': String(tab === k), onclick: () => { tab = k; draw(); } }, l)));
       const pick = d.branches.length > 1 ? h('select', { class: 'wg-branch-pick', 'aria-label': 'Branch', onchange: (e) => { branchId = e.target.value; draw(); } }, d.branches.map((b) => h('option', { value: b.id, selected: b.id === branchId }, b.name))) : null;
       let content;
       if (tab === 'charts') {
@@ -481,6 +481,25 @@ export function createExtras(ctx) {
             h('thead', {}, h('tr', {}, h('th', {}, 'Turn'), c.series.map((x) => h('th', {}, x.name)))),
             h('tbody', {}, labels.map((lab, i) => h('tr', {}, h('td', {}, lab), c.series.map((x) => h('td', {}, x.values[i] == null ? '—' : (c.fmt || String)(x.values[i]))))))))) : h('div', { class: 'wg-charts' }, charts.map((c) => lineChart({ ...c, labels }))),
           h('button', { type: 'button', class: 'link-btn', onclick: () => { showTable = !showTable; draw(); } }, showTable ? 'Show as charts' : 'Show as tables'),
+        ];
+      } else if (tab === 'synch') {
+        const mx = X.synchMatrix(d, branchId);
+        content = [
+          h('div', { class: 'row', style: 'margin-bottom:10px' },
+            h('p', { class: 'field-hint', style: 'margin:0' }, 'Warfighting functions across turns (played turns and scheduled future events).'),
+            h('span', { class: 'spacer' }),
+            h('button', { type: 'button', class: 'btn btn-sm', onclick: () => {
+              const csv = X.synchMatrixCsv(mx);
+              const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `${(d.title || 'scenario').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'scenario'}-synch-matrix.csv` });
+              document.body.append(a); a.click(); a.remove();
+            } }, icon('download', { size: 14 }), 'Download CSV')),
+          h('div', { class: 'wg-table-wrap' },
+            h('table', { class: 'wg-cmp-table' },
+              h('thead', {}, h('tr', {}, h('th', {}, 'Function'), mx.turns.map((t) => h('th', { style: t.future ? 'opacity:0.65;font-style:italic' : '' }, t.label)))),
+              h('tbody', {}, mx.rows.map((r) => h('tr', {},
+                h('th', { style: 'white-space:nowrap;text-align:left' }, r.label),
+                r.cells.map((items, ti) => h('td', { style: `vertical-align:top;min-width:120px;font-size:12px${mx.turns[ti]?.future ? ';opacity:0.7' : ''}` },
+                  items.length ? h('ul', { style: 'margin:0;padding-left:14px' }, items.slice(0, 6).map((txt) => h('li', {}, txt)), items.length > 6 ? h('li', { class: 'muted' }, `+${items.length - 6} more`) : null) : h('span', { class: 'muted' }, '—')))))))),
         ];
       } else if (tab === 'heat') {
         const el = h('div', { class: 'wg-heat-map' });
@@ -604,6 +623,7 @@ export function createExtras(ctx) {
     menu(anchor, [
       { label: screenOn ? 'Second screen (connected)' : 'Open a second screen', icon: 'monitor', onClick: openScreen },
       { label: 'Timeline', icon: 'clock', onClick: openTimeline },
+      { label: 'Synch matrix', icon: 'list', onClick: () => openAnalysis('synch') },
       { label: 'Analysis', icon: 'chart', onClick: () => openAnalysis() },
       'sep',
       { label: 'Download scenario file', icon: 'download', onClick: downloadFile },

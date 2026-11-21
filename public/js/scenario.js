@@ -13,6 +13,7 @@ import {
   addUnit, removeUnit, moveUnit, updateUnit, logEvent, fireInject, branchFrom, deleteBranch, rewind, sideSummary, compareBranches, branchLog, storyFromScenario, hoursLabel,
 } from './scenario-core.js';
 import * as R from './scenario-rules.js';
+import { branchDiff } from './scenario-report.js';
 import { createTools } from './scenario-tools.js';
 import { createExtras } from './scenario-extras.js';
 
@@ -44,7 +45,9 @@ let overlay = { type: 'FeatureCollection', features: [] }; // line of sight, rea
 let wholeLog = false;
 let lastRoll = null;
 const markers = new Map(); // unit id → { marker, key }
+const ghostMarkers = [];
 const pins = [];
+let ghostBranchId = null; // optional second branch overlaid as translucent ghosts on the map
 let rev = 0; // bumped on every change, so worked-out facts (supply, control…) are recalculated only when needed
 let drawing = null; // { mode: 'line' | 'polygon' | 'point', coords, cursor, snap, hint, done(coords) }
 let factsCache = { key: '', v: null };
@@ -258,9 +261,11 @@ function ensureLayers() {
   extras.lightLayers(map);
   tools.layersBelow(map);
   map.addSource('wg-overlay', { type: 'geojson', data: empty() });
+  map.addSource('wg-ghost', { type: 'geojson', data: empty() });
   map.addSource('wg-moves', { type: 'geojson', data: empty() });
   map.addLayer({ id: 'wg-overlay-fill', type: 'fill', source: 'wg-overlay', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['coalesce', ['get', 'color'], '#7c3aed'], 'fill-opacity': ['coalesce', ['get', 'opacity'], 0.2] } });
   map.addLayer({ id: 'wg-overlay-line', type: 'line', source: 'wg-overlay', paint: { 'line-color': ['coalesce', ['get', 'color'], '#7c3aed'], 'line-width': ['coalesce', ['get', 'width'], 1.5], 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] } });
+  map.addLayer({ id: 'wg-ghost-line', type: 'line', source: 'wg-ghost', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': ['coalesce', ['get', 'color'], '#64748b'], 'line-width': 2, 'line-opacity': 0.65, 'line-dasharray': [3, 2] } });
   map.addLayer({ id: 'wg-moves-line', type: 'line', source: 'wg-moves', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-dasharray': [1.5, 1.6] } });
   map.addLayer({ id: 'wg-moves-start', type: 'circle', source: 'wg-moves', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2 } });
   tools.layersAbove(map);
@@ -314,6 +319,22 @@ function drawMap() {
     }
   }
   map.getSource('wg-overlay').setData({ type: 'FeatureCollection', features: [...overlay.features, ...rings] });
+  // ghost branch overlay: translucent unit positions + displacement vectors from another branch at this turn
+  ghostMarkers.splice(0).forEach((m) => m.remove());
+  if (ghostBranchId && ghostBranchId !== branchId && doc.branches.some((b) => b.id === ghostBranchId)) {
+    const diff = branchDiff(doc, branchId, ghostBranchId, turnIx);
+    map.getSource('wg-ghost').setData({ type: 'FeatureCollection', features: diff.features.filter((f) => f.geometry.type === 'LineString') });
+    const gb = branchOf(doc, ghostBranchId);
+    const gt = gb.turns[diff.branchB.turn];
+    for (const gu of gt.units.filter(shown)) {
+      const el = h('div', { class: 'wg-unit is-static', style: 'opacity:0.46;pointer-events:none;filter:saturate(0.75)', title: `${gu.name} (${gb.name} · ${gu.strength}%)` },
+        symbol(gu, 24),
+        h('span', { class: 'wg-name' }, `${gu.name} (${gb.name})`));
+      ghostMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(gu.lngLat).addTo(map));
+    }
+  } else {
+    map.getSource('wg-ghost')?.setData(empty());
+  }
   tools.draw(map, facts());
   extras.drawLight(map);
   // injects that have been released, where they were pinned
@@ -801,6 +822,12 @@ function branchesPanel() {
         } }, 'Delete') : null);
     })),
     canEdit ? h('button', { type: 'button', class: 'btn btn-primary btn-block', style: 'margin-top:12px', onclick: branchHere }, icon('copy', { size: 15 }), `Branch from ${lower(turnLabel(doc, turnIx))}`) : null,
+    doc.branches.length > 1 ? h('label', { class: 'field', style: 'margin-top:12px' },
+      h('span', { class: 'field-label' }, 'Ghost branch overlay on map'),
+      h('select', { onchange: (e) => { ghostBranchId = e.target.value || null; render(); } },
+        h('option', { value: '', selected: !ghostBranchId }, 'None (off)'),
+        doc.branches.filter((b) => b.id !== branchId).map((b) => h('option', { value: b.id, selected: ghostBranchId === b.id }, b.name))),
+      h('span', { class: 'field-hint' }, 'Shows another branch\'s unit positions and displacement vectors at this turn as translucent ghosts.')) : null,
     h('button', { type: 'button', class: 'btn btn-block', style: 'margin-top:8px', onclick: openCompare }, icon('compare', { size: 15 }), 'Compare branches'),
     h('button', { type: 'button', class: 'btn btn-block', style: 'margin-top:8px', onclick: () => extras.openAnalysis() }, icon('chart', { size: 15 }), 'Charts, heat map and hotwash'),
   ];
