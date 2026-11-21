@@ -313,3 +313,31 @@ test('story maps show lines, objectives and planning graphics', () => {
   assert.ok(feats.some((f) => /Bridge \(Blue\)/.test(f.properties.text || '')));
   assert.ok(feats.some((f) => f.properties.name === 'Main effort' && f.properties.arrow));
 });
+
+test('terrain-masked viewshedPolygon and multiTurnReach isochrones', () => {
+  // Build a 1 km hex grid with a 350m ridge along col 8 blocking eastern sightlines
+  const T = r.terrainOf(makeGrid(undefined, (col) => (col === 8 ? 350 : 50)));
+  const doc = c.newScenario();
+  doc.clock = { mode: 'turns', stepMinutes: 30, start: '' };
+  const t = c.turnOf(doc, 'main', 0);
+  const scout = c.addUnit(doc, t, { side: 'blue', kind: 'recon', name: 'Scout', speedKmh: 6, sensorKm: 6, lngLat: T.center(6 * T.cols + 5) });
+
+  const vs = r.viewshedPolygon(T, scout, 6, { rays: 36 });
+  assert.ok(vs.ring.length >= 36);
+  assert.ok(vs.visibleRatio > 0 && vs.visibleRatio < 1, 'Ridge at col 8 should clip eastern rays while leaving other directions open');
+
+  // Directional fan arc viewshed starts and ends at the observer
+  scout.fanDir = 90;
+  scout.fanArc = 60;
+  const fanVs = r.viewshedPolygon(T, scout, 6, { rays: 36 });
+  assert.deepEqual(fanVs.ring[0], scout.lngLat);
+  assert.deepEqual(fanVs.ring.at(-1), scout.lngLat);
+  assert.ok(fanVs.visibleRatio < 0.8, 'Eastern fan should be heavily clipped by the ridge');
+
+  // Multi-turn reach produces expanding concentric bands for turns 1, 2, 3
+  const bands = r.multiTurnReach(doc, t, 0, T, scout, { turns: 3 });
+  assert.equal(bands.length, 3);
+  assert.ok(bands[1].count > bands[0].count, '2-turn reach should cover more cells than 1-turn reach');
+  assert.ok(bands[2].count > bands[1].count, '3-turn reach should cover more cells than 2-turn reach');
+  assert.equal(bands[0].outline.type, 'MultiLineString');
+});

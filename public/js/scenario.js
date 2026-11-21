@@ -49,6 +49,7 @@ let rev = 0; // bumped on every change, so worked-out facts (supply, control…)
 let drawing = null; // { mode: 'line' | 'polygon' | 'point', coords, cursor, snap, hint, done(coords) }
 let factsCache = { key: '', v: null };
 let reachCache = { key: '', features: [] };
+let viewshedCache = { key: '', features: [] };
 
 /* ---------- loading ---------- */
 
@@ -299,10 +300,13 @@ function drawMap() {
   const u = selected && unitById(selected);
   if (u && shown(u)) {
     const color = sideOf(doc, u.side).color;
+    const F = facts();
     if (Number(u.rangeKm) > 0) rings.push({ type: 'Feature', properties: { color, opacity: 0.08, width: 2 }, geometry: { type: 'Polygon', coordinates: [R.rangeShape(u, Number(u.rangeKm))] } });
     const sensor = R.sensorRange(doc, turn(), turnIx, u);
-    if (sensor > 0) rings.push({ type: 'Feature', properties: { color: '#0f766e', width: 1.3 }, geometry: { type: 'LineString', coordinates: R.rangeShape(u, sensor) } });
-    const F = facts();
+    if (sensor > 0) {
+      if (F.T) rings.push(...sensorViewshed(u, sensor, F));
+      else rings.push({ type: 'Feature', properties: { color: '#0f766e', width: 1.3 }, geometry: { type: 'LineString', coordinates: R.rangeShape(u, sensor) } });
+    }
     if (F.T && live()) rings.push(...reachOutline(u, F));
     else {
       const reach = moveAllowanceKm(doc, u);
@@ -331,6 +335,37 @@ function reachOutline(u, F) {
     reachCache = { key, features: cells.size > 1 ? [{ type: 'Feature', properties: { color: '#334155', width: 1.6 }, geometry: R.cellsOutline(F.T, cells) }] : [] };
   }
   return reachCache.features;
+}
+
+// Instant terrain-masked sensor viewshed polygon computed from the local hex terrain grid.
+function sensorViewshed(u, sensorKm, F) {
+  const key = `${rev}|${branchId}|${turnIx}|${u.id}|${sensorKm}`;
+  if (viewshedCache.key !== key) {
+    const vs = R.viewshedPolygon(F.T, u, sensorKm);
+    viewshedCache = {
+      key,
+      features: vs.ring.length >= 4 ? [
+        { type: 'Feature', properties: { color: '#0f766e', opacity: 0.14, width: 1.6 }, geometry: { type: 'Polygon', coordinates: [vs.ring] } },
+      ] : [],
+    };
+  }
+  return viewshedCache.features;
+}
+
+// Concentric 1-, 2-, and 3-turn terrain-adjusted reach isochrones for operational tempo planning.
+function multiTurnIsochrones(u) {
+  const F = facts();
+  if (!F.T) { toast('Build the scenario terrain grid first to compute multi-turn terrain isochrones.', { tone: 'error' }); return; }
+  const bands = R.multiTurnReach(doc, turn(), turnIx, F.T, u, { turns: 3 });
+  if (!bands.length) { toast(`${u.name} cannot move over this terrain.`, { tone: 'error' }); return; }
+  const colors = ['#059669', '#d97706', '#7c3aed'];
+  const feats = bands.map((b, i) => ({
+    type: 'Feature',
+    properties: { color: colors[i] || '#475569', width: i === 0 ? 2.4 : 1.7 },
+    geometry: b.outline,
+  }));
+  const summary = bands.map((b) => `T+${b.turn} (${b.hours}h)`).join(', ');
+  setOverlay(feats, `${u.name} terrain reach isochrones: green = 1 turn, amber = 2 turns, purple = 3 turns (${summary}).`);
 }
 
 /** A unit dropped on the map: it moves along the quickest route over the terrain, or plans the move. */
@@ -627,6 +662,7 @@ function unitEditor(u) {
         h('b', { class: Number(u.rangeKm) > 0 && d <= Number(u.rangeKm) ? 'is-in' : '' }, `${km(d)}${Number(u.rangeKm) > 0 && d <= Number(u.rangeKm) ? ' · in range' : ''}`)))) : null,
     h('div', { class: 'row row-wrap wg-aids' },
       h('button', { type: 'button', class: 'btn btn-sm', title: 'What this unit can see, given the terrain', onclick: () => lineOfSight(u) }, icon('eye', { size: 14 }), 'Line of sight'),
+      facts().T ? h('button', { type: 'button', class: 'btn btn-sm', title: 'Terrain-adjusted 1, 2, and 3-turn movement isochrones', onclick: () => multiTurnIsochrones(u) }, icon('target', { size: 14 }), '3-turn reach') : null,
       h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get by road in one turn', onclick: () => reach(u, 'auto') }, icon('route', { size: 14 }), 'Reach by road'),
       h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get on foot in one turn', onclick: () => reach(u, 'pedestrian') }, icon('route', { size: 14 }), 'On foot')),
     tools.unitSection(u, facts()),

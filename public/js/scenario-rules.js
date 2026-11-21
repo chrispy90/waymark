@@ -542,6 +542,24 @@ export function cellsOutline(T, cells) {
   return { type: 'MultiLineString', coordinates: lines };
 }
 
+/**
+ * Multi-turn terrain-adjusted reach isochrones (e.g. 1, 2, 3 turns out) from a single Dijkstra pass.
+ * Returns [{ turn, hours, count, outline }] for each band that adds reachable cells.
+ */
+export function multiTurnReach(doc, turn, n, T, unit, { turns = 3, field } = {}) {
+  const stepHours = (Number(doc.clock?.stepMinutes) || 60) / 60;
+  const maxTurns = Math.max(1, Math.min(6, Math.round(turns)));
+  const all = reachCells(doc, turn, n, T, unit, stepHours * maxTurns, { field });
+  const bands = [];
+  for (let k = 1; k <= maxTurns; k++) {
+    const limit = stepHours * k;
+    const set = new Set();
+    for (const [cell, hrs] of all) if (hrs <= limit + 1e-9) set.add(cell);
+    if (set.size > 1) bands.push({ turn: k, hours: round(limit, 2), count: set.size, outline: cellsOutline(T, set) });
+  }
+  return bands;
+}
+
 /* ---------- lines of communication ---------- */
 
 export const LINK_TYPES = {
@@ -769,6 +787,72 @@ export function lineOfSight(T, a, b, { observerM = 2, targetM = 2 } = {}) {
     if (e + OBSTACLE_M[T.coverOf(i)] + curve > ha + (hb - ha) * t) return false;
   }
   return true;
+}
+
+/**
+ * Computes an instant terrain-masked viewshed polygon directly from the scenario's hex terrain grid `T`,
+ * respecting unit fan arc (`fanDir`/`fanArc`), DEM elevation, forest/urban obstacle height, and Earth curvature.
+ * Returns { ring, visibleRatio, maxVisibleKm }.
+ */
+export function viewshedPolygon(T, unit, rangeKm, { rays = 72, observerM = 2, targetM = 2 } = {}) {
+  const rKm = Number(rangeKm) || 0;
+  if (!T || !(rKm > 0)) return { ring: rangeShape(unit, rKm, rays), visibleRatio: 1, maxVisibleKm: rKm };
+  const [lng, lat] = unit.lngLat;
+  const ia = T.cellAt(unit.lngLat);
+  const ea = ia >= 0 ? T.elevOf(ia) : null;
+  if (ea == null) return { ring: rangeShape(unit, rKm, rays), visibleRatio: 1, maxVisibleKm: rKm };
+
+  const kx = 111.32 * Math.cos(lat * RAD);
+  const arc = hasArc(unit) ? Number(unit.fanArc) : 360;
+  const startDeg = hasArc(unit) ? Number(unit.fanDir || 0) - arc / 2 : 0;
+  const nRays = hasArc(unit) ? Math.max(12, Math.round((rays * arc) / 360)) : rays;
+  const nSteps = Math.max(8, Math.min(48, Math.ceil(rKm / Math.max(0.15, T.step * 0.6))));
+  const ha = ea + observerM;
+
+  const ring = hasArc(unit) ? [[lng, lat]] : [];
+  let sumFrac = 0;
+  let maxVis = 0;
+
+  for (let r = 0; r <= nRays; r++) {
+    const deg = startDeg + (arc * r) / nRays;
+    const dx = Math.sin(deg * RAD) / kx;
+    const dy = Math.cos(deg * RAD) / 110.574;
+    let maxSlope = -Infinity;
+    let furthestKm = 0;
+
+    for (let s = 1; s <= nSteps; s++) {
+      const d = (rKm * s) / nSteps;
+      const p = [lng + d * dx, lat + d * dy];
+      const cell = T.cellAt(p);
+      if (cell < 0 || cell === ia) {
+        furthestKm = d;
+        continue;
+      }
+      const e = T.elevOf(cell);
+      if (e == null) { furthestKm = d; continue; }
+      const curve = (d * d) / 12.74; // Earth curvature drop in meters
+      const groundH = e - curve;
+      const obstacleH = groundH + OBSTACLE_M[T.coverOf(cell)];
+      const tgtSlope = (groundH + targetM - ha) / (d * 1000);
+      const obsSlope = (obstacleH - ha) / (d * 1000);
+      if (tgtSlope >= maxSlope - 1e-6) {
+        furthestKm = d;
+      } else {
+        // Blocked by intervening ridge/forest/urban: stop extending outer continuous sightline polygon
+        break;
+      }
+      if (obsSlope > maxSlope) maxSlope = obsSlope;
+    }
+
+    if (r < nRays || hasArc(unit)) {
+      sumFrac += furthestKm / rKm;
+      if (furthestKm > maxVis) maxVis = furthestKm;
+    }
+    ring.push([round(lng + furthestKm * dx, 6), round(lat + furthestKm * dy, 6)]);
+  }
+  if (hasArc(unit)) ring.push([lng, lat]);
+  const denom = hasArc(unit) ? nRays + 1 : nRays;
+  return { ring, visibleRatio: round(sumFrac / Math.max(1, denom), 3), maxVisibleKm: round(maxVis, 2) };
 }
 
 /** Units seen by at least one opposing unit with a sensor range: in range (after weather and light), in its arc, and in line of sight. */
