@@ -31,6 +31,7 @@ export const DEFAULT_RULES = {
   planning: false, // plan moves for each side, then reveal and move them all at once
   autoSpot: false, // units are seen when an opposing unit's sensor range and line of sight reach them
   auto: false, // apply supply effects automatically
+  c2Delay: false, // units out of HQ radio contact or jammed execute move orders on the next turn
   lossPct: 10, // strength lost per turn out of supply (when auto)
   resupply: 50, // supply regained per turn in supply (half when strained)
   reachKm: 5, // how far from a line of communication a unit can still draw supply or use a signal link
@@ -931,6 +932,7 @@ export function unitPower(doc, turn, n, T, u, role, { supply, command } = {}) {
   const sup = supply?.get(u.id)?.state;
   if (sup === 'out') mult('Out of supply', 0.5); else if (sup === 'strained') mult('Supply strained', 0.8);
   if (command?.get(u.id)?.state === 'out') mult('Out of contact', 0.8);
+  if (Number(u.ammoMax) > 0 && Number(u.ammo ?? 0) <= 0) mult('Out of munitions / sorties', 0.25);
   if (role === 'defend' && T) {
     const i = T.cellAt(u.lngLat);
     if (i >= 0) {
@@ -966,14 +968,15 @@ export function resolveCombat(doc, turn, n, T, attackers, defenders, roll, state
 
 /** Applies a combat result to the units and writes one line to the log. */
 export function applyCombat(doc, turn, outcome) {
-  const hit = (list, loss) => list.forEach(({ u }) => {
+  const hit = (list, loss, spendAmmo) => list.forEach(({ u }) => {
     const unit = turn.units.find((x) => x.id === u.id);
     if (!unit) return;
     unit.strength = clamp(Math.round((Number(unit.strength) || 0) - loss), 0, 100);
     unit.status = unit.strength <= 0 ? 'destroyed' : 'engaged';
+    if (spendAmmo && Number(unit.ammoMax) > 0 && Number(unit.ammo ?? 0) > 0) unit.ammo = Math.max(0, Number(unit.ammo) - 1);
   });
-  hit(outcome.att, outcome.effects.a);
-  hit(outcome.def, outcome.effects.d);
+  hit(outcome.att, outcome.effects.a, true);
+  hit(outcome.def, outcome.effects.d, false);
   const names = (list) => list.map((x) => x.u.name).join(', ');
   const text = `Combat: ${names(outcome.att)} attacked ${names(outcome.def)} at ${outcome.column}${outcome.below ? ' (worse odds, resolved at the lowest column)' : ''}, rolled ${outcome.roll}: ${describeResult(outcome.result)}`;
   turn.events.push({ type: 'combat', text, units: [...outcome.att, ...outcome.def].map((x) => x.u.id) });
@@ -1079,7 +1082,15 @@ export function startTurn(doc, branchId) {
     const st = supply.get(u.id)?.state;
     const gain = st === 'in' ? r.resupply : st === 'strained' ? r.resupply / 2 : st === 'out' ? 0 : 100;
     u.supply = Math.round(clamp(level + gain, 0, 100));
-    delete u.used; delete u.path; delete u.hours; delete u.plan;
+    if (Number(u.ammoMax) > 0 && st !== 'out' && st !== 'strained') {
+      u.ammo = Math.min(Number(u.ammoMax), Math.max(0, Number(u.ammo ?? 0)) + 1);
+    }
+    const delayed = u.delayedPlan;
+    delete u.used; delete u.path; delete u.hours; delete u.plan; delete u.delayedPlan;
+    if (delayed?.to && u.status !== 'destroyed') {
+      moveUnit(doc, t, u.id, delayed.to, delayed.path ? { path: delayed.path, km: delayed.km, hours: delayed.hours, cost: delayed.cost } : null);
+      t.events.push({ type: 'command', unit: u.id, text: `${u.name} executes delayed C2 move order` });
+    }
     if (r.auto && st === 'out' && u.status !== 'destroyed' && r.lossPct > 0) {
       u.strength = clamp(Math.round((Number(u.strength) || 0) - r.lossPct), 0, 100);
       if (u.strength <= 0) u.status = 'destroyed';
@@ -1249,9 +1260,22 @@ export function storyFeatures(doc, branch, n) {
   }
   for (const g of turn.graphics || []) {
     if (!(g.coords?.length > 1)) continue;
-    const color = g.side ? sideOf(doc, g.side).color : '#111827';
-    const coords = g.type === 'area' ? [...g.coords, g.coords[0]] : g.coords;
-    features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: { name: g.label || '', stroke: color, 'stroke-width': g.type === 'arrow' ? 4 : 2, ...(g.type === 'phase' || g.type === 'area' ? { 'stroke-dash': 'dashed' } : {}), ...(g.type === 'arrow' ? { arrow: true } : {}) } });
+    const color = g.type === 'obstacle' ? '#d97706' : g.type === 'ea' ? '#dc2626' : g.side ? sideOf(doc, g.side).color : '#111827';
+    const isPoly = g.type === 'area' || g.type === 'ea' || g.type === 'nai';
+    const coords = isPoly ? [...g.coords, g.coords[0]] : g.coords;
+    features.push({
+      type: 'Feature',
+      geometry: isPoly ? { type: 'Polygon', coordinates: [coords] } : { type: 'LineString', coordinates: coords },
+      properties: {
+        name: g.label || '',
+        stroke: color,
+        fill: color,
+        'fill-opacity': g.type === 'ea' ? 0.18 : 0.1,
+        'stroke-width': g.type === 'arrow' || g.type === 'flot' ? 4 : g.type === 'obstacle' ? 3 : 2,
+        ...(g.type === 'phase' || isPoly || g.type === 'obstacle' ? { 'stroke-dash': 'dashed' } : {}),
+        ...(g.type === 'arrow' ? { arrow: true } : {}),
+      },
+    });
   }
   return features;
 }

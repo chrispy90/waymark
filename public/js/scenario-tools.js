@@ -138,29 +138,38 @@ export function createTools(ctx) {
     }
     for (const g of t.graphics || []) {
       if (!visibleTo(g.side)) continue;
-      const color = g.side ? sideOf(d, g.side).color : '#111827';
+      const color = g.type === 'obstacle' ? '#d97706' : g.type === 'ea' ? '#dc2626' : g.side ? sideOf(d, g.side).color : '#111827';
       if (g.type === 'label') { marker(map, h('div', { class: 'wg-gfx-label', style: `--c:${color}` }, g.label || 'Label'), g.coords[0]); continue; }
       if (!(g.coords?.length > 1)) continue;
-      if (g.type === 'area') {
+      const isPoly = g.type === 'area' || g.type === 'ea' || g.type === 'nai';
+      if (isPoly) {
         fs.push({ type: 'Feature', properties: { layer: 'gfx-area', color }, geometry: { type: 'Polygon', coordinates: [[...g.coords, g.coords[0]]] } });
-        fs.push({ type: 'Feature', properties: { layer: 'gfx-dash', color }, geometry: { type: 'LineString', coordinates: [...g.coords, g.coords[0]] } });
+        fs.push({ type: 'Feature', properties: { layer: g.type === 'ea' ? 'gfx-solid' : 'gfx-dash', color, width: g.type === 'ea' ? 2.5 : 2 }, geometry: { type: 'LineString', coordinates: [...g.coords, g.coords[0]] } });
       } else {
-        fs.push({ type: 'Feature', properties: { layer: g.type === 'phase' ? 'gfx-dash' : 'gfx-solid', color, width: g.type === 'arrow' ? 5 : 3 }, geometry: { type: 'LineString', coordinates: g.coords } });
+        fs.push({ type: 'Feature', properties: { layer: g.type === 'phase' || g.type === 'obstacle' ? 'gfx-dash' : 'gfx-solid', color, width: g.type === 'arrow' || g.type === 'flot' ? 5 : 3 }, geometry: { type: 'LineString', coordinates: g.coords } });
         if (g.type === 'arrow') { const head = R.arrowHead(g.coords, arrowKm(g.coords)); if (head) fs.push({ type: 'Feature', properties: { layer: 'gfx-head', color }, geometry: { type: 'Polygon', coordinates: [head] } }); }
       }
       if (g.label) {
-        const ends = g.type === 'phase' || g.type === 'boundary';
+        const ends = g.type === 'phase' || g.type === 'boundary' || g.type === 'flot';
         if (ends) { marker(map, h('div', { class: 'wg-gfx-label', style: `--c:${color}` }, g.label), g.coords[0], 'right'); marker(map, h('div', { class: 'wg-gfx-label', style: `--c:${color}` }, g.label), g.coords.at(-1), 'left'); }
-        else marker(map, h('div', { class: 'wg-gfx-label', style: `--c:${color}` }, g.label), g.type === 'area' ? centroid(g.coords) : R.midpoint(g.coords));
+        else marker(map, h('div', { class: 'wg-gfx-label', style: `--c:${color}` }, g.label), isPoly ? centroid(g.coords) : R.midpoint(g.coords));
       }
     }
     for (const u of t.units) {
-      if (!u.plan?.to || !ctx.shown(u) || !visibleTo(u.side)) continue;
-      const coords = u.plan.path?.length > 1 ? u.plan.path : [u.lngLat, u.plan.to];
-      const color = sideOf(d, u.side).color;
-      fs.push({ type: 'Feature', properties: { layer: 'plan', color }, geometry: { type: 'LineString', coordinates: coords } });
-      const head = R.arrowHead(coords, arrowKm(coords));
-      if (head) fs.push({ type: 'Feature', properties: { layer: 'plan-head', color }, geometry: { type: 'Polygon', coordinates: [head] } });
+      if (!ctx.shown(u) || !visibleTo(u.side)) continue;
+      if (u.plan?.to) {
+        const coords = u.plan.path?.length > 1 ? u.plan.path : [u.lngLat, u.plan.to];
+        const color = sideOf(d, u.side).color;
+        fs.push({ type: 'Feature', properties: { layer: 'plan', color }, geometry: { type: 'LineString', coordinates: coords } });
+        const head = R.arrowHead(coords, arrowKm(coords));
+        if (head) fs.push({ type: 'Feature', properties: { layer: 'plan-head', color }, geometry: { type: 'Polygon', coordinates: [head] } });
+      }
+      if (u.delayedPlan?.to) {
+        const coords = u.delayedPlan.path?.length > 1 ? u.delayedPlan.path : [u.lngLat, u.delayedPlan.to];
+        fs.push({ type: 'Feature', properties: { layer: 'plan', color: '#d97706' }, geometry: { type: 'LineString', coordinates: coords } });
+        const head = R.arrowHead(coords, arrowKm(coords));
+        if (head) fs.push({ type: 'Feature', properties: { layer: 'plan-head', color: '#d97706' }, geometry: { type: 'Polygon', coordinates: [head] } });
+      }
     }
     const dr = ctx.drawing();
     if (dr) {
@@ -184,8 +193,10 @@ export function createTools(ctx) {
       if (sup === 'out') out.push(['out', 'S', 'Out of supply']);
       else if (sup === 'strained') out.push(['strained', 'S', 'Supply strained']);
       if (F.command.get(u.id)?.state === 'out') out.push(['nocomms', 'C', `Out of contact: ${F.command.get(u.id).why}`]);
+      if (Number(u.ammoMax) > 0 && Number(u.ammo ?? 0) <= 0) out.push(['out', 'A', 'Out of munitions / sorties']);
     }
     if (u.plan && visibleTo(u.side)) out.push(['plan', 'P', 'Move planned']);
+    if (u.delayedPlan && visibleTo(u.side)) out.push(['strained', 'D', 'C2 delayed move queued for next turn']);
     return out;
   }
 
@@ -232,9 +243,18 @@ export function createTools(ctx) {
         field('Facing (°)', numberInput(u.fanDir ?? '', (v) => set({ fanDir: v === '' ? undefined : ((Math.round(v) % 360) + 360) % 360 }), { min: 0, max: 359, placeholder: 'North 0, east 90', disabled: ro })),
         field('Arc (°)', numberInput(u.fanArc ?? '', (v) => set({ fanArc: v === '' || v >= 360 ? undefined : Math.max(10, Math.round(v)) }), { min: 10, max: 360, placeholder: 'All round', disabled: ro }))),
       Number(u.fanArc) > 0 && Number(u.fanArc) < 360 ? h('p', { class: 'field-hint', style: 'margin-top:-4px' }, `Its range, sensors and contact only cover ${u.fanArc}° centred on ${u.fanDir || 0}°.`) : null,
+      h('div', { class: 'grid-2' },
+        field('Munitions / sorties', numberInput(u.ammo ?? '', (v) => set({ ammo: v === '' ? undefined : Math.max(0, Math.round(v)), ...(u.ammoMax ? {} : v !== '' ? { ammoMax: Math.max(1, Math.round(v)) } : {}) }), { min: 0, step: 1, placeholder: 'Unlimited', disabled: ro })),
+        field('Max load', numberInput(u.ammoMax ?? '', (v) => set({ ammoMax: v === '' ? undefined : Math.max(0, Math.round(v)), ...(v !== '' && u.ammo == null ? { ammo: Math.max(0, Math.round(v)) } : {}) }), { min: 0, step: 1, placeholder: 'Unlimited', disabled: ro }))),
+      Number(u.ammoMax) > 0 && !ro ? h('div', { class: 'row', style: 'margin:-4px 0 8px;gap:6px' },
+        h('span', { class: 'muted', style: 'font-size:12px' }, `${u.ammo ?? 0} of ${u.ammoMax} remaining`),
+        h('span', { class: 'spacer' }),
+        h('button', { type: 'button', class: 'btn btn-sm', disabled: (u.ammo ?? 0) <= 0, onclick: () => set({ ammo: Math.max(0, (u.ammo ?? 0) - 1) }) }, '−1 Spend'),
+        h('button', { type: 'button', class: 'btn btn-sm', disabled: (u.ammo ?? 0) >= u.ammoMax, onclick: () => set({ ammo: Math.min(u.ammoMax, (u.ammo ?? 0) + 1) }) }, '+1 Reload')) : null,
       h('div', { class: 'row row-wrap wg-aids' },
         foes && live() && ctx.shown(u) ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => attack(u) }, icon('swords', { size: 14 }), 'Attack this unit') : null,
-        u.plan && live() ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => ctx.mutate(() => { delete ctx.turn().units.find((x) => x.id === u.id).plan; }) }, icon('x', { size: 14 }), 'Cancel planned move') : null));
+        u.plan && live() ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => ctx.mutate(() => { delete ctx.turn().units.find((x) => x.id === u.id).plan; }) }, icon('x', { size: 14 }), 'Cancel planned move') : null,
+        u.delayedPlan && live() ? h('button', { type: 'button', class: 'btn btn-sm', onclick: () => ctx.mutate(() => { delete ctx.turn().units.find((x) => x.id === u.id).delayedPlan; }) }, icon('x', { size: 14 }), 'Cancel delayed order') : null));
   }
 
   /* ---------- rules (in Setup) ---------- */
@@ -249,6 +269,7 @@ export function createTools(ctx) {
       check('planning', 'Plan moves, then reveal', 'Dragging a unit plans its move. Reveal and move them all at once from the turn bar.'),
       check('autoSpot', 'Spot units automatically', 'Units with a sensor range see opposing units in range and in line of sight.'),
       check('auto', 'Apply supply effects', 'Units out of supply lose strength each turn, and their moves use twice the supply.'),
+      check('c2Delay', 'C2 order latency (1-turn delay)', 'Units outside HQ radio range or in a jammed zone execute move orders on the next turn.'),
       h('div', { class: 'grid-2' },
         field('Strength lost per turn (%)', numberInput(r.lossPct, (v) => set({ lossPct: Math.max(0, Math.min(100, v || 0)) }), { disabled: ro || !r.auto })),
         field('Resupply per turn (%)', numberInput(r.resupply, (v) => set({ resupply: Math.max(0, Math.min(100, v || 0)) }), { disabled: ro }))),
@@ -623,7 +644,17 @@ export function createTools(ctx) {
 
   /* ---------- planning graphics ---------- */
 
-  const GFX = { phase: ['Phase line', 'line'], boundary: ['Boundary', 'line'], arrow: ['Axis of advance', 'line'], area: ['Area', 'polygon'], label: ['Label', 'point'] };
+  const GFX = {
+    phase: ['Phase line (PL)', 'line'],
+    flot: ['FLOT (frontline)', 'line'],
+    boundary: ['Boundary', 'line'],
+    arrow: ['Axis of advance', 'line'],
+    ea: ['Engagement area (EA)', 'polygon'],
+    nai: ['Named area of interest (NAI)', 'polygon'],
+    obstacle: ['Obstacle / minefield', 'line'],
+    area: ['Area', 'polygon'],
+    label: ['Label', 'point'],
+  };
   function drawPanel() {
     const d = doc();
     const t = ctx.turn();

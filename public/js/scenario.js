@@ -401,6 +401,11 @@ function dropUnit(id, marker) {
   const blocked = route?.blocked;
   if (blocked) toast(`${route.reason} Moved straight there anyway.`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
   const usable = route && !blocked ? route : null;
+  if (F.rules.c2Delay && F.command.get(u.id)?.state === 'out') {
+    mutate(() => { unitById(id).delayedPlan = { to: [+to[0].toFixed(6), +to[1].toFixed(6)], ...(usable || {}) }; });
+    toast(`${u.name} is out of C2 contact (${F.command.get(u.id).why}). Move queued with a 1-turn delay.`, { duration: 6000, action: { label: 'Undo', onClick: undo } });
+    return;
+  }
   if (F.rules.planning) {
     mutate(() => { unitById(id).plan = { to: [+to[0].toFixed(6), +to[1].toFixed(6)], ...(usable || {}) }; });
     if (!blocked) toast(`Move planned for ${u.name}${usable ? `: ${hoursLabel(usable.hours)}` : ''}. Reveal moves from the turn bar.`, { duration: 3500 });

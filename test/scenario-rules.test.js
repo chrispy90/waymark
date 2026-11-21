@@ -341,3 +341,40 @@ test('terrain-masked viewshedPolygon and multiTurnReach isochrones', () => {
   assert.ok(bands[2].count > bands[1].count, '3-turn reach should cover more cells than 2-turn reach');
   assert.equal(bands[0].outline.type, 'MultiLineString');
 });
+
+test('operational friction: C2 delayed orders, finite munitions/sorties & doctrinal graphics', () => {
+  const doc = c.newScenario();
+  doc.rules = { c2Delay: true };
+  const t0 = c.turnOf(doc, 'main', 0);
+  const arty = c.addUnit(doc, t0, { side: 'blue', kind: 'artillery', name: '1st Fires', ammo: 1, ammoMax: 3, lngLat: [-77.0, 38.9] });
+  const foe = c.addUnit(doc, t0, { side: 'red', kind: 'infantry', name: 'Red Co', lngLat: [-76.98, 38.9] });
+
+  // Attacking spends 1 ammo and reduces combat power when ammo reaches 0
+  const fullPow = r.unitPower(doc, t0, 0, null, arty, 'attack').value;
+  const o = r.resolveCombat(doc, t0, 0, null, [arty], [foe], 4);
+  r.applyCombat(doc, t0, o);
+  assert.equal(arty.ammo, 0);
+  const dryPow = r.unitPower(doc, t0, 0, null, arty, 'attack').value;
+  assert.ok(dryPow < fullPow * 0.5, 'Unit out of munitions should suffer steep combat power penalty');
+
+  // Queue a delayed C2 move order and advance turn -> executes automatically & reloads +1 ammo when in supply
+  arty.delayedPlan = { to: [-76.99, 38.92] };
+  r.startTurn(doc, 'main');
+  const t1 = c.turnOf(doc, 'main', 1);
+  const arty1 = t1.units.find((u) => u.id === arty.id);
+  assert.deepEqual(arty1.lngLat, [-76.99, 38.92], 'Delayed C2 order should execute at the start of the next turn');
+  assert.equal(arty1.delayedPlan, undefined);
+  assert.equal(arty1.ammo, 1, 'In-supply unit should reload +1 ammo on turn advance');
+  assert.ok(t1.events.some((e) => e.type === 'command' && /delayed C2/.test(e.text)));
+
+  // Doctrinal graphics (FLOT, EA, NAI, Obstacle) render into story features
+  t1.graphics = [
+    { id: 'g1', type: 'flot', side: 'blue', label: 'FLOT Alpha', coords: [[-77.1, 38.9], [-76.9, 38.9]] },
+    { id: 'g2', type: 'ea', side: 'blue', label: 'EA Steel', coords: [[-77.0, 38.9], [-76.95, 38.9], [-76.95, 38.95]] },
+    { id: 'g3', type: 'obstacle', side: null, label: 'Mine Belt', coords: [[-77.05, 38.88], [-76.95, 38.88]] },
+  ];
+  const sf = r.storyFeatures(doc, c.branchOf(doc, 'main'), 1);
+  assert.ok(sf.some((f) => f.properties.name === 'FLOT Alpha' && f.properties['stroke-width'] === 4));
+  assert.ok(sf.some((f) => f.properties.name === 'EA Steel' && f.geometry.type === 'Polygon'));
+  assert.ok(sf.some((f) => f.properties.name === 'Mine Belt' && f.properties.stroke === '#d97706'));
+});
