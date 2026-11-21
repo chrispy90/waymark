@@ -266,4 +266,17 @@ test('branchDiff ghost overlay, Monte Carlo combat sensitivity & synchronization
   const csv = x.synchMatrixCsv(mx);
   assert.ok(csv.includes('Warfighting Function'));
   assert.ok(csv.includes('Maneuver & movement'));
+
+  // Executive after-action Story Map extras (charts, heat map layer, synch table, branch diff)
+  const aar = x.afterActionExtras(doc, { branches: ['main', alt.id] });
+  assert.ok(aar.blocks.some((b) => b.type === 'chart' && b.chartType === 'column'));
+  assert.ok(aar.blocks.some((b) => b.type === 'chart' && b.chartType === 'table'));
+  assert.ok(aar.blocks.some((b) => b.type === 'map'));
+  assert.ok(aar.layers.some((l) => l.style?.display === 'heatmap'));
+  assert.ok(aar.blocks.some((b) => b.type === 'text' && /Course-of-action delta/.test(b.html)));
+
+  const story = c.storyFromScenario(doc, { branches: ['main', alt.id], extra: aar.blocks, extraLayers: aar.layers, theme: 'blueprint' });
+  assert.equal(story.theme, 'blueprint');
+  assert.ok(story.layers.some((l) => l.style?.display === 'heatmap'));
+  assert.ok(story.blocks.some((b) => b.type === 'chart'));
 });

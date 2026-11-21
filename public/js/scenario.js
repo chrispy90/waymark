@@ -13,7 +13,7 @@ import {
   addUnit, removeUnit, moveUnit, updateUnit, logEvent, fireInject, branchFrom, deleteBranch, rewind, sideSummary, compareBranches, branchLog, storyFromScenario, hoursLabel,
 } from './scenario-core.js';
 import * as R from './scenario-rules.js';
-import { branchDiff } from './scenario-report.js';
+import { branchDiff, afterActionExtras } from './scenario-report.js';
 import { createTools } from './scenario-tools.js';
 import { createExtras } from './scenario-extras.js';
 
@@ -631,8 +631,16 @@ function openCompare() {
 
 function writeUp() {
   const picks = new Set(doc.branches.map((x) => x.id));
-  const dlg = dialog({ title: 'Write up the game', cls: 'dlg-sm', body: h('div', {},
-    h('p', { class: 'field-hint', style: 'margin-top:0' }, 'Makes a story that replays the game: a moving map with one card per turn showing what happened and the notes you took, and how each branch ended. You can edit it like any story, then publish or share it.'),
+  const opts = { theme: 'editorial', includeCharts: true, includeHeatmap: true, includeSynch: true };
+  const THEMES = [['editorial', 'Editorial (magazine briefing)'], ['blueprint', 'Blueprint (tactical CAD)'], ['dark', 'Night (dark briefing)'], ['light', 'Classic (warm paper)'], ['atlas', 'Atlas (parchment)'], ['aurora', 'Aurora (dark glass)']];
+  const dlg = dialog({ title: 'Publish as After-Action Story Map', cls: 'dlg-sm', body: h('div', {},
+    h('p', { class: 'field-hint', style: 'margin-top:0' }, 'Turns this wargame into a full scroll-driven Waymark Story Map: moving-map turn replay, force attrition charts, activity heat map, synchronization matrix, and hotwash quotes. Edit and publish like any story.'),
+    h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Story look'),
+      h('select', { onchange: (e) => { opts.theme = e.target.value; } }, THEMES.map(([v, l]) => h('option', { value: v, selected: opts.theme === v }, l)))),
+    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Include executive analytics'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { opts.includeCharts = e.target.checked; } }), 'Force strength & maneuver charts'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { opts.includeHeatmap = e.target.checked; } }), 'Operational activity heat map'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { opts.includeSynch = e.target.checked; } }), 'Synchronization matrix summary')),
     doc.branches.length > 1 ? h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Branches to include'),
       doc.branches.map((x) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { if (e.target.checked) picks.add(x.id); else picks.delete(x.id); } }), `${x.name} (${x.turns.length - 1} ${x.turns.length - 1 === 1 ? 'turn' : 'turns'})`))) : null),
   actions: [h('button', { type: 'button', class: 'btn', onclick: () => dlg.close() }, 'Cancel'),
@@ -641,11 +649,13 @@ function writeUp() {
       const win = window.open('', '_blank'); // opened now, while the click still counts, so it isn't blocked
       try {
         await save();
-        const extra = await extras.hotwashBlocks();
-        const r = await api('POST', '/api/stories', { story: storyFromScenario(doc, { branches: doc.branches.filter((x) => picks.has(x.id)).map((x) => x.id), decorate: (b, n) => R.storyFeatures(doc, b, n), extra }) });
+        const chosenIds = doc.branches.filter((x) => picks.has(x.id)).map((x) => x.id);
+        const aar = afterActionExtras(doc, { branches: chosenIds, ...opts });
+        const hw = await extras.hotwashBlocks();
+        const r = await api('POST', '/api/stories', { story: storyFromScenario(doc, { branches: chosenIds, decorate: (b, n) => R.storyFeatures(doc, b, n), extra: [...aar.blocks, ...hw], extraLayers: aar.layers, theme: opts.theme }) });
         dlg.close();
         if (win) win.location = `/builder.html?id=${r.id}&new=1`; else location.href = `/builder.html?id=${r.id}&new=1`;
-        toast('Story created', { tone: 'ok' });
+        toast('After-action story created', { tone: 'ok' });
       } catch (e) { win?.close(); toast(e.message, { tone: 'error', duration: 7000 }); }
     } }, icon('sparkle', { size: 15 }), 'Create the story')] });
 }

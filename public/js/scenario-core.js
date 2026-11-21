@@ -333,9 +333,9 @@ function turnLayer(doc, branch, n, id, decorate) {
  * A story that replays the scenario: a moving map with one card per turn (what happened, and the notes taken), a
  * chapter per branch when there are several, and a summary of how each branch ended.
  */
-export function storyFromScenario(doc, { branches, decorate, extra = [] } = {}) {
+export function storyFromScenario(doc, { branches, decorate, extra = [], extraLayers = [], theme = 'light' } = {}) {
   const chosen = (branches?.length ? branches.map((id) => branchOf(doc, id)) : doc.branches).filter((b, i, all) => all.indexOf(b) === i);
-  const layers = [];
+  const layers = [...extraLayers];
   const blocks = [{ type: 'text', style: 'large', html: `<p>${esc(doc.summary || 'What we set out to test, and who took part.')}</p>` }];
   const several = chosen.length > 1;
   chosen.forEach((branch, bi) => {
@@ -367,5 +367,5 @@ export function storyFromScenario(doc, { branches, decorate, extra = [] } = {}) 
   }
   blocks.push(...extra);
   blocks.push({ type: 'text', html: '<h2>What we learned</h2><p>Write the conclusions the group reached, and what to do next.</p>' });
-  return { title: `${doc.title || 'Scenario'}: after-action review`, subtitle: doc.summary || '', theme: 'light', motion: 'subtle', cover: { image: '' }, layers, blocks };
+  return { title: `${doc.title || 'Scenario'}: after-action review`, subtitle: doc.summary || '', theme: theme || 'light', motion: 'subtle', cover: { image: '' }, layers, blocks };
 }

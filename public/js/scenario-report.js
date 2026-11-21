@@ -470,3 +470,106 @@ export function synchMatrixCsv(matrix) {
   const body = matrix.rows.map((r) => [r.label, ...r.cells.map((c) => c.join(' | '))].map(escCsv).join(','));
   return [head, ...body].join('\n');
 }
+
+/**
+ * Generates executive after-action Story Map blocks and map layers from a scenario:
+ * force-strength charts, operational activity heat map, synchronization matrix breakdown, and branch diff.
+ */
+export function afterActionExtras(doc, { branches, includeCharts = true, includeHeatmap = true, includeSynch = true } = {}) {
+  const chosen = (branches?.length ? branches.map((id) => branchOf(doc, id)) : doc.branches).filter((b, i, all) => all.indexOf(b) === i);
+  const main = chosen[0] || doc.branches[0];
+  const blocks = [];
+  const layers = [];
+
+  if (includeCharts && main) {
+    const end = sideSummary(doc, main.turns.at(-1));
+    if (end.length) {
+      blocks.push({
+        type: 'chart',
+        chartType: 'column',
+        title: `Force strength at end of ${main.name}`,
+        subtitle: `Average remaining strength (%) after ${turnLabel(doc, main.turns.length - 1)}`,
+        suffix: '%',
+        items: end.map((s) => ({ label: s.name, value: s.strength, color: s.color, note: `${s.active}/${s.units} active` })),
+      });
+    }
+    const moved = distanceMoved(doc, main.id);
+    const moveItems = doc.sides
+      .filter((s) => (moved[s.id] || 0) > 0)
+      .map((s) => ({ label: s.name, value: round(moved[s.id], 1), color: s.color }));
+    if (moveItems.length) {
+      blocks.push({
+        type: 'chart',
+        chartType: 'bar',
+        title: 'Operational maneuver distance',
+        subtitle: `Total distance moved across ${main.name}`,
+        suffix: ' km',
+        items: moveItems,
+      });
+    }
+  }
+
+  if (includeHeatmap && main) {
+    const pts = heatPoints(doc, main.id);
+    if (pts.features.length) {
+      const layerId = `wg-heat-${main.id}`;
+      layers.push({
+        id: layerId,
+        name: `${main.name}: Activity heat map`,
+        data: pts,
+        style: { display: 'heatmap', color: '#dc2626', radius: 14, weight: 'w' },
+        popup: { title: '{kind}', fields: ['turn'] },
+      });
+      const coords = pts.features.map((f) => f.geometry.coordinates);
+      const xs = coords.map((p) => p[0]);
+      const ys = coords.map((p) => p[1]);
+      const [w, e, s, n] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+      const span = Math.max(e - w, (n - s) * 1.6, 0.03);
+      blocks.push({
+        type: 'map',
+        caption: `Operational activity heat map (${main.name}): areas of highest unit concentration, contacts, and combat.`,
+        size: 'wide',
+        view: {
+          center: [round((w + e) / 2, 5), round((s + n) / 2, 5)],
+          zoom: round(Math.max(1, Math.min(13, Math.log2(360 / span) - 1)), 2),
+          bearing: 0,
+          pitch: 0,
+          basemap: doc.view?.basemap || 'dark',
+          layers: [layerId],
+          legend: true,
+        },
+      });
+    }
+  }
+
+  if (includeSynch && main) {
+    const mx = synchMatrix(doc, main.id);
+    const items = mx.rows.map((r) => ({
+      label: r.label,
+      value: r.cells.reduce((sum, c) => sum + c.length, 0),
+      note: `${r.cells.filter((c) => c.length > 0).length} active turns`,
+    })).filter((it) => it.value > 0);
+    if (items.length) {
+      blocks.push({
+        type: 'chart',
+        chartType: 'table',
+        title: `Synchronization matrix summary (${main.name})`,
+        subtitle: 'Logged events and scheduled actions grouped by warfighting function',
+        suffix: ' events',
+        items,
+      });
+    }
+  }
+
+  if (chosen.length >= 2) {
+    const diff = branchDiff(doc, chosen[0].id, chosen[1].id);
+    const escHtml = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const rows = diff.sides.map((s) => `<li><strong>${escHtml(s.name)}</strong>: ${s.strengthA}% → ${s.strengthB}% strength (${s.strengthDelta >= 0 ? '+' : ''}${s.strengthDelta}%), ${s.activeA} → ${s.activeB} active units</li>`).join('');
+    blocks.push({
+      type: 'text',
+      html: `<h2>Course-of-action delta (${escHtml(diff.branchA.name)} vs. ${escHtml(diff.branchB.name)})</h2><p>${diff.movedCount} ${diff.movedCount === 1 ? 'unit' : 'units'} diverged in position (average displacement ${diff.avgDispKm} km).</p><ul>${rows}</ul>`,
+    });
+  }
+
+  return { blocks, layers };
+}
