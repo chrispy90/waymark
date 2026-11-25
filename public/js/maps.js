@@ -14,7 +14,7 @@ export const BASEMAPS = {
   streets: { label: 'Streets', style: 'https://tiles.openfreemap.org/styles/liberty' },
   bright: { label: 'Bright', style: 'https://tiles.openfreemap.org/styles/bright' },
   light: { label: 'Light gray', style: 'https://tiles.openfreemap.org/styles/positron' },
-  dark: { label: 'Dark', style: 'https://tiles.openfreemap.org/styles/dark' },
+  dark: { label: 'Dark', style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' },
   satellite: { label: 'Satellite', style: rasterStyle('s2', 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg',
     '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016)', 15) },
   'usgs-imagery': { label: 'USGS imagery', style: rasterStyle('usgsimg', 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',
