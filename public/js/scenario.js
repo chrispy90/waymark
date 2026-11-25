@@ -41,6 +41,10 @@ let turnIx = 0;
 let selected = null; // unit id
 let tool = 'units';
 let viewAs = 'all';
+const UI_MODE_KEY = 'wm.scenario.uiMode';
+let uiMode = (() => { try { return localStorage.getItem(UI_MODE_KEY) === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; } })();
+const isSimple = () => uiMode === 'simple';
+const SIMPLE_TOOLS = new Set(['units', 'combat', 'injects', 'dice', 'setup']);
 let placing = null; // { what: 'unit', side, kind, echelon } | { what: 'inject', done(lngLat) }
 let template = { side: 'blue', kind: 'infantry', echelon: '' };
 let overlay = { type: 'FeatureCollection', features: [] }; // line of sight, reach
@@ -674,6 +678,7 @@ function writeUp() {
 /* ---------- panels ---------- */
 
 const head = (title, hint) => [h('h2', { class: 'me-h' }, title), hint ? h('p', { class: 'me-hint' }, hint) : null];
+const fold = (label, body, { open = false } = {}) => h('details', { class: 'wg-fold', ...(open ? { open: true } : {}) }, h('summary', {}, label), h('div', { class: 'wg-fold-body' }, body));
 const seg = (opts, value, set, cls = '') => h('div', { class: `seg seg-block ${cls}`, role: 'group' }, opts.map(([v, l]) => h('button', { type: 'button', class: String(value) === String(v) ? 'is-on' : '', disabled: !live(), onclick: () => set(v) }, l)));
 const kindSelect = (value, set, disabled) => h('select', { disabled, onchange: (e) => set(e.target.value) },
   [...new Set(Object.values(KINDS).map((k) => k.group))].map((g) => h('optgroup', { label: g }, Object.entries(KINDS).filter(([, k]) => k.group === g).map(([key, k]) => h('option', { value: key, selected: value === key }, k.label)))));
@@ -681,6 +686,7 @@ const sideSeg = (value, set) => h('div', { class: 'seg seg-block wg-sides' }, do
 
 function unitEditor(u) {
   const ro = !live();
+  const simple = isSimple();
   const set = (patch, redraw = true) => mutate(() => updateUnit(turn(), u.id, patch), { redraw });
   const reachKm = moveAllowanceKm(doc, u);
   const foes = turn().units.filter((x) => x.side !== u.side && sideOf(doc, x.side).affiliation !== 'N' && x.status !== 'destroyed' && shown(x)).map((x) => ({ x, d: distanceKm(u.lngLat, x.lngLat) })).sort((p, q) => p.d - q.d).slice(0, 3);
@@ -690,30 +696,36 @@ function unitEditor(u) {
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close', onclick: () => select(null) }, icon('x', { size: 16 }))),
     ro ? h('p', { class: 'field-hint' }, canEdit ? 'This is an earlier turn, so it can\'t be changed. Go to the latest turn, or branch from here.' : 'You can look, but not change this scenario.') : null,
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Side'), h('div', { class: 'seg seg-block wg-sides' }, doc.sides.map((s) => h('button', { type: 'button', class: u.side === s.id ? 'is-on' : '', disabled: ro, onclick: () => set({ side: s.id }) }, h('i', { style: `background:${s.color}` }), s.name)))),
-    h('div', { class: 'grid-2' },
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Kind'), kindSelect(u.kind, (v) => set({ kind: v }), ro)),
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Size'), h('select', { disabled: ro || !KINDS[u.kind]?.fn, onchange: (e) => set({ echelon: e.target.value }) }, ECHELONS.map(([v, l]) => h('option', { value: v, selected: (u.echelon || '') === v }, l))))),
+    simple
+      ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Unit type'), kindSelect(u.kind, (v) => set({ kind: v }), ro))
+      : h('div', { class: 'grid-2' },
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Kind'), kindSelect(u.kind, (v) => set({ kind: v }), ro)),
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Size'), h('select', { disabled: ro || !KINDS[u.kind]?.fn, onchange: (e) => set({ echelon: e.target.value }) }, ECHELONS.map(([v, l]) => h('option', { value: v, selected: (u.echelon || '') === v }, l))))),
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Status'), seg(STATUSES, u.status, (v) => set({ status: v }), 'wg-status')),
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, h('span', {}, 'Strength'), h('span', { class: 'muted' }, `${u.strength}%`)),
       h('input', { type: 'range', min: 0, max: 100, step: 5, value: u.strength, disabled: ro, oninput: (e) => { e.target.closest('.field').querySelector('.muted').textContent = `${e.target.value}%`; }, onchange: (e) => set({ strength: +e.target.value }) })),
-    h('div', { class: 'grid-2' },
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Range (km)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.rangeKm || '', placeholder: 'None', disabled: ro, onchange: (e) => set({ rangeKm: Math.max(0, +e.target.value || 0) }) })),
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed (km/h)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.speedKmh || '', placeholder: facts().T ? `Usual: ${R.typicalSpeed(u)}` : 'Any distance', disabled: ro, onchange: (e) => set({ speedKmh: Math.max(0, +e.target.value || 0) }) }))),
-    h('p', { class: 'field-hint', style: 'margin-top:-4px' }, [Number(u.rangeKm) > 0 ? `The solid ring is its ${km(Number(u.rangeKm))} range.` : null, facts().T ? `The outline shows where it can get this turn over the ground.` : reachKm ? `The dashed ring is how far it can move this turn (${km(reachKm)}).` : null,
-      moved > 0.005 ? `Moved ${km(moved)} this turn.` : null].filter(Boolean).join(' ') || 'Give it a range to draw a range ring, and a speed to check its moves against the clock.'),
-    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!u.spotted, disabled: ro, onchange: (e) => set({ spotted: e.target.checked }) }), 'Seen by the other sides'),
-    facts().rules.autoSpot && facts().spotted.has(u.id) && !u.spotted ? h('p', { class: 'field-hint', style: 'margin-top:-6px' }, 'Spotted by an opposing unit\'s sensors this turn.') : null,
-    h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Notes'), h('textarea', { class: 'input', rows: 2, disabled: ro, placeholder: 'Orders, condition, anything worth remembering', onchange: (e) => set({ notes: e.target.value }, false) }, u.notes || '')),
     foes.length ? h('div', { class: 'wg-near' }, h('span', { class: 'field-label' }, 'Nearest opposing units'),
       foes.map(({ x, d }) => h('button', { type: 'button', class: 'wg-near-row', onclick: () => select(x.id, { fly: true }) }, h('i', { style: `background:${sideOf(doc, x.side).color}` }), h('span', {}, x.name),
         h('b', { class: Number(u.rangeKm) > 0 && d <= Number(u.rangeKm) ? 'is-in' : '' }, `${km(d)}${Number(u.rangeKm) > 0 && d <= Number(u.rangeKm) ? ' · in range' : ''}`)))) : null,
-    h('div', { class: 'row row-wrap wg-aids' },
-      h('button', { type: 'button', class: 'btn btn-sm', title: 'What this unit can see, given the terrain', onclick: () => lineOfSight(u) }, icon('eye', { size: 14 }), 'Line of sight'),
-      facts().T ? h('button', { type: 'button', class: 'btn btn-sm', title: 'Terrain-adjusted 1, 2, and 3-turn movement isochrones', onclick: () => multiTurnIsochrones(u) }, icon('target', { size: 14 }), '3-turn reach') : null,
-      h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get by road in one turn', onclick: () => reach(u, 'auto') }, icon('route', { size: 14 }), 'Reach by road'),
-      h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get on foot in one turn', onclick: () => reach(u, 'pedestrian') }, icon('route', { size: 14 }), 'On foot')),
-    tools.unitSection(u, facts()),
-    canEdit ? extras.withdrawField(u) : null,
+    simple ? null : fold('Movement, range & visibility', [
+      h('div', { class: 'grid-2' },
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Range (km)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.rangeKm || '', placeholder: 'None', disabled: ro, onchange: (e) => set({ rangeKm: Math.max(0, +e.target.value || 0) }) })),
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed (km/h)'), h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: u.speedKmh || '', placeholder: facts().T ? `Usual: ${R.typicalSpeed(u)}` : 'Any distance', disabled: ro, onchange: (e) => set({ speedKmh: Math.max(0, +e.target.value || 0) }) }))),
+      h('p', { class: 'field-hint', style: 'margin-top:-4px' }, [Number(u.rangeKm) > 0 ? `The solid ring is its ${km(Number(u.rangeKm))} range.` : null, facts().T ? `The outline shows where it can get this turn over the ground.` : reachKm ? `The dashed ring is how far it can move this turn (${km(reachKm)}).` : null,
+        moved > 0.005 ? `Moved ${km(moved)} this turn.` : null].filter(Boolean).join(' ') || 'Give it a range to draw a range ring, and a speed to check its moves against the clock.'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!u.spotted, disabled: ro, onchange: (e) => set({ spotted: e.target.checked }) }), 'Seen by the other sides'),
+      facts().rules.autoSpot && facts().spotted.has(u.id) && !u.spotted ? h('p', { class: 'field-hint', style: 'margin-top:-6px' }, 'Spotted by an opposing unit\'s sensors this turn.') : null,
+      h('div', { class: 'row row-wrap wg-aids' },
+        h('button', { type: 'button', class: 'btn btn-sm', title: 'What this unit can see, given the terrain', onclick: () => lineOfSight(u) }, icon('eye', { size: 14 }), 'Line of sight'),
+        facts().T ? h('button', { type: 'button', class: 'btn btn-sm', title: 'Terrain-adjusted 1, 2, and 3-turn movement isochrones', onclick: () => multiTurnIsochrones(u) }, icon('target', { size: 14 }), '3-turn reach') : null,
+        h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get by road in one turn', onclick: () => reach(u, 'auto') }, icon('route', { size: 14 }), 'Reach by road'),
+        h('button', { type: 'button', class: 'btn btn-sm', title: 'How far it can get on foot in one turn', onclick: () => reach(u, 'pedestrian') }, icon('route', { size: 14 }), 'On foot')),
+    ]),
+    simple ? null : fold('Logistics, C2 & notes', [
+      tools.unitSection(u, facts()),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Notes'), h('textarea', { class: 'input', rows: 2, disabled: ro, placeholder: 'Orders, condition, anything worth remembering', onchange: (e) => set({ notes: e.target.value }, false) }, u.notes || '')),
+      canEdit ? extras.withdrawField(u) : null,
+    ]),
     ro ? null : h('div', { class: 'row', style: 'margin-top:10px' },
       h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { const c = mutate(() => addUnit(doc, turn(), { ...u, id: undefined, name: `${u.name} (copy)`, lngLat: [u.lngLat[0] + 0.01, u.lngLat[1] - 0.01] }), { redraw: false }); select(c.id); } }, icon('copy', { size: 14 }), 'Duplicate'),
       h('span', { class: 'spacer' }),
@@ -724,21 +736,24 @@ function unitsPanel() {
   const t = turn();
   const u = selected && unitById(selected);
   const isPlacing = placing?.what === 'unit';
+  const simple = isSimple();
   if (!doc.sides.some((s) => s.id === template.side)) template.side = doc.sides[0].id;
   return [
-    ...head('Units', t.units.length ? null : live() ? 'Choose a side and a kind, then click the map to place units. Drag a unit to move it.' : 'No units on this turn.'),
+    ...head('Units', t.units.length ? null : live() ? 'Choose a side and unit type, then place units on the map. Drag any unit (or press A on Xbox) to move.' : 'No units on this turn.'),
     u ? unitEditor(u) : null,
     live() && !u ? h('div', { class: 'wg-add' },
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Add units for'), sideSeg(template.side, (v) => { template.side = v; if (isPlacing) placing = { what: 'unit', ...template }; render(); })),
-      h('div', { class: 'grid-2' },
-        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Kind'), kindSelect(template.kind, (v) => { template.kind = v; if (isPlacing) placing = { what: 'unit', ...template }; render(); })),
-        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Size'), h('select', { disabled: !KINDS[template.kind]?.fn, onchange: (e) => { template.echelon = e.target.value; if (isPlacing) placing = { what: 'unit', ...template }; } }, ECHELONS.map(([v, l]) => h('option', { value: v, selected: template.echelon === v }, l))))),
+      simple
+        ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Unit type'), kindSelect(template.kind, (v) => { template.kind = v; if (isPlacing) placing = { what: 'unit', ...template }; render(); }))
+        : h('div', { class: 'grid-2' },
+          h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Kind'), kindSelect(template.kind, (v) => { template.kind = v; if (isPlacing) placing = { what: 'unit', ...template }; render(); })),
+          h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Size'), h('select', { disabled: !KINDS[template.kind]?.fn, onchange: (e) => { template.echelon = e.target.value; if (isPlacing) placing = { what: 'unit', ...template }; } }, ECHELONS.map(([v, l]) => h('option', { value: v, selected: template.echelon === v }, l))))),
       h('button', { type: 'button', class: `btn btn-block ${isPlacing ? '' : 'btn-primary'}`, onclick: () => { placing = isPlacing ? null : { what: 'unit', ...template }; render(); } },
         isPlacing ? [icon('check', { size: 15 }), 'Done placing'] : [icon('plus', { size: 15 }), 'Place on the map']),
       isPlacing ? h('p', { class: 'field-hint' }, 'Click the map to place a unit. Keep clicking to place more.') : null,
-      h('div', { class: 'row wg-import' }, h('button', { type: 'button', class: 'link-btn', onclick: tools.importUnits }, icon('upload', { size: 14 }), 'Import from a spreadsheet'), h('span', { class: 'spacer' }),
+      simple ? null : h('div', { class: 'row wg-import' }, h('button', { type: 'button', class: 'link-btn', onclick: tools.importUnits }, icon('upload', { size: 14 }), 'Import CSV'), h('span', { class: 'spacer' }),
         h('button', { type: 'button', class: 'link-btn', onclick: tools.templates.units }, 'Template'))) : null,
-    u ? null : extras.arrivalsSection(),
+    u || simple ? null : extras.arrivalsSection(),
     doc.sides.map((s) => {
       const list = t.units.filter((x) => x.side === s.id && shown(x));
       if (!list.length) return null;
@@ -825,8 +840,7 @@ function dicePanel() {
     h('div', { class: 'row' }, h('input', { class: 'input', type: 'number', min: 1, max: 99, value: chance, style: 'width:86px', 'aria-label': 'Chance of success, percent', oninput: (e) => { chance = Math.max(1, Math.min(99, +e.target.value || 50)); } }), h('span', { class: 'muted' }, '%'),
       h('span', { class: 'spacer' }), h('button', { type: 'button', class: 'btn btn-primary', onclick: () => rollChance(chance, rollLabel.trim()) }, 'Roll')),
     h('p', { class: 'field-hint' }, live() ? 'Rolls are added to this turn\'s log.' : 'Rolls on an earlier turn aren\'t logged.'),
-    ...extras.tablesSection(),
-    ...extras.matrixSection(),
+    isSimple() ? null : fold('Outcome tables & matrix game', [...extras.tablesSection(), ...extras.matrixSection()]),
   ];
 }
 
@@ -861,33 +875,39 @@ function branchesPanel() {
 
 function setupPanel() {
   const ro = !canEdit;
+  const simple = isSimple();
   const c = doc.clock ||= { mode: 'turns', stepMinutes: 60, start: '' };
+  const mapControls = [
+    mapDoc ? h('p', { class: 'muted' }, 'Played on your saved map ', h('a', { href: `/map.html?id=${doc.map}`, target: '_blank', rel: 'noopener' }, mapDoc.title || 'Untitled map'), '. Edit the map to change its layers and basemap.')
+      : h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Basemap'), h('select', { disabled: ro, onchange: (e) => { mutate(() => { doc.view.basemap = e.target.value; }, { redraw: false }); location.reload(); } }, Object.entries(BASEMAPS).map(([k, b]) => h('option', { value: k, selected: (doc.view.basemap || 'light') === k }, b.label)))),
+    ro ? null : h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { const ctr = map.getCenter(); mutate(() => { Object.assign(doc.view, { center: [+ctr.lng.toFixed(5), +ctr.lat.toFixed(5)], zoom: +map.getZoom().toFixed(2), bearing: +map.getBearing().toFixed(1), pitch: +map.getPitch().toFixed(1) }); }, { redraw: false }); toast('The scenario now opens on this view', { tone: 'ok' }); } }, icon('target', { size: 14 }), 'Open on this view'),
+  ];
   return [
-    ...head('Setup', 'The scenario\'s description, sides, clock and rules.'),
-    h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'What this scenario tests'), h('textarea', { class: 'input', rows: 3, disabled: ro, placeholder: 'The question the room is here to answer', onchange: (e) => mutate(() => { doc.summary = e.target.value; }, { redraw: false }) }, doc.summary || '')),
+    ...head('Setup', simple ? 'Essential scenario settings. Switch to Advanced in the top bar for terrain, supply, weather and rules.' : 'Scenario overview, sides, clock, simulation rules and map.'),
+    h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'What this scenario tests'), h('textarea', { class: 'input', rows: 2, disabled: ro, placeholder: 'The question the room is here to answer', onchange: (e) => mutate(() => { doc.summary = e.target.value; }, { redraw: false }) }, doc.summary || '')),
     h('div', { class: 'rail-section-title' }, 'Sides'),
     h('div', { class: 'wg-list' }, doc.sides.map((s, i) => h('div', { class: 'row wg-side-row' },
       h('input', { type: 'color', value: s.color, disabled: ro, 'aria-label': `${s.name} color`, onchange: (e) => mutate(() => { s.color = e.target.value; }) }),
       h('input', { class: 'input', type: 'text', value: s.name, disabled: ro, 'aria-label': 'Side name', onchange: (e) => mutate(() => { s.name = e.target.value.trim() || s.name; }) }),
-      h('select', { disabled: ro, 'aria-label': 'Symbol frame', title: 'The frame used for this side\'s military symbols', onchange: (e) => mutate(() => { s.affiliation = e.target.value; }) },
+      simple ? null : h('select', { disabled: ro, 'aria-label': 'Symbol frame', title: 'The frame used for this side\'s military symbols', onchange: (e) => mutate(() => { s.affiliation = e.target.value; }) },
         [['F', 'Friendly'], ['H', 'Hostile'], ['N', 'Neutral'], ['U', 'Unknown']].map(([v, l]) => h('option', { value: v, selected: s.affiliation === v }, l))),
       !ro && doc.sides.length > 1 ? h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Remove ${s.name}`, onclick: () => {
         if (doc.branches.some((b) => b.turns.some((t) => t.units.some((u) => u.side === s.id)))) { toast(`${s.name} still has units. Move them to another side or remove them first.`, { tone: 'error', duration: 6000 }); return; }
         mutate(() => { doc.sides.splice(i, 1); });
       } }, icon('x', { size: 15 })) : null))),
     ro ? null : h('button', { type: 'button', class: 'btn btn-sm', style: 'margin-top:8px', onclick: () => mutate(() => { doc.sides.push({ id: uid('s'), name: `Side ${doc.sides.length + 1}`, color: '#7c3aed', affiliation: 'U' }); }) }, icon('plus', { size: 14 }), 'Add a side'),
-    h('div', { class: 'rail-section-title' }, 'Clock'),
-    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Turns are shown as'), h('div', { class: 'seg seg-block' }, [['turns', 'Turn numbers'], ['elapsed', 'Hours elapsed'], ['time', 'Date and time']].map(([v, l]) => h('button', { type: 'button', class: c.mode === v ? 'is-on' : '', disabled: ro, onclick: () => mutate(() => { c.mode = v; }) }, l)))),
-    h('div', { class: 'grid-2' },
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Minutes per turn'), h('input', { class: 'input', type: 'number', min: 1, step: 1, value: c.stepMinutes || 60, disabled: ro, onchange: (e) => mutate(() => { c.stepMinutes = Math.max(1, Math.round(+e.target.value || 60)); }) })),
-      h('label', { class: 'field' }, h('span', { class: 'field-label' }, c.mode === 'time' ? 'Game starts' : 'Game starts (for daylight)'), h('input', { class: 'input', type: 'datetime-local', value: c.start || '', disabled: ro, onchange: (e) => mutate(() => { c.start = e.target.value; }) }))),
-    h('p', { class: 'field-hint', style: 'margin-top:-4px' }, 'Minutes per turn sets how far a unit with a speed can move in a turn, and the size of "reach" areas.'),
-    ...tools.rulesSection(),
-    ...extras.weatherSection(),
-    h('div', { class: 'rail-section-title' }, 'Map'),
-    mapDoc ? h('p', { class: 'muted' }, 'Played on your saved map ', h('a', { href: `/map.html?id=${doc.map}`, target: '_blank', rel: 'noopener' }, mapDoc.title || 'Untitled map'), '. Edit the map to change its layers and basemap.')
-      : h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Basemap'), h('select', { disabled: ro, onchange: (e) => { mutate(() => { doc.view.basemap = e.target.value; }, { redraw: false }); location.reload(); } }, Object.entries(BASEMAPS).map(([k, b]) => h('option', { value: k, selected: (doc.view.basemap || 'light') === k }, b.label)))),
-    ro ? null : h('button', { type: 'button', class: 'btn btn-sm', onclick: () => { const ctr = map.getCenter(); mutate(() => { Object.assign(doc.view, { center: [+ctr.lng.toFixed(5), +ctr.lat.toFixed(5)], zoom: +map.getZoom().toFixed(2), bearing: +map.getBearing().toFixed(1), pitch: +map.getPitch().toFixed(1) }); }, { redraw: false }); toast('The scenario now opens on this view', { tone: 'ok' }); } }, icon('target', { size: 14 }), 'Open on this view'),
+    simple ? [h('div', { class: 'rail-section-title' }, 'Map'), ...mapControls,
+      h('button', { type: 'button', class: 'btn btn-block', style: 'margin-top:14px', onclick: () => setUiMode('advanced') }, icon('sliders', { size: 14 }), 'Unlock Advanced Mode (terrain, supply, rules)')]
+      : [
+        fold('Clock & daylight', [
+          h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Turns are shown as'), h('div', { class: 'seg seg-block' }, [['turns', 'Turn numbers'], ['elapsed', 'Hours elapsed'], ['time', 'Date and time']].map(([v, l]) => h('button', { type: 'button', class: c.mode === v ? 'is-on' : '', disabled: ro, onclick: () => mutate(() => { c.mode = v; }) }, l)))),
+          h('div', { class: 'grid-2' },
+            h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Minutes / turn'), h('input', { class: 'input', type: 'number', min: 1, step: 1, value: c.stepMinutes || 60, disabled: ro, onchange: (e) => mutate(() => { c.stepMinutes = Math.max(1, Math.round(+e.target.value || 60)); }) })),
+            h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Start time'), h('input', { class: 'input', type: 'datetime-local', value: c.start || '', disabled: ro, onchange: (e) => mutate(() => { c.start = e.target.value; }) }))),
+        ]),
+        fold('Simulation rules', tools.rulesSection()),
+        fold('Weather & map', [...extras.weatherSection(), ...mapControls]),
+      ],
   ];
 }
 
@@ -922,8 +942,9 @@ const ctx = {
     render();
   },
   cycleTool: (dir) => {
-    const idx = TOOLBAR.findIndex(([k]) => k === tool);
-    tool = TOOLBAR[(idx + dir + TOOLBAR.length) % TOOLBAR.length][0];
+    const list = visibleToolbar();
+    const idx = list.findIndex(([k]) => k === tool);
+    tool = list[(idx + dir + list.length) % list.length][0];
     render();
   },
   startPlacingUnit: () => {
@@ -948,9 +969,23 @@ const tools = createTools(ctx);
 const extras = createExtras(ctx);
 const gamepad = createGamepad(ctx);
 const fx = createGameFx(ctx);
-const TOOLBAR = [['units', 'Units', 'pin'], ['combat', 'Combat', 'swords'], ['lines', 'Lines', 'line'], ['terrain', 'Terrain', 'mountain'], ['objectives', 'Objectives', 'flag'], ['draw', 'Draw', 'pen'],
-  ['injects', 'Injects', 'target'], ['log', 'Log', 'text'], ['dice', 'Dice', 'hex'], ['branches', 'Branches', 'copy'], ['setup', 'Setup', 'sliders']];
+const TOOLBAR = [['units', 'Units', 'pin'], ['combat', 'Combat', 'swords'], ['objectives', 'Objectives', 'flag'],
+  ['lines', 'Lines', 'line'], ['terrain', 'Terrain', 'mountain'], ['draw', 'Draw', 'pen'],
+  ['injects', 'Events', 'target'], ['log', 'Log', 'text'], ['dice', 'Dice', 'hex'], ['branches', 'Branches', 'copy'], ['setup', 'Setup', 'sliders']];
+const TOOLBAR_BREAKS = new Set(['lines', 'injects']); // visual group dividers in Advanced mode
+const visibleToolbar = () => (isSimple() ? TOOLBAR.filter(([k]) => SIMPLE_TOOLS.has(k)) : TOOLBAR);
 const PANELS = { units: unitsPanel, injects: injectsPanel, log: logPanel, dice: dicePanel, branches: branchesPanel, setup: setupPanel, ...tools.panels };
+
+function setUiMode(next) {
+  uiMode = next === 'advanced' ? 'advanced' : 'simple';
+  try { localStorage.setItem(UI_MODE_KEY, uiMode); } catch { /* ignore */ }
+  if (isSimple() && !SIMPLE_TOOLS.has(tool)) tool = 'units';
+  root.classList.toggle('is-simple', isSimple());
+  const sw = $('#wg-mode-seg');
+  if (sw) sw.querySelectorAll('button').forEach((b) => b.classList.toggle('is-on', b.dataset.mode === uiMode));
+  toast(isSimple() ? 'Simple Mode — essential tactical controls' : 'Advanced Mode — full wargame suite unlocked', { duration: 2000 });
+  render();
+}
 
 /* ---------- the turn bar ---------- */
 
@@ -959,26 +994,27 @@ function turnBar() {
   const last = b.turns.length - 1;
   const summary = sideSummary(doc, turn());
   const planned = turn().units.filter((u) => u.plan);
+  const simple = isSimple();
   return [
-    h('select', { class: 'wg-branch-pick', 'aria-label': 'Branch', title: 'Branch', onchange: (e) => goTo(e.target.value, lastTurn(doc, e.target.value)) }, doc.branches.map((x) => h('option', { value: x.id, selected: x.id === branchId }, x.name))),
+    !simple || doc.branches.length > 1 ? h('select', { class: 'wg-branch-pick', 'aria-label': 'Branch', title: 'Branch', onchange: (e) => goTo(e.target.value, lastTurn(doc, e.target.value)) }, doc.branches.map((x) => h('option', { value: x.id, selected: x.id === branchId }, x.name))) : null,
     h('div', { class: 'wg-steps' },
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'First turn', disabled: turnIx === 0, onclick: () => goTo(branchId, 0) }, icon('back', { size: 16 }), icon('back', { size: 16, cls: 'wg-dbl' })),
+      simple ? null : h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'First turn', disabled: turnIx === 0, onclick: () => goTo(branchId, 0) }, icon('back', { size: 16 }), icon('back', { size: 16, cls: 'wg-dbl' })),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Previous turn', disabled: turnIx === 0, onclick: () => goTo(branchId, turnIx - 1) }, icon('back', { size: 18 })),
       h('div', { class: 'wg-now', 'aria-live': 'polite' }, h('strong', {}, turnLabel(doc, turnIx)), h('span', {}, last ? `${turnIx} of ${last}` : 'before the first turn')),
       h('button', { type: 'button', class: 'icon-btn wg-fwd', 'aria-label': 'Next turn played', disabled: turnIx === last, onclick: () => goTo(branchId, turnIx + 1) }, icon('back', { size: 18 })),
-      h('button', { type: 'button', class: 'icon-btn wg-fwd', 'aria-label': 'Latest turn', disabled: turnIx === last, onclick: () => goTo(branchId, last) }, icon('back', { size: 16 }), icon('back', { size: 16, cls: 'wg-dbl' }))),
-    screenMode ? null : extras.playControls(),
-    h('div', { class: 'wg-dots', role: 'group', 'aria-label': 'Turns' }, b.turns.map((_, n) => h('button', { type: 'button', class: `${n === turnIx ? 'is-on' : ''}${n === b.forkTurn && b.parent ? ' is-fork' : ''}`, title: turnLabel(doc, n), 'aria-label': turnLabel(doc, n), onclick: () => goTo(branchId, n) }))),
+      simple ? null : h('button', { type: 'button', class: 'icon-btn wg-fwd', 'aria-label': 'Latest turn', disabled: turnIx === last, onclick: () => goTo(branchId, last) }, icon('back', { size: 16 }), icon('back', { size: 16, cls: 'wg-dbl' }))),
+    screenMode || simple ? null : extras.playControls(),
+    simple ? null : h('div', { class: 'wg-dots', role: 'group', 'aria-label': 'Turns' }, b.turns.map((_, n) => h('button', { type: 'button', class: `${n === turnIx ? 'is-on' : ''}${n === b.forkTurn && b.parent ? ' is-fork' : ''}`, title: turnLabel(doc, n), 'aria-label': turnLabel(doc, n), onclick: () => goTo(branchId, n) }))),
     h('div', { class: 'wg-tally' }, summary.map((s) => h('span', { title: `${s.name}: ${s.active} of ${s.units} in action, ${s.strength}% strength` }, h('i', { style: `background:${s.color}` }), `${s.active}/${s.units}`))),
     scoreChips(),
-    extras.conditionsChip(),
+    simple ? null : extras.conditionsChip(),
     h('span', { class: 'spacer' }),
     extras.screenOn && !screenMode ? h('span', { class: 'pill is-live', title: 'A second screen is following this window' }, 'Second screen') : null,
     canEdit && atLatest() && planned.length ? h('button', { type: 'button', class: 'btn wg-reveal', title: 'Reveal every planned move and move the units at once', onclick: revealMoves }, icon('eye', { size: 15 }), `Reveal ${planned.length} ${planned.length === 1 ? 'move' : 'moves'}`) : null,
     !canEdit ? null
       : atLatest() ? h('button', { type: 'button', class: 'btn btn-primary wg-next', title: 'Start the next turn (N)', onclick: advance }, turnIx === 0 ? 'Start turn 1' : 'Next turn', icon('back', { size: 16, cls: 'wg-flip' }))
         : [h('span', { class: 'wg-past' }, 'An earlier turn'),
-          h('button', { type: 'button', class: 'btn', onclick: branchHere }, icon('copy', { size: 15 }), 'Branch from here'),
+          simple ? null : h('button', { type: 'button', class: 'btn', onclick: branchHere }, icon('copy', { size: 15 }), 'Branch from here'),
           h('button', { type: 'button', class: 'btn', onclick: replayFromHere }, 'Replay from here')],
   ];
 }
@@ -1002,8 +1038,14 @@ function render() {
   if (!doc) return;
   const panel = $('#wg-panel');
   if (panel) { const y = panel.scrollTop; fill(panel, PANELS[tool]()); panel.scrollTop = y; }
-  const tools = $('#wg-tools');
-  if (tools) fill(tools, TOOLBAR.map(([k, l, ic]) => h('button', { type: 'button', class: tool === k ? 'is-on' : '', 'aria-pressed': tool === k ? 'true' : 'false', title: l, onclick: () => { tool = k; render(); } }, icon(ic, { size: 20 }), l)));
+  const toolsEl = $('#wg-tools');
+  if (toolsEl) {
+    const list = visibleToolbar();
+    fill(toolsEl, list.map(([k, l, ic]) => [
+      !isSimple() && TOOLBAR_BREAKS.has(k) ? h('hr', { class: 'wg-rail-sep' }) : null,
+      h('button', { type: 'button', class: tool === k ? 'is-on' : '', 'aria-pressed': tool === k ? 'true' : 'false', title: l, onclick: () => { tool = k; render(); } }, icon(ic, { size: 20 }), l),
+    ]));
+  }
   fill($('#wg-bar'), turnBar());
   const card = $('#wg-card');
   const u = selected && unitById(selected);
@@ -1058,6 +1100,11 @@ if (!mode || !doc) {
   setTitle(doc.title || 'Scenario');
   mapDoc = await loadMap(mode);
   if (!canEdit) tool = 'log';
+  else if (isSimple() && !SIMPLE_TOOLS.has(tool)) tool = 'units';
+  root.classList.toggle('is-simple', isSimple());
+  const modeSeg = !screenMode ? h('div', { class: 'seg wg-mode-seg', id: 'wg-mode-seg', role: 'group', 'aria-label': 'Interface complexity' },
+    h('button', { type: 'button', 'data-mode': 'simple', class: isSimple() ? 'is-on' : '', title: 'Essential controls only', onclick: () => setUiMode('simple') }, 'Simple'),
+    h('button', { type: 'button', 'data-mode': 'advanced', class: !isSimple() ? 'is-on' : '', title: 'Full wargame suite (terrain, supply, lines, branches, rules)', onclick: () => setUiMode('advanced') }, 'Advanced')) : null;
   const mapEl = h('div', { class: 'wg-map' });
   const title = canEdit ? h('input', { class: 'bld-title', 'aria-label': 'Scenario title', value: doc.title || '', placeholder: 'Untitled scenario', oninput: (e) => { doc.title = e.target.value; setTitle(doc.title || 'Scenario'); changed(); } })
     : h('h1', { class: 'db-title' }, doc.title || 'Untitled scenario');
@@ -1070,12 +1117,13 @@ if (!mode || !doc) {
       title,
       canEdit ? h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }, 'Saved') : h('span', { class: 'pill no-dot' }, 'View only'),
       h('span', { class: 'spacer' }),
+      modeSeg,
       viewPick,
       canEdit ? h('button', { type: 'button', class: 'icon-btn', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', onclick: undo }, icon('undo')) : null,
       mode === 'public' ? null : h('a', { class: 'icon-btn', href: '/help/scenarios', target: '_blank', rel: 'noopener', title: 'Help', 'aria-label': 'Help' }, icon('help')),
       h('button', { type: 'button', class: 'icon-btn', title: 'Second screen, timeline, analysis, files', 'aria-label': 'More', onclick: (e) => extras.moreMenu(e.currentTarget) }, icon('more')),
-      canEdit && meta.role === 'owner' ? h('button', { type: 'button', class: 'btn', onclick: () => openShare({ type: 'scenario', id: meta.id, title: doc.title }) }, icon('link', { size: 15 }), 'Share') : null,
-      canEdit ? h('button', { type: 'button', class: 'btn', onclick: writeUp }, icon('scrollmap', { size: 15 }), 'Write it up') : null,
+      canEdit && meta.role === 'owner' ? h('button', { type: 'button', class: 'btn wg-adv-only', onclick: () => openShare({ type: 'scenario', id: meta.id, title: doc.title }) }, icon('link', { size: 15 }), 'Share') : null,
+      canEdit ? h('button', { type: 'button', class: 'btn wg-adv-only', onclick: writeUp }, icon('scrollmap', { size: 15 }), 'Write it up') : null,
       !screenMode ? h('button', { type: 'button', class: 'icon-btn wg-sfx-btn', id: 'wg-sfx-btn', title: 'Tactical Sound FX', 'aria-label': 'Tactical Sound FX', onclick: () => fx.setSfx(!fx.isSfxOn()) }, icon('volume')) : null,
       !screenMode ? h('button', { type: 'button', class: 'icon-btn wg-gp-btn', id: 'wg-gp-btn', title: 'Xbox Controller Mode', 'aria-label': 'Xbox Controller Mode', onclick: () => gamepad.openControlsDialog() }, icon('gamepad')) : null,
       h('button', { type: 'button', class: 'btn btn-primary', title: 'Full screen, with the panels hidden', onclick: () => present(true) }, icon('monitor', { size: 15 }), 'Present')),

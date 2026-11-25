@@ -50,7 +50,7 @@ export const XBOX_BINDINGS = [
 ];
 
 const PREFS_KEY = 'wm.scenario.gamepad';
-const FOCUS_SELECTOR = 'button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), a[href]';
+const FOCUS_SELECTOR = 'summary, button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), a[href]';
 
 /** Radial deadzone with smooth rescaling from [deadzone..1] to [0..1]. */
 export function applyDeadzone(x, y, deadzone = 0.16) {

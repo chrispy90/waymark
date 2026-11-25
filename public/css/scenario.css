@@ -725,3 +725,27 @@ body.pv:has(.wg) .menu button:hover { background: rgba(56, 189, 248, .14); }
 }
 .wg-rad-item.is-hot strong { color: #fff; }
 .wg-rad-item.is-hot span { color: #e0f2fe; }
+
+/* Simple / Advanced Mode & Streamlined Collapsible Drawers */
+.wg-mode-seg { height: 32px; padding: 2px; border-radius: 9px; }
+.wg-mode-seg button { height: 26px; padding: 0 11px; font-size: 12px; font-weight: 600; border-radius: 7px; }
+.wg.is-simple .wg-adv-only { display: none; }
+.wg-rail-sep { width: 34px; height: 1px; margin: 4px auto; border: 0; background: rgba(56, 189, 248, .22); }
+
+.wg-fold {
+  margin: 10px 0; border: 1px solid rgba(56, 189, 248, .2); border-radius: 10px;
+  background: rgba(8, 15, 29, .62); overflow: hidden;
+}
+.wg-fold > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 9px 12px; font: 700 11.5px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: #7dd3fc; background: rgba(56, 189, 248, .06);
+}
+.wg-fold > summary::-webkit-details-marker { display: none; }
+.wg-fold > summary::after { content: '▸'; font-size: 13px; color: #38bdf8; transition: transform .16s ease; }
+.wg-fold[open] > summary::after { transform: rotate(90deg); }
+.wg-fold > summary:hover { background: rgba(56, 189, 248, .12); color: #bae6fd; }
+.wg-fold-body { padding: 10px 12px 12px; border-top: 1px solid rgba(56, 189, 248, .14); }
+.wg-fold-body > :first-child { margin-top: 0; }
+.wg-fold-body > :last-child { margin-bottom: 0; }
