@@ -347,3 +347,381 @@
 
 @media (max-width: 1500px) { .wg-dots { display: none; } }
 @media (max-width: 900px) { .wg.is-present { grid-template-rows: minmax(0, 1fr) auto; height: 100vh; height: 100dvh; } .wg.is-present .wg-stage { grid-row: 1; } .wg.is-present .wg-bar { grid-row: 2; position: static; } }
+
+/* Xbox / Gamepad Controller Mode */
+.wg-gp-btn.is-gp-on { color: #16a34a; background: rgba(22, 163, 74, .14); box-shadow: inset 0 0 0 1px rgba(22, 163, 74, .38); }
+.wg-gp-btn.is-gp-ready { color: #0284c7; background: rgba(2, 132, 199, .1); }
+.wg-reticle { position: absolute; left: 50%; top: 50%; z-index: 5; pointer-events: none; transform: translate(-50%, -50%); --gp-color: #38bdf8; }
+.wg-reticle[hidden] { display: none; }
+.wg-reticle-ring {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--gp-color);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, .45), 0 0 18px color-mix(in srgb, var(--gp-color) 55%, transparent);
+  transition: transform .16s cubic-bezier(.22, 1, .36, 1), border-color .16s ease;
+  position: relative;
+}
+.wg-reticle-ring::before, .wg-reticle-ring::after {
+  content: ''; position: absolute; background: var(--gp-color);
+  box-shadow: 0 0 4px rgba(15, 23, 42, .8);
+}
+.wg-reticle-ring::before { left: 50%; top: -7px; width: 2px; height: 10px; transform: translateX(-50%); box-shadow: 0 46px 0 var(--gp-color); }
+.wg-reticle-ring::after { top: 50%; left: -7px; height: 2px; width: 10px; transform: translateY(-50%); box-shadow: 46px 0 0 var(--gp-color); }
+.wg-reticle-dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px rgba(15, 23, 42, .9); }
+.wg-reticle.is-locked .wg-reticle-ring { transform: scale(1.22); border-width: 2.5px; }
+.wg-reticle.is-hostile .wg-reticle-ring { transform: scale(1.28) rotate(45deg); border-color: #ef4444; }
+.wg-reticle.is-moving .wg-reticle-ring { border-style: dashed; }
+.wg-reticle-tag {
+  position: absolute; left: 50%; top: calc(100% + 12px); transform: translateX(-50%);
+  padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(11, 19, 36, .88); color: #f8fafc; border: 1px solid color-mix(in srgb, var(--gp-color) 50%, rgba(255,255,255,.15));
+  font-size: 12px; font-weight: 600; letter-spacing: .01em; box-shadow: 0 8px 24px rgba(2, 6, 23, .45);
+  backdrop-filter: blur(10px);
+}
+.wg-reticle-tag[hidden] { display: none; }
+
+.wg-gp-hud {
+  position: absolute; left: 50%; bottom: 14px; z-index: 6; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 12px; flex-wrap: nowrap;
+  padding: 7px 14px; border-radius: 999px;
+  background: rgba(11, 19, 36, .9); color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, .24);
+  box-shadow: 0 12px 32px rgba(2, 6, 23, .48);
+  backdrop-filter: blur(12px);
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.wg-gp-hud[hidden] { display: none; }
+.wg-gp-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex: none; }
+.wg-gp-dot.is-live { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, .85); }
+.wg-gp-item { display: inline-flex; align-items: center; gap: 5px; }
+.xb {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; font-size: 11px; font-weight: 800; line-height: 1; color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 1px 3px rgba(0,0,0,.45);
+}
+.xb-a { background: #16a34a; }
+.xb-b { background: #dc2626; }
+.xb-x { background: #2563eb; }
+.xb-y { background: #d97706; }
+.xb-s { border-radius: 6px; background: rgba(148, 163, 184, .22); color: #f8fafc; font-weight: 700; font-size: 10.5px; }
+.wg-gp-help {
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(148, 163, 184, .35);
+  background: rgba(255,255,255,.08); color: #f8fafc; font: 700 12px/1 var(--sans); cursor: pointer;
+}
+.wg-gp-help:hover { background: rgba(255,255,255,.2); }
+
+.wg-gp-dlg { display: grid; gap: 12px; min-width: min(520px, 84vw); }
+.wg-gp-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 13px; }
+.wg-gp-toggles { display: grid; gap: 8px; font-size: 13.5px; }
+.wg-gp-sens { display: flex; align-items: center; gap: 10px; }
+.wg-gp-sens input { flex: 1; }
+.wg-gp-map { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wg-gp-map th, .wg-gp-map td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.wg-gp-map th { width: 140px; white-space: nowrap; }
+.wg-gp-map kbd { display: inline-block; padding: 2px 7px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line-2); font: 600 12px/1.4 var(--sans); }
+@media (max-width: 1100px) { .wg-gp-hud { gap: 8px; padding: 6px 10px; font-size: 11.5px; } }
+
+/* ==========================================================================
+   AAA TACTICAL COMMAND VIDEO GAME REDESIGN (scoped to Scenarios)
+   ========================================================================== */
+body.pv:has(.wg), .wg {
+  --bg: #060b14;
+  --panel: #0b1322;
+  --panel-2: #111c30;
+  --fg: #f1f5f9;
+  --fg-2: #cbd5e1;
+  --muted: #8496b0;
+  --line: rgba(56, 189, 248, .16);
+  --line-2: rgba(148, 163, 184, .26);
+  --hover: rgba(56, 189, 248, .10);
+  --brand: #38bdf8;
+  --brand-soft: rgba(56, 189, 248, .16);
+  --ok: #22c55e;
+  --ok-soft: rgba(34, 197, 94, .16);
+  --danger: #f87171;
+  --danger-soft: rgba(239, 68, 68, .18);
+  --mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+/* Top Command Header */
+.wg > .bld-top {
+  background: linear-gradient(180deg, #0d1729 0%, #09111f 100%);
+  border-bottom: 1px solid rgba(56, 189, 248, .22);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, .45);
+}
+.wg .bld-title { color: #f8fafc; font-weight: 700; letter-spacing: .01em; }
+.wg .bld-title:hover, .wg .bld-title:focus { background: rgba(56, 189, 248, .09); }
+.wg .save-state { color: #64748b; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
+.wg .btn { background: #111d33; border-color: rgba(148, 163, 184, .26); color: #e2e8f0; transition: all .15s ease; }
+.wg .btn:hover:not(:disabled) { background: #182946; border-color: rgba(56, 189, 248, .55); color: #fff; }
+.wg .btn-primary {
+  background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+  border-color: rgba(125, 211, 252, .5);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 0 18px rgba(14, 165, 233, .32), inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+.wg .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+  box-shadow: 0 0 24px rgba(56, 189, 248, .5), inset 0 1px 0 rgba(255, 255, 255, .35);
+  transform: translateY(-1px);
+}
+.wg .icon-btn { color: #94a3b8; }
+.wg .icon-btn:hover:not(:disabled) { background: rgba(56, 189, 248, .12); color: #f8fafc; }
+.wg-sfx-btn.is-sfx-on { color: #38bdf8; background: rgba(56, 189, 248, .14); box-shadow: inset 0 0 0 1px rgba(56, 189, 248, .35); }
+.wg .input, .wg select, .wg textarea { background: #0a1220; border-color: rgba(148, 163, 184, .26); color: #f1f5f9; }
+.wg .input:focus, .wg select:focus, .wg textarea:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, .22); }
+.wg .seg { background: #080f1c; border: 1px solid rgba(148, 163, 184, .2); }
+.wg .seg button { color: #94a3b8; }
+.wg .seg button.is-on { background: #162642; color: #38bdf8; box-shadow: inset 0 0 0 1px rgba(56, 189, 248, .35); }
+
+/* Left Tactical Rail & Inspector */
+.wg-tools {
+  background: #080f1c;
+  border-right: 1px solid rgba(56, 189, 248, .16);
+}
+.wg-tools button { color: #7e92b0; font-size: 11px; letter-spacing: .02em; position: relative; transition: all .15s ease; }
+.wg-tools button:hover { color: #e2e8f0; background: rgba(56, 189, 248, .08); }
+.wg-tools button.is-on { color: #38bdf8; background: rgba(56, 189, 248, .14); font-weight: 700; }
+.wg-tools button.is-on::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: #38bdf8; box-shadow: 0 0 10px #38bdf8;
+}
+.wg-panel {
+  background: linear-gradient(180deg, #0b1424 0%, #08101e 100%);
+  border-right: 1px solid rgba(56, 189, 248, .18);
+  scrollbar-color: rgba(56, 189, 248, .28) transparent;
+}
+.wg-panel .rail-section-title { color: #38bdf8; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.wg-odds {
+  background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, .16), #0a1220 75%);
+  border: 1px solid rgba(56, 189, 248, .35);
+  box-shadow: inset 0 0 24px rgba(56, 189, 248, .08);
+}
+.wg-odds strong { font-family: var(--mono); color: #38bdf8; text-shadow: 0 0 18px rgba(56, 189, 248, .45); }
+.wg-roll {
+  background: radial-gradient(circle at 50% 0%, rgba(245, 158, 11, .14), #0a1220 75%);
+  border: 1px solid rgba(245, 158, 11, .35);
+}
+.wg-roll strong { font-family: var(--mono); text-shadow: 0 0 18px rgba(245, 158, 11, .35); }
+.wg-log li.is-inject { color: #fbbf24; }
+.wg-log li.is-inject .i { color: #f59e0b; }
+
+/* Bottom RTS Command Deck */
+.wg-bar {
+  background: linear-gradient(180deg, #0c1628 0%, #070d18 100%);
+  border-top: 1px solid rgba(56, 189, 248, .25);
+  box-shadow: 0 -6px 28px rgba(0, 0, 0, .45);
+}
+.wg-now strong {
+  font-family: var(--mono);
+  color: #f8fafc;
+  letter-spacing: .04em;
+  text-shadow: 0 0 12px rgba(56, 189, 248, .35);
+}
+.wg-now span { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #7e92b0; }
+.wg-tally { padding: 5px 11px; border-radius: 999px; background: rgba(15, 23, 42, .85); border: 1px solid rgba(148, 163, 184, .2); font-family: var(--mono); font-size: 12.5px; }
+.wg-score-chips, .wg-cond { background: rgba(15, 23, 42, .85); border-color: rgba(56, 189, 248, .25); color: #e2e8f0; font-family: var(--mono); font-size: 12px; }
+.wg-next {
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%) !important;
+  border-color: rgba(253, 186, 116, .6) !important;
+  color: #0b1120 !important;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  font-size: 13px;
+  box-shadow: 0 0 22px rgba(245, 158, 11, .42), inset 0 1px 0 rgba(255, 255, 255, .4) !important;
+}
+.wg-next:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%) !important;
+  box-shadow: 0 0 30px rgba(251, 191, 36, .65), inset 0 1px 0 rgba(255, 255, 255, .5) !important;
+}
+.wg-reveal { border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, .12); }
+
+/* Tactical Viewport Vignette & Corner Targeting Brackets */
+.wg-stage { background: #050a12; overflow: hidden; }
+.wg-hud-frame {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  box-shadow: inset 0 0 70px rgba(3, 8, 18, .48);
+}
+.wg-corner { position: absolute; width: 18px; height: 18px; border-color: rgba(56, 189, 248, .48); border-style: solid; border-width: 0; }
+.wg-corner.tl { top: 10px; left: 10px; border-top-width: 2px; border-left-width: 2px; }
+.wg-corner.tr { top: 10px; right: 10px; border-top-width: 2px; border-right-width: 2px; }
+.wg-corner.bl { bottom: 10px; left: 10px; border-bottom-width: 2px; border-left-width: 2px; }
+.wg-corner.br { bottom: 10px; right: 10px; border-bottom-width: 2px; border-right-width: 2px; }
+
+/* Upgraded Map Units: Glowing Selection Ring & Dark Tactical Nameplates */
+.wg-unit { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .55)); transition: transform .14s ease; }
+.wg-unit:hover { transform: scale(1.07); }
+.wg-name {
+  background: rgba(7, 13, 24, .90);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, .32);
+  padding: 1.5px 6px;
+  font-size: 11px;
+  letter-spacing: .01em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .45);
+}
+.wg-unit.is-sel .wg-sym {
+  outline: 2.5px solid #38bdf8;
+  outline-offset: 4px;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(56, 189, 248, .75);
+  animation: wg-sel-ping 1.8s ease-in-out infinite;
+}
+.wg-unit.is-sel .wg-name { background: #0ea5e9; color: #051120; border-color: #bae6fd; font-weight: 700; }
+@keyframes wg-sel-ping {
+  0%, 100% { box-shadow: 0 0 12px rgba(56, 189, 248, .55); }
+  50% { box-shadow: 0 0 26px rgba(56, 189, 248, .95); }
+}
+
+/* Floating RTS Selected-Unit Command Card */
+.wg-uhud {
+  position: absolute; left: 18px; top: 18px; z-index: 4;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 14px; border-radius: 12px;
+  background: rgba(8, 15, 29, .90);
+  border: 1px solid color-mix(in srgb, var(--hud-side, #38bdf8) 55%, rgba(255,255,255,.15));
+  border-left: 4px solid var(--hud-side, #38bdf8);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(14px);
+  color: #f8fafc;
+  min-width: 270px; max-width: 390px;
+  animation: wg-hud-in .22s cubic-bezier(.22, 1, .36, 1);
+}
+.wg-uhud[hidden] { display: none; }
+@keyframes wg-hud-in { from { opacity: 0; transform: translateY(-8px) scale(.97); } }
+.wg-uhud-sym { flex: none; }
+.wg-uhud-info { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.wg-uhud-top { display: flex; align-items: center; gap: 8px; }
+.wg-uhud-top strong { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wg-uhud-side {
+  margin-left: auto; padding: 1px 7px; border-radius: 999px; font: 700 10px/1.5 var(--mono);
+  text-transform: uppercase; letter-spacing: .06em;
+  background: color-mix(in srgb, var(--hud-side, #38bdf8) 22%, transparent);
+  color: #f8fafc; border: 1px solid color-mix(in srgb, var(--hud-side, #38bdf8) 55%, transparent);
+}
+.wg-uhud-meta { font-size: 11.5px; color: #94a3b8; }
+.wg-uhud-bars { display: grid; gap: 4px; margin-top: 3px; }
+.wg-uhud-bar { display: grid; grid-template-columns: 28px 1fr 32px; align-items: center; gap: 6px; font: 700 10px/1 var(--mono); color: #94a3b8; }
+.wg-uhud-bar i { display: block; height: 5px; border-radius: 3px; background: rgba(148, 163, 184, .2); overflow: hidden; }
+.wg-uhud-bar b { display: block; height: 100%; border-radius: 3px; transition: width .25s ease; }
+.wg-uhud-bar em { font-style: normal; text-align: right; color: #e2e8f0; }
+.wg-uhud-acts { display: flex; flex-direction: column; gap: 4px; }
+.wg-uhud-btn {
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, .24); background: rgba(15, 23, 42, .8); color: #cbd5e1; cursor: pointer;
+}
+.wg-uhud-btn:hover { background: rgba(56, 189, 248, .22); border-color: #38bdf8; color: #fff; }
+
+/* Cinematic Turn-Phase Splash Banner */
+.wg-turn-splash {
+  position: absolute; left: 50%; top: 24%; z-index: 7; transform: translate(-50%, -50%) scale(.92);
+  pointer-events: none; text-align: center; opacity: 0;
+  padding: 16px 46px; border-radius: 12px;
+  background: linear-gradient(90deg, transparent 0%, rgba(7, 13, 24, .92) 18%, rgba(7, 13, 24, .92) 82%, transparent 100%);
+  border-top: 1px solid rgba(56, 189, 248, .55);
+  border-bottom: 1px solid rgba(56, 189, 248, .55);
+  box-shadow: 0 0 42px rgba(14, 165, 233, .28);
+  transition: opacity .35s ease, transform .35s cubic-bezier(.22, 1, .36, 1);
+}
+.wg-turn-splash.is-on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.wg-splash-kicker { font: 700 11px/1 var(--mono); letter-spacing: .24em; text-transform: uppercase; color: #38bdf8; margin-bottom: 6px; }
+.wg-splash-title { font: 700 34px/1.1 var(--mono); letter-spacing: .06em; color: #f8fafc; text-shadow: 0 0 24px rgba(56, 189, 248, .55); }
+
+/* Animated Move-Order Destination Ping */
+.wg-order-ping {
+  position: absolute; z-index: 4; width: 24px; height: 24px; margin: -12px 0 0 -12px;
+  border-radius: 50%; pointer-events: none;
+  border: 2.5px solid var(--ping-c, #38bdf8);
+  box-shadow: 0 0 14px var(--ping-c, #38bdf8);
+  animation: wg-ping-out .72s cubic-bezier(.16, 1, .3, 1) forwards;
+}
+@keyframes wg-ping-out {
+  0% { transform: scale(.5); opacity: 1; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+/* Inject Alert Banner (Command-Center Style) */
+.wg-banner {
+  background: rgba(10, 17, 32, .95);
+  border: 1px solid rgba(245, 158, 11, .45);
+  border-top: 4px solid #f59e0b;
+  color: #f8fafc;
+  backdrop-filter: blur(14px);
+}
+.wg-banner-kicker { color: #fbbf24; font-family: var(--mono); }
+.wg-banner h2 { color: #f8fafc; }
+.wg-banner-text { color: #cbd5e1; }
+
+/* Dark Dialogs & Menus on Scenario Page */
+body.pv:has(.wg) dialog.dlg { background: #0c1526; color: #f1f5f9; border: 1px solid rgba(56, 189, 248, .25); }
+body.pv:has(.wg) .menu { background: #0c1526; color: #f1f5f9; border: 1px solid rgba(56, 189, 248, .25); }
+body.pv:has(.wg) .menu button:hover { background: rgba(56, 189, 248, .14); }
+.wg .wg-card { display: none !important; } /* Replaced by the upgraded floating RTS Unit HUD (.wg-uhud) */
+
+/* Controller MAP <-> MENU Focus States */
+.wg-reticle.is-dimmed { opacity: .24; transition: opacity .2s ease; }
+.wg-gp-mode {
+  padding: 2px 8px; border-radius: 999px; font: 700 10.5px/1.4 var(--mono); letter-spacing: .08em;
+  background: rgba(56, 189, 248, .2); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, .48);
+}
+.wg-gp-mode.is-menu {
+  background: rgba(245, 158, 11, .22); color: #fcd34d; border-color: rgba(245, 158, 11, .55);
+}
+.wg-panel.is-gp-menu-active {
+  box-shadow: inset 0 0 0 2px rgba(245, 158, 11, .55), 0 0 28px rgba(245, 158, 11, .16);
+}
+.wg-tools.is-gp-menu-active {
+  box-shadow: inset 2px 0 0 rgba(245, 158, 11, .75);
+}
+.is-gp-focus {
+  outline: 2.5px solid #fbbf24 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(251, 191, 36, .22), 0 0 18px rgba(251, 191, 36, .35) !important;
+  position: relative;
+  z-index: 2;
+}
+
+/* 6-Slice Tactical Radial Command Wheel (Hold X) */
+.wg-radial {
+  position: absolute; left: 50%; top: 50%; z-index: 8; pointer-events: none;
+  transform: translate(-50%, -50%) scale(.88); opacity: 0;
+  transition: opacity .16s ease, transform .18s cubic-bezier(.22, 1, .36, 1);
+}
+.wg-radial[hidden] { display: none; }
+.wg-radial.is-open { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.wg-rad-ring {
+  width: 244px; height: 244px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(8, 15, 29, .62) 34%, rgba(8, 15, 29, .92) 72%, rgba(56, 189, 248, .12) 100%);
+  border: 1.5px solid rgba(56, 189, 248, .42);
+  box-shadow: 0 0 48px rgba(2, 6, 23, .75), inset 0 0 28px rgba(56, 189, 248, .16);
+  backdrop-filter: blur(12px);
+}
+.wg-rad-center {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 96px; height: 96px; border-radius: 50%;
+  display: grid; place-items: center; text-align: center; padding: 8px;
+  background: rgba(6, 11, 20, .95); border: 1.5px solid rgba(56, 189, 248, .55);
+  color: #f8fafc; font: 700 11.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .04em;
+  box-shadow: 0 0 20px rgba(56, 189, 248, .28);
+}
+.wg-rad-item {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(calc(-50% + var(--rx)), calc(-50% + var(--ry)));
+  min-width: 108px; padding: 7px 11px; border-radius: 10px; text-align: center;
+  background: rgba(11, 19, 36, .94); border: 1px solid rgba(148, 163, 184, .28);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .5);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.wg-rad-item strong { display: block; font-size: 12px; font-weight: 700; color: #f1f5f9; white-space: nowrap; }
+.wg-rad-item span { display: block; font-size: 10px; color: #94a3b8; white-space: nowrap; }
+.wg-rad-item.is-hot {
+  transform: translate(calc(-50% + var(--rx)), calc(-50% + var(--ry))) scale(1.1);
+  background: linear-gradient(135deg, rgba(14, 165, 233, .92) 0%, rgba(37, 99, 235, .92) 100%);
+  border-color: #bae6fd;
+  box-shadow: 0 0 24px rgba(56, 189, 248, .65);
+}
+.wg-rad-item.is-hot strong { color: #fff; }
+.wg-rad-item.is-hot span { color: #e0f2fe; }

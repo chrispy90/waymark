@@ -11,18 +11,20 @@
 </p>
 
 <p align="center">
-  <b>Write a story. Scroll it. Publish it anywhere.</b><br>
-  Waymark is a self-hosted editor for scroll-driven map stories and the maps inside them.<br>
-  Build maps with live government data and analysis, reuse them across stories, then share a link or export a website.
+  <b>Write a story. Build reusable maps. Analyze data. Run tabletop scenarios. Publish anywhere.</b><br>
+  Waymark is a zero-dependency, self-hosted geospatial storytelling and mapping studio.<br>
+  No build step, no API keys, no vendor lock-in — just Node.js and a single SQLite database.
 </p>
 
 <p align="center">
   <a href="#-start-in-a-minute">Quick start</a> ·
-  <a href="#-what-you-can-make">Features</a> ·
-  <a href="#make-a-map-once-use-it-in-every-story">Saved maps</a> ·
-  <a href="#-publish-it-anywhere">Export</a> ·
+  <a href="#-at-a-glance">Features</a> ·
+  <a href="#-stories">Stories</a> ·
+  <a href="#-saved-maps-live-data--3d">Maps &amp; 3D</a> ·
+  <a href="#-spatial-analysis">Analysis</a> ·
+  <a href="#-scenarios--wargaming">Scenarios</a> ·
   <a href="#-host-it-yourself">Self-hosting</a> ·
-  <a href="docs/SCHEMA.md">Story format</a>
+  <a href="public/help/index.md">User guide</a>
 </p>
 
 <br>
@@ -35,7 +37,7 @@
 
 ## ⚡ Start in a minute
 
-You only need [Node.js](https://nodejs.org) **22.13 or newer**. There's nothing to `npm install`.
+You only need [Node.js](https://nodejs.org) **22.13 or newer**. There is nothing to `npm install`.
 
 ```bash
 git clone https://github.com/chrispy90/waymark.git
@@ -43,29 +45,43 @@ cd waymark
 npm start
 ```
 
-Then open **http://localhost:5180**.
+Then open **http://localhost:5180**:
 
 1. **Create your account.** The first visit makes you the owner.
-2. **Answer a few questions.** Pick what you're making and a look, add a title and your places, and Waymark sets up the story for you.
-3. **Click anything to edit it.** When you're happy with it, press **Publish**.
+2. **Start with the wizard.** Pick what you're making and a look, add a title and places, and Waymark scaffolds the story.
+3. **Click anything to edit it.** When you're ready, press **Publish** or **Export as a website**.
 
 > [!TIP]
-> **Windows:** if PowerShell says *"running scripts is disabled"*, run `node server.js` instead. It does the same thing.
-> **Docker:** `docker compose up -d` also works, and keeps your data in a named volume.
+> **Windows:** if PowerShell blocks scripts, run `node server.js`.
+> **Docker:** `docker compose up -d` runs Waymark with persistent data in a named volume.
 
 <br>
 
-## ✨ What you can make
+## 🗺️ At a glance
 
-### A map that moves with the story
+| Workspace | What it does |
+|---|---|
+| **[Stories](#-stories)** | Scroll-driven map narratives with moving maps, photo tours, swipe comparisons, interactive charts/Sankey flows, scroll effects, and 8 one-click looks. |
+| **[Saved Maps & 3D](#-saved-maps-live-data--3d)** | Full-screen cartographic editor with live NOAA/NASA/USGS/ArcGIS data, 3D elevation & city buildings, 3D extrusions, bivariate choropleths, STAC Sentinel-2 imagery, drawing, and bookmarks. |
+| **[Spatial Analysis](#-spatial-analysis)** | 30 browser-native GIS tools (summarize, proximity & road routing, overlay, terrain & viewsheds, data management) with live previews before saving. |
+| **[Hosted Layers & Forms](#-hosted-layers--field-forms)** | Upload GeoJSON, CSV, Shapefiles, GeoPackages, KML, GPX, or geotagged photos; edit attribute tables & run the Field Calculator; auto-serve vector tiles (>20k features); collect points via public mobile forms. |
+| **[Dashboards](#-dashboards)** | Pair any saved map with big numbers, bar charts, donuts, and tables that cross-filter each other and follow the map viewport. |
+| **[Scenarios & Wargaming](#-scenarios--wargaming)** | Turn-based tabletop exercises on real DEM/OSM hex terrain with MIL-STD-2525 units, supply lines, C2 latency, viewsheds, Monte Carlo combat, branching, second-screen projector mode, and one-click Story Map briefings. |
+| **[Teams, Sharing & Export](#-teams-sharing--export)** | Groups with Viewer/Editor roles, public links & `/u/you` author pages, PDF/PNG print layouts, and standalone static `.zip` or Tomcat `.war` exports. |
 
-The map stays put while story cards scroll past, and it glides to each card's place. You can tilt it, rotate it, switch layers, or swap it for a photo or video on any card. Select words in a card and press **Map link** to make them send the map somewhere else; click a link in the text to change it, move it to other words, or remove it.
+<br>
+
+## ✨ Stories
+
+Build long-form visual stories in a **click-to-edit live preview** with autosave, undo/redo, a command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>), and desktop/phone preview.
+
+- **Moving maps:** the map stays pinned while story cards scroll past, gliding between 3D tilts, layers, time-slider states, or media swaps. Link any text phrase to fly the map somewhere new.
+- **Scroll effects, built in:** word-by-word **Statements**, horizontal **Scroll galleries**, recoloring **Chapters**, counting **Big numbers**, **Before & after** map/satellite swipes, and parallax/zoom covers — all mobile-ready and honoring `prefers-reduced-motion`.
+- **Tours from phone photos:** drop a batch of geotagged JPEGs into the **Stop by stop** tour builder and each photo becomes a numbered stop where it was taken, ordered by timestamp.
+- **Interactive charts, Sankey & network graphs:** add **Chart & table** blocks (bars, columns, donuts, executive tables, multi-stage Sankey flows, and force-directed or geo-pinned network graphs) with bidirectional map brushing and curved O–D flow arcs.
+- **Eight handcrafted looks:** restyle typography, color palettes, map styles, and scroll animations in one click.
 
 <p align="center"><img src="docs/media/moving-map.gif" alt="A moving map flying between places as the reader scrolls" width="100%"></p>
-
-### Scroll effects, built in
-
-Effects from the best long-form sites, available as blocks. Add one and it works on phones too. Each effect switches off for readers who ask their device to reduce motion.
 
 <table>
   <tr>
@@ -74,77 +90,43 @@ Effects from the best long-form sites, available as blocks. Add one and it works
   </tr>
   <tr>
     <td><b>Statement</b>: big type that lights up word by word.</td>
-    <td><b>Scroll gallery</b>: scroll down and the photos slide sideways.</td>
+    <td><b>Scroll gallery</b>: scroll down and photos slide sideways.</td>
   </tr>
 </table>
 
-You also get **chapters** that recolor the page, **big numbers** that count up, and **parallax, zoom and wipe-in** photos and covers.
+<p align="center"><img src="docs/media/looks.png" alt="The same statement block in multiple Waymark looks" width="100%"></p>
 
-### Live data from NOAA, NASA, USGS and more
+<details>
+<summary><b>All 8 looks &amp; 5 wizard starting points</b></summary>
 
-Open **Browse public data** and click **Add**. Every layer arrives styled, with popups, a legend and credit to its source. No keys and no sign-ups.
+<br>
 
-<p align="center"><img src="docs/media/public-data.png" alt="The public data catalog" width="100%"></p>
+**Looks:** **Classic** (warm paper & serif) · **Night** (dark cinematic) · **Brutalist** (raw monospace, hard edges, acid-yellow stickers & ticker) · **Atlas** (parchment, sepia maps & compass rose) · **Aurora** (dark glass, drifting light & glowing map features) · **Editorial** (magazine journalism with drop-caps & crimson rules) · **Blueprint** (Prussian navy CAD grid & telemetry) · **Fog** (drifting storm layers, pointer lantern & live visibility readout).
 
-| Source | Layers |
-|---|---|
-| **USGS** | Earthquakes (live) · stream gauges by state |
-| **NOAA** | Weather warnings (live) · radar (live) · tide stations · tsunamis · significant earthquakes · volcanoes · plate boundaries |
-| **NASA** | Natural events (EONET) · daily satellite imagery · Earth at night |
-| **Census · NPS · USFS · EPA · NIFC** | States and counties · park units · national forests · Superfund sites · active wildfires and perimeters |
-| **Natural Earth** | Countries · cities · rivers |
-| **ArcGIS Online** | Search thousands more public layers |
+**Wizard templates:** **A journey** (moving map) · **A walking tour** (numbered photo stops) · **An illustrated essay** (full-screen chapters) · **A data story** (map + numbers & context) · **Start from scratch** — plus **Explore an example** for finished sample stories.
 
-Live layers refresh every time someone opens the story, so a published map stays current.
+</details>
 
-<p align="center"><img src="docs/media/live-quakes.png" alt="This week's earthquakes and tectonic plate boundaries on a dark map" width="100%"></p>
+<br>
 
-### 3D Terrain, Elevation HUD & 3D City Buildings
+## 🌍 Saved Maps, Live Data & 3D
 
-Turn on realistic 3D elevation with a single click in any story map, moving map or saved map:
+Build a map once in the full-screen **Map Editor**, then reuse it across any number of stories and dashboards. Edit the map once and every published story that uses it updates automatically.
 
-- **Free global DEM terrain & hillshading:** powered by Mapzen Terrarium elevation tiles with dynamic vertical exaggeration (1.0× to 3.0×) and atmospheric sky horizon.
-- **3D city building footprints:** toggle extruded 3D structures (`fill-extrusion`) from OpenFreeMap vector building footprints with true-to-height scaling and ambient shadows.
-- **Camera Tilt & Pitch HUD:** live interactive tilt angle indicator in the map status bar with real-time pitch readouts (up to 85°).
+<p align="center"><img src="docs/media/map-editor.png" alt="The map editor with layers, bookmarks and layer settings" width="100%"></p>
 
-### 3D Polygon & Hexbin Extrusions + Bivariate Mapping
+- **Live public data, no API keys:** one-click layers from **USGS** (live earthquakes, stream gauges), **NOAA** (weather warnings, live radar, tides, volcanoes), **NASA** (EONET events, daily imagery, Earth at night), **Census / NPS / USFS / EPA / NIFC** (wildfires, parks, states/counties), **Natural Earth**, and **ArcGIS Online** search.
+- **3D terrain, buildings & multivariate cartography:** toggle Mapzen Terrarium global DEM elevation (1×–3× exaggeration), OpenFreeMap extruded 3D city buildings, a live pitch HUD (up to 85°), **3D attribute polygon/hexbin extrusions**, **3×3 bivariate choropleths**, heatmaps, clusters, proportional symbols, and a **time slider**.
+- **Remote sensing & STAC satellite finder:** one-click NASA MODIS spectral overlays (NDVI, False-Color 7-2-1, Sea Surface Temp, Aerosol Optical Depth, NDSI snow), live **Copernicus Sentinel-2 L2A** search via Element84 STAC with 10 m COG streaming, and multi-date **Time-Travel** before/after swipe.
+- **Draw, measure & bookmarks:** sketch styled points, lines, freehand routes, polygons, circles, arrows, and labels with live geodesic measurements; save named camera **Bookmarks** and turn them into moving-map story cards in one click.
 
-Display complex multivariate geospatial relationships directly on the map:
+<p align="center"><img src="docs/media/draw.png" alt="The Draw workspace with shapes and styling" width="100%"></p>
 
-- **3D Attribute Extrusions:** extrude any 2D polygon layer or hexbin summary into 3D height prisms scaled proportionally to any numeric attribute (e.g. population, total sales, earthquake count).
-- **3×3 Bivariate Choropleth:** map two continuous variables simultaneously (e.g. *household income* vs *climate flood risk*) with quantile breaks and an interactive 3×3 matrix legend.
+<br>
 
-### Remote Sensing, STAC Satellite Finder & Time Travel
+## 📐 Spatial Analysis
 
-Professional Earth Observation and spectral analytics without leaving the browser:
-
-- **Spectral Index Catalog:** one-click live overlays for NASA MODIS NDVI Vegetation Health, False-Color Infrared 7-2-1 (burn scar & flood detection), Sea Surface Temperature (GHRSST), Aerosol Optical Depth (wildfire smoke & dust), Snow Cover NDSI, and USGS 3DEP Shaded Relief & National Hydrography.
-- **Live STAC Satellite Scene Finder:** search Copernicus Sentinel-2 L2A scenes around your map viewport using Element84 Earth Search STAC API. Filter by cloud cover %, inspect scene metadata (MGRS tile, sun elevation, telemetry), and stream 10-meter Cloud-Optimized GeoTIFFs (COG) directly into the map.
-- **Satellite Time-Travel Before & After:** compare multi-date satellite imagery side by side with a draggable swipe divider to detect wildfire burn scars, urban sprawl, drought depletion, or glacial retreat.
-
-### Universal GIS Ingest: KML, GPX, Photos, GeoJSON & CSV
-
-Drop any spatial file directly onto the map or Data panel:
-
-- **KML & KMZ:** parses Google Earth placemarks, folders, lines, polygons, and ExtendedData attributes.
-- **GPX:** reads GPS waypoints, tracks, and routes with automatic distance, elevation gain/loss, and timestamp stats.
-- **Geotagged JPEG Photos:** extracts camera EXIF GPS coordinates and timestamps; multiple photos automatically merge into an interactive photo-points layer with popup image previews.
-- **Elevation Profile & Slope Analysis Tool:** sample polylines or points against the global DEM in the **Analyze** toolbox to compute total distance, elevation gain/loss, and slope grade percentages (%).
-- **`$ELEVATION_M` in Field Calculator:** access elevation directly in attribute tables and calculate derived metrics.
-
-### Filter it, then analyze it
-
-**Filters** narrow a layer with plain rules, like *magnitude ≥ 5*, *in the last 7 days* or *state = Texas*. They apply to the map, the insights, the analysis and the export.
-
-**Analyze** previews every result on a map before you keep it. Results become ordinary layers, and you can re-run them on fresh data. The 28 tools are grouped the way desktop GIS toolboxes group them:
-
-| Group | Tools |
-|---|---|
-| **Summarize** | Hex bins (count, sum or average) · Hot-spot & outlier analysis (Getis-Ord $G_i^*$ z-scores & Local Moran's $I$ LISA clusters) · Spatial density clusters (DBSCAN) · Count in areas · Dissolve (by a field, e.g. counties into states) |
-| **Proximity** | Buffer · Multi-ring trade areas (concentric catchment bands) · Gravity & Huff market share model (probabilistic capture, 2SFCA accessibility & O–D flows) · Hub & spoke desire lines · Distance to nearest · Within distance · Voronoi (Thiessen) areas |
-| **Overlay** | Clip · Erase · Intersect · Join by location · Select by location (touch, inside, contain, stay clear) · Merge |
-| **Terrain** | Cost surface & accessibility grid (anisotropic Tobler slope friction & barrier grid) · Least-cost path & corridor (Dijkstra minimum-cost routing with Chaikin smoothing) · 3D viewshed & line of sight (radial DEM visibility sectors & sightline rays with Earth curvature) · Elevation profile & slope (samples polylines along global DEM for distance, gain/loss, and grade %) |
-| **Manage data** | Join attributes by field · Center points · Outline (convex hull) · Simplify · Add geometry attributes (area, length, coordinates) · Filter |
+**Filters** narrow any layer with plain rules (*magnitude ≥ 5*, *in the last 7 days*) across maps, live insights histograms, analysis, and exports. **Analyze** runs **30 browser-native GIS tools** with live map previews before saving results as ordinary layers you can re-run anytime.
 
 <table>
   <tr>
@@ -152,201 +134,92 @@ Drop any spatial file directly onto the map or Data panel:
     <td width="50%"><img src="docs/media/analysis.gif" alt="Binning a week of earthquakes into hexagons"></td>
   </tr>
   <tr>
-    <td><b>Filters and insights</b>: <i>Showing 165 of 361</i>, with histograms of each field.</td>
-    <td><b>Hex bins</b>: a week of earthquakes, grouped into 350 km hexagons.</td>
+    <td><b>Filters &amp; insights</b>: live histograms and feature counts.</td>
+    <td><b>Hex bins</b>: a week of earthquakes aggregated into 350 km hexagons.</td>
   </tr>
 </table>
 
-You can also show points as a **heatmap** or **clusters**, or use **proportional symbols**: size points, areas or lines by a number field (circle area grows with the value, and it works together with color). Give a layer a **time field** and its maps get a **time slider** with play, showing everything up to a moment or a trailing day, week or month. Readers can scrub it too, and bookmarks and story cards remember where it was set. Bring your own data: GeoJSON, KML, GPX, geotagged photos, CSV, Hosted Feature Layers, or any public ArcGIS layer.
+<details>
+<summary><b>All 30 analysis tools (5 toolboxes)</b></summary>
 
-### Hosted feature layers & editable attribute tables
+<br>
 
-Create reusable, server-backed GeoJSON feature layers (like ArcGIS Online Hosted Feature Layers) from the **Layers** tab on the home screen, from inside the map or story editor, or by promoting any drawn, uploaded, or analyzed layer in one click.
+| Toolbox | Tools |
+|---|---|
+| **Summarize** | Hex bins (count/sum/avg) · Hot-spot & outlier analysis (Getis-Ord $G_i^*$ & Local Moran's $I$) · Spatial density clusters (DBSCAN) · Count in areas · Dissolve |
+| **Proximity & Routing** | Buffer · Multi-ring trade areas · Gravity & Huff market share (2SFCA & O–D flows) · Hub & spoke desire lines · Distance to nearest · Within distance · Voronoi areas · **Route along roads** & **Travel-time isochrones** (via Valhalla; configure `ROUTING_URL` for heavy use) |
+| **Overlay** | Clip · Erase · Intersect · Join by location · Select by location · Merge |
+| **Terrain** | Cost surface & accessibility grid (Tobler slope friction) · Least-cost path & corridor · 3D viewshed & line of sight (with Earth curvature) · Elevation profile & slope grade % |
+| **Manage data** | Join attributes by field · Center points · Convex hull · Simplify · Add geometry attributes · Filter |
 
-- **Editable attribute tables & schema studio:** click any cell to edit values inline, or add, rename, and delete columns (`string`, `number`, `date`, `boolean`). Add or delete feature rows and see live column statistics (`Sum`, `Avg`, `Min`, `Max`) in the header.
-- **Field Calculator:** compute values across all features using column math (`+`, `-`, `*`, `/`, `% of`, `% change`), automatic spatial geometry measurements (`$AREA_KM2`, `$AREA_ACRES`, `$LEN_KM`, `$LAT`, `$LON`), rankings (`1..N`), or text templates.
-- **Source attribution & live service URLs:** attach source attribution/credits to a hosted layer so it automatically appears on map legends and credits, copy its live `/api/layers/:id/geojson` endpoint, or export any table to **GeoJSON** or **CSV**.
+</details>
 
-### Interactive Sankey flow diagrams, network graphs, charts & executive tables
+<br>
 
-Add a **Chart & table** block to any story — or click **Add chart to story** directly from a layer's Insights histogram — to present data alongside your narrative with live bidirectional map brushing:
+## 🗂️ Hosted Layers & Field Forms
 
-- **Six interactive views:** horizontal **Bars**, vertical **Columns**, SVG **Donut** rings with total callouts, sortable **Executive Tables**, multi-stage **Sankey Flow Diagrams** (2-stage or 3-stage cubic Bézier ribbons with draggable nodes), and interactive **Network Graphs** (toggleable between **Force-Directed** Fruchterman–Reingold physics and **Geo-Pinned** spatial coordinates).
-- **Bi-directional Map ↔ Chart Brushing & Viewport Sync:** click any bar, donut slice, Sankey ribbon/node, or network graph node/edge to highlight and fly to the corresponding features on the nearest map (`wm-chart-hi`). Click any feature on the map to highlight its corresponding nodes and flows in the chart. Enable **Sync with map view** so charts and network graphs dynamically recompute as the reader pans and zooms the map.
-- **Curved Origin–Destination Flow Arcs:** turn on *Curve origin–destination lines as flow arcs* in any line layer's style settings (or generate them directly with the **Hub & spoke** or **Gravity & Huff model** tools) to render smooth quadratic great-circle flow arcs on the map.
-- **Live layer aggregation or custom rows:** group and aggregate (`count`, `sum`, `avg`, `min`, `max`) any layer in your story on the fly, or enter custom rows with prefixes and suffixes (such as `$` or `%`).
+Store and manage your own geospatial datasets directly on your Waymark server:
 
-### Make a map once, use it in every story
+- **Universal GIS ingest:** drop **GeoJSON**, **CSV**, zipped **Shapefiles**, **GeoPackages** (`.gpkg`, up to 256 MB), **KML/KMZ**, **GPX**, or **geotagged JPEG photos** — or connect external **WMS, WMTS, WFS, XYZ tiles, and PMTiles** services.
+- **Fast at scale:** hosted layers with more than 20,000 features automatically serve as on-demand **vector tiles** (`.mvt`).
+- **Editable attribute table & Field Calculator:** edit cells inline, manage schema columns, inspect live column stats, and compute expressions using column math, rankings, or geometry/elevation variables (`$AREA_KM2`, `$LEN_KM`, `$LAT`, `$LON`, `$ELEVATION_M`).
+- **Version history & scheduled sync:** restore any of the last 25 versions, or schedule automatic refreshes (15 min to weekly) from any remote GeoJSON, CSV, or ArcGIS endpoint.
+- **Public field forms:** attach a phone-friendly intake form (`/f/…`) to any hosted point layer so contributors can drop a pin, answer questions, and attach a photo — submissions appear live on every connected map and dashboard without exposing existing records.
 
-**Maps** on the home screen are maps you build on their own, in a full-screen map editor, and then use in as many stories as you like. Edit the map once and every story that uses it updates, published stories included.
+<br>
 
-- **Layers:** live public data, hosted feature layers, your files, or links. Reorder them by dragging, switch them on and off, and zoom to each.
-- **Per-layer settings:** color, proportional symbols, a time field for the time slider, labels, popups, source attribution, filters, visible zoom range and insights, plus an **editable attribute table & schema studio** you can sort, search, calculate and edit. Click a row number to zoom to that feature.
-- **Tools:** 22 analysis tools (multi-ring trade areas, hub & spoke desire lines, spatial density clusters, attribute table joins, clip, erase, intersect, dissolve, spatial join, buffer, hex bins, Voronoi and more), a time slider, drawing, measuring, place search, a live coordinate & zoom HUD, a basemap gallery and the legend.
-- **Bookmarks:** named views that also remember which layers are on, with a note for each.
+## 📊 Dashboards
 
-Then **walk readers through it**: one click turns the bookmarks into moving-map cards, so a story can show the raw data, then the analysis, then the result, one card at a time. Any map in a story can also **use a saved map**, showing one of its bookmarks or a view you frame.
+Pair any saved map with **big numbers**, **bar charts**, **donuts**, and **tables** built from its layers. Click any bar or slice to cross-filter the map and every other widget; toggle **Only what's in view** so every metric recalculates dynamically as you pan and zoom. Share with your team, via public link (`/d/…`), or as an iframe embed.
 
-<p align="center"><img src="docs/media/map-editor.png" alt="The map editor with layers, two bookmarks and layer settings" width="100%"></p>
+<br>
 
-### Work as a team
-
-Make a group on the **Team** tab, add people by the email of their account, and share any story, map, hosted layer or dashboard with people or groups, as a **viewer** or an **editor**. What others share with you appears in your own lists, labeled with whose it is. Only the owner can delete, publish or change sharing, and a shared story brings along the maps and layers it uses.
-
-### Millions of features, and the formats GIS people already have
-
-- **Big layers stay fast.** A hosted layer with more than 20,000 features is drawn from **vector tiles** the server makes on request, so a browser downloads only what's on screen. Files up to 256 MB upload straight to the server.
-- **Shapefiles and GeoPackages.** Drop a zipped shapefile or a `.gpkg` anywhere you can add data. WGS 84, NAD83, Web Mercator and UTM are converted; other coordinate systems are refused with a clear message.
-- **Map services.** **Add from a map service** reads **WMS**, **WMTS** and **WFS** services, `{z}/{x}/{y}` tile addresses and **PMTiles** files. Paste an address, pick from the layers it offers.
-- **Layers that keep themselves current.** Point a hosted layer at a URL (GeoJSON, a CSV with latitude and longitude, or an ArcGIS feature layer) and it refreshes every 15 minutes to every week.
-- **Undo for data.** Every change to a hosted layer's features is kept, from edits, forms and refreshes. Download or restore any of the newest 25 versions.
-
-### Dashboards
-
-A **dashboard** puts one of your saved maps beside big numbers, bar charts, donuts and tables made from its layers. Click a bar or a slice and the map and every other chart filter to match; tick **Only what's in view** and the charts follow the map as you pan. Share a dashboard with your team, by public link, or embedded in a website.
-
-### Scenarios: tabletop exercises on a map
+## 🎯 Scenarios & Wargaming
 
 [![The scenarios explainer video: units, supply lines, injects, weather and analysis](docs/media/scenarios-explainer.webp)](docs/media/scenarios-explainer.mp4)
 
-**[▶ Watch the explainer](docs/media/scenarios-explainer.mp4)** (2½ minutes, narrated, with captions): units, terrain, supply lines, injects, combat, weather, branches, analysis and the after-action write-up.
+**[▶ Watch the 2½-minute explainer](docs/media/scenarios-explainer.mp4)** — turn any map into a turn-based tabletop exercise driven on one screen (with an optional synchronized **second-screen projector view** and read-only public page at `/w/…`).
 
-A **scenario** plays out "what if?" in a meeting, on one screen. Place units for each side (standard military symbols, or plain badges for police, fire, shelters and the like), then move them turn by turn while the room talks it through.
+- **Doctrinal units & real ground:** standard **MIL-STD-2525** military symbols or civic badges moving turn by turn over a hex grid built from real DEM elevation and OpenStreetMap roads, rivers, forests, and urban areas.
+- **Logistics, C2 & sensors:** supply depots, lines of communication, bridge demolitions, headquarters **C2 order latency**, finite munitions/sorties, **terrain-masked sensor viewsheds**, and multi-turn **reach isochrones**.
+- **Adjudication & branching:** editable 1d6 combat table, **Monte Carlo combat simulator**, matrix-game arguments, scripted injects, weather/daylight effects, MGRS grid, **ghost branch diff overlays**, and a **synchronization matrix**.
+- **One-click after-action briefing:** export turns, charts, heat maps, synchronization matrix, and hotwash notes directly into an executive **Story Map** ready to share.
 
-- **Units with a side, strength and status.** Drag to move; the path and distance are shown, and a unit with a speed is checked against how far it could get in a turn.
-- **Turn-by-turn history.** Every turn is kept. Step back and forward, or replay from any point.
-- **Branches.** Copy the game at any turn to try a different choice, then compare two branches side by side.
-- **Planning aids.** Range rings, line of sight over real terrain, and how far a unit can get by road or on foot in one turn.
-- **Injects.** Scripted events that appear on a turn or when the facilitator releases them, as a banner and a pin on the map.
-- **Dice and notes.** Roll a die or a percentage chance, and keep notes for every turn.
-- **Present.** Full screen for a projector, with the panels hidden.
-- **Write it up.** One click turns the turns, injects and notes into a story with a moving map that replays the game.
-
-For a deeper game, each of these is optional:
-
-- **Terrain.** Build a hex grid over the play area from open elevation data and OpenStreetMap (roads, rivers, water, forest, built-up areas). Units then move along the quickest route over the ground, at speeds set by how they move (on foot, wheeled, tracked, amphibious, air, naval) in an editable movement table, and rough ground uses more supply. Draw areas that slow, block, cost more or jam radios, from a turn or when an inject is released.
-- **Lines of communication.** Depots, ports, airfields and the roads, rail, bridges, sea lanes and signal links between them. Units are in supply, strained or out of supply depending on what's open; lines are cut by hand, by an inject, or by enemy units sitting on them. Cutting a bridge also takes the crossing out of the terrain. Units with a headquarters need radio range or a signal link to stay in contact.
-- **Planned moves.** Each side plans its moves, then they're revealed and made all at once, and the resulting contacts are logged.
-- **Combat.** A 1d6 combat results table (editable) with combat values from each unit's kind, size, strength, supply and the ground it defends.
-- **Objectives and scoring.** Points for holding places, a victory condition, and the score in the turn bar and the branch comparison.
-- **Planning graphics, spotting and spreadsheets.** Phase lines, boundaries, axes of advance, areas and labels per turn; automatic spotting from sensor ranges and line of sight; units and injects imported from CSV.
-
-For running the room and reviewing the game:
-
-- **A second screen** for the projector that follows your window (map, turn, view, inject banners), while you keep the panels.
-- **Military grid and measuring.** An MGRS grid overlay, grid references under the pointer and for every unit, and distance and bearing (degrees and mils). Range fans for units that only cover an arc.
-- **Reinforcements, withdrawals and a timeline** of everything scripted: injects, arrivals, withdrawals, weather and timed areas, turn by turn.
-- **Weather and daylight.** Day, twilight and night from the sun at the play area; rain, fog, snow and wind that slow units, shorten sensors and ground aircraft.
-- **Adjudication beyond combat.** Outcome tables with modifiers and matrix-game arguments, with the exact chances shown before anyone rolls, and the odds of each combat result.
-- **Analysis.** Charts over turns (units in action, strength, supply, score), a heat map of where the game was fought, a replay that animates the moves, and a hotwash questionnaire whose answers go into the after-action story.
-- **Templates and scenario files** to reuse a setup, or move a scenario to another Waymark server.
-
-Scenarios are shared like everything else, and have a read-only public page at `/w/…`. There is no live multiplayer: one person drives.
-
-### Collect data with a form
-
-Give a hosted point layer a **form**: a public page, built for phones, where anyone with the link answers your questions, marks the place on a map (or uses their location) and can add a photo. Each submission becomes a point in the layer, and shows up in every map and dashboard that uses it. People filling it in never see the layer's other data.
-
-### Public links, embeds and your own page
-
-Share a map (`/m/…`) or a dashboard (`/d/…`) by link, copy an **embed code** for any story, map or dashboard, and choose an address for a **public page** (`/u/you`) that lists the work you decide to show.
-
-### Routes, travel time and print
-
-Two analysis tools use roads: **Route along roads** (the route through a layer's points, with distance and time per leg) and **Travel-time areas** (how far you can get in 5, 10 or 15 minutes by car, by bike or on foot). They use a [Valhalla](https://github.com/valhalla/valhalla) routing server: by default a free public demo, which is for light use only, so set `ROUTING_URL` to your own for regular work. The map editor's **Export** tool saves the map as a **PDF or PNG** page with a title, legend, scale bar, north arrow and credits.
-
-### Draw right on the map
-
-Press **Draw** on any map in the editor and sketch points, lines, freehand routes, areas, boxes, circles and text labels right on it. Give each shape its own colors, fill, line width, dashes or dots, and an arrowhead, plus a name and a description that readers see when they click it. Distances and areas are measured as you draw. Select a shape to move, restyle or duplicate it, trace over any other layer, and reopen a saved drawing or Hosted Feature Layer whenever you like.
-
-<p align="center"><img src="docs/media/draw.png" alt="The Draw workspace with a selected area, a dashed arrow and the style panel" width="100%"></p>
-
-### Tours from your phone photos
-
-**Stop by stop** tours have their own tour builder: every stop numbered on a big map, a list with photo thumbnails, and the selected stop's photo, name and text side by side. Drop a batch of photos and each becomes a stop where it was taken, in the order you took it, named after the file. Photos without a location are flagged and placed with a click. Add stops by searching or clicking the map, drag markers to move them, and drag the list to reorder.
-
-<p align="center"><img src="docs/media/tour-builder.png" alt="The tour builder with numbered stops on a map, a list of stops with photos, and the selected stop's details" width="100%"></p>
-
-### An editor that gets out of the way
-
-Click anything in the live preview to edit it. You also get drag to reorder, undo and redo, a command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>), a phone preview and autosave. Drafts stay private until you publish again.
-
-<p align="center"><img src="docs/media/click-to-edit.gif" alt="Clicking a chapter in the preview to edit its title and color" width="100%"></p>
-
-### Make it loud: the Brutalist look
-
-Switch any story to **Brutalist** for raw monospace and heavy display type, hard black edges and offset shadows, acid-yellow stickers, a ticker headline, outlined words that fill in as you scroll, and numbered chapters. Or start from the *Brutalist zine* template.
-
-<p align="center"><img src="docs/media/brutalist.png" alt="A story in the brutalist theme on a laptop and two phones" width="100%"></p>
-
-### Every story works on a phone
-
-<p align="center"><img src="docs/media/phones.png" alt="Three stories on phones: a satellite map, a statement block, and a stop-by-stop walk" width="100%"></p>
-
-### Start with a few questions, not a demo to delete
-
-**New story** asks what you're making, how it should look, its title and cover, and where it goes. Then it builds the story around *your* places and chapters, with short prompts where your words go. A checklist in the editor walks you through the rest: cover photo, your own text, photos, a phone check and publishing.
-
-<p align="center"><img src="docs/media/wizard.png" alt="The New story wizard: story type, look, places, and the editor checklist" width="100%"></p>
-
-| Kind of story | What you get |
-|---|---|
-| **A journey** | A moving map with one card per place, plus an overview of the whole route |
-| **A walking tour** | Numbered stops with room for a photo and a description each. Build it in the tour builder: drop your phone photos and each one lands on the map where it was taken |
-| **An illustrated essay** | Your chapters as full-screen titles, with space to write and a photo |
-| **A data story** | One big map ready for live or uploaded data, with numbers and context |
-| **Start from scratch** | A title and an empty page |
-
-Every kind comes in eight **looks**. Each one sets the type, colors, chapter colors, map style and scroll animation. You can switch later under **Story → Look & feel**, and restyle existing chapters and maps to match in one click.
-
-<p align="center"><img src="docs/media/looks.png" alt="The same statement block in the Classic, Night, Brutalist, Atlas and Aurora looks" width="100%"></p>
-
-| Look | Style |
-|---|---|
-| **Classic** | Warm paper and serif type. The original Waymark look |
-| **Night** | Dark and cinematic, so photos and maps glow |
-| **Brutalist** | Raw type, hard edges, loud color and a ticker headline |
-| **Atlas** | An old atlas: parchment, engraved type and small caps, sepia maps in a double frame with a compass rose, and chapters numbered as plates |
-| **Aurora** | Dark glass and drifting light, glowing gradient type, frosted cards and bento-style numbers. Points and lines on its maps glow like fireflies |
-| **Editorial** | Magazine journalism: warm newsprint ivory, deep espresso ink, crimson double-rules, high-contrast *Playfair Display* headlines, drop-cap intros and pull-quotes |
-| **Blueprint** | Architectural CAD & telemetry: deep Prussian navy with a dual-scale coordinate grid, electric cyan and amber accents, *Space Mono* headers, corner reticle brackets and glowing map features |
-| **Fog** | A thick fog storm: banks of fog drift behind and in front of the story, gusts tear across the screen and lightning flickers inside the murk. The reader's pointer carries a lantern that clears the fog around it, headings and photos come into focus as they scroll in, statement words sharpen as they light up, and markers glow like lanterns. A weather readout in the top bar counts visibility up from 40 m to 10 km as the fog lifts toward the end of the story |
-
-Prefer to learn from something finished? **Explore an example** opens a complete story to take apart: the moving map, walk, essay, *Brutalist zine* and *Down the Potomac* samples. Any story can also use **Before & after**, a block with two maps in one view and a draggable divider, or **Chart & table**, an interactive breakdown of any layer or dataset.
+<details>
+<summary><b>More scenario &amp; facilitation features</b></summary>
 
 <br>
 
-## 🚀 Publish it anywhere
+- **Simultaneous planned moves:** each side plans moves privately, then reveals and resolves contacts together.
+- **Fog of war & per-side views:** switch between Facilitator, Blue, and Red perspectives with automatic spotting from sensor ranges and line of sight.
+- **Timeline, replay & templates:** animated turn replay, CSV unit/inject import, reusable scenario templates, and portable scenario files for moving exercises between Waymark servers.
 
-**Publish** gives a story a public link like `/s/your-story`, with a preview image when the link is shared.
+</details>
 
-**Export as a website** turns a story into plain files that run on any web server, with no Node, no database and no Waymark.
+<br>
+
+## 👥 Teams, Sharing & Export
+
+- **Teams & roles:** create groups on the **Team** tab and share any story, saved map, hosted layer, dashboard, or scenario with individuals or groups as a **Viewer** or **Editor**.
+- **Public links, embeds & author pages:** publish stories at `/s/…`, maps at `/m/…`, dashboards at `/d/…`, forms at `/f/…`, and curate your own portfolio at `/u/your-handle`.
+- **Print layouts:** export any saved map to publication-ready **PDF or PNG** with title, legend, scale bar, north arrow, and credits.
+- **Host stories anywhere:** export any story as a self-contained **Website folder (`.zip`)** for GitHub Pages, S3, Netlify, nginx, or offline viewing, or as a **Tomcat web app (`.war`)** — via the editor or CLI (`node server.js export my-story`).
 
 <p align="center"><img src="docs/media/export.png" alt="The export dialog with zip and Tomcat options" width="100%"></p>
 
-| Format | Use it for |
-|---|---|
-| **Website folder (.zip)** | Apache, nginx, IIS, shared hosting, S3, GitHub Pages, Netlify, or just double-click `index.html` |
-| **Tomcat web app (.war)** | Drop it in Tomcat's `webapps/` folder (Tomcat 8.5 to 11) |
-
-The export includes the page, your images, a snapshot of your map data (saved maps included) and, optionally, the map library. Every path is relative, so it works in any folder. You can also export from the command line:
-
-```bash
-node server.js export my-story --war --out /opt/tomcat/webapps/my-story.war
-```
-
 <details>
-<summary><b>All export options</b></summary>
+<summary><b>CLI export options</b></summary>
 
 <br>
 
 ```bash
-node server.js stories                       # find the story's link or id
-node server.js export my-story               # published version, as a .zip
-node server.js export my-story --draft       # the unpublished draft
+node server.js stories                                      # list stories & slugs
+node server.js export my-story                              # published story as .zip
+node server.js export my-story --draft                      # unpublished draft
+node server.js export my-story --war --out ./my-story.war   # Tomcat .war bundle
 ```
 
-Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--no-vendor`. The last three keep images, data or the map library as links instead of copying them. Only the map tiles and web fonts load from the internet.
+Flags: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data`, `--no-vendor`.
 
 </details>
 
@@ -354,74 +227,59 @@ Options: `--war`, `--draft`, `--out <file>`, `--no-images`, `--no-data` and `--n
 
 ## 🏠 Host it yourself
 
-Your stories, saved maps, accounts and images all live in one `data/` folder. Waymark runs anywhere that has Node 22.13+ or Docker and a persistent disk: a VPS, a home server, Fly.io, Railway, Render and so on.
+Everything — accounts, stories, maps, hosted layers, uploads, and scenarios — lives in one `data/` folder. Waymark runs anywhere with Node 22.13+ or Docker and a persistent disk.
 
-1. **Put it behind HTTPS.** [Caddy](https://caddyserver.com) is the easiest: `caddy reverse-proxy --from stories.example.com --to localhost:5180`
-2. **In `.env`,** set `APP_URL=https://stories.example.com` and `COOKIE_SECURE=1`.
-3. **Once your accounts exist,** set `ALLOW_SIGNUP=0` to close sign-ups.
-4. **Back up `data/`.** It holds everything.
-
+1. **Put it behind HTTPS** (e.g. `caddy reverse-proxy --from stories.example.com --to localhost:5180`).
+2. **In `.env`**, set `APP_URL=https://stories.example.com` and `COOKIE_SECURE=1`.
+3. **Once accounts are created**, set `ALLOW_SIGNUP=0` to lock registration.
+4. **Back up `data/`** — it holds the SQLite database and all uploads.
 
 <details>
-<summary><b>Settings (<code>.env</code>)</b></summary>
+<summary><b>Environment settings (<code>.env</code>)</b></summary>
 
 <br>
 
-Copy `.env.example` to `.env` and edit it. Everything is optional.
+Copy `.env.example` to `.env`. Every variable is optional.
 
-| Setting | Default | What it does |
+| Setting | Default | Purpose |
 |---|---|---|
-| `APP_NAME`, `APP_TAGLINE` | Waymark | Rename the app (interface, emails, link previews) |
-| `PORT` | `5180` | Port to listen on |
-| `HOST` | this computer only | Set to `0.0.0.0` to let other devices on your network connect |
-| `APP_URL` | `http://localhost:PORT` | Your site's public address, used in password reset emails |
-| `DATA_DIR` | `./data` | Where the database (`waymark.db`) and uploaded images are stored |
-| `COOKIE_SECURE` | off | Set to `1` when the site is served over HTTPS |
-| `ALLOW_SIGNUP` | on | Set to `0` to stop new sign-ups once your accounts exist |
-| `SMTP_*` | off | Email for password resets. See below |
-| `MAX_LAYER_MB` | `256` | Largest hosted-layer upload |
-| `TILE_THRESHOLD` | `20000` | Hosted layers with more features than this are drawn from vector tiles |
-| `ROUTING_URL` | a public Valhalla demo | Routing server for routes and travel-time areas |
-| `ALLOW_PRIVATE_FETCH` | off | Set to `1` to let scheduled refresh and map services reach addresses on your own network |
+| `APP_NAME`, `APP_TAGLINE` | `Waymark` | Custom branding in UI, emails, and link previews |
+| `PORT` / `HOST` | `5180` / localhost | Listen port and bind address (`0.0.0.0` for LAN/Docker) |
+| `APP_URL` | `http://localhost:PORT` | Public base URL for reset links and embeds |
+| `DATA_DIR` | `./data` | Location of `waymark.db`, layers, and uploaded images |
+| `COOKIE_SECURE` | off | Set to `1` behind HTTPS |
+| `ALLOW_SIGNUP` | on | Set to `0` to disable new registrations |
+| `SMTP_*` | off | Optional SMTP settings for password-reset emails |
+| `MAX_LAYER_MB` | `256` | Max hosted-layer upload size |
+| `TILE_THRESHOLD` | `20000` | Feature threshold for automatic vector-tile serving |
+| `ROUTING_URL` | public Valhalla demo | Routing server for road routes and travel-time areas |
+| `ALLOW_PRIVATE_FETCH` | off | Set to `1` to allow scheduled sync/services on private networks |
 
 </details>
 
 <details>
-<summary><b>Password reset and email</b></summary>
+<summary><b>CLI admin, password reset &amp; dev commands</b></summary>
 
 <br>
-
-People can reset a forgotten password from the sign-in page. To deliver the emails, set the `SMTP_*` settings in `.env`. Any SMTP provider works, for example Postmark, Resend, SendGrid, Mailgun, or a Gmail app password.
-
-**Without email set up**, the reset link prints in the terminal where the server runs. That's fine for personal or local use. You can also reset passwords yourself from the command line:
 
 ```bash
+npm run dev                                   # auto-restart server on changes
+npm test                                      # run test suite against a temp DB
+docker compose up -d                          # run in Docker with named volume
 npm run users                                 # list accounts
-npm run reset-link -- someone@example.com     # print a reset link
-npm run set-password -- someone@example.com   # type a new password directly
+npm run reset-link -- someone@example.com     # print a one-time reset link
+npm run set-password -- someone@example.com   # set a password directly
 ```
 
-</details>
-
-<details>
-<summary><b>Other ways to run it</b></summary>
-
-<br>
-
-| | |
-|---|---|
-| `npm run dev` | Restarts automatically when you edit server code |
-| `npm test` | Runs the test suite against a temporary database |
-| `docker compose up -d` | Runs in Docker, with data kept in a named volume |
+Without `SMTP_*` configured, password-reset links print directly to the server terminal.
 
 </details>
-
 
 <br>
 
 ## 📚 Under the hood
 
-Waymark is plain JavaScript with no build step and no dependencies. The server uses only Node's built-in modules, including `node:sqlite`. The browser app is ordinary ES modules. Maps are drawn with [MapLibre GL JS](https://maplibre.org/) on free [OpenFreeMap](https://openfreemap.org/) and Sentinel-2 basemaps.
+Waymark is plain JavaScript with **zero runtime dependencies and no build step**. The server uses Node's built-in modules (`node:http`, `node:sqlite`, `node:crypto`), and the browser app uses native ES modules with [MapLibre GL JS](https://maplibre.org/) and [Turf.js](https://turfjs.org/) (editor only) on free [OpenFreeMap](https://openfreemap.org/) and Sentinel-2 basemaps.
 
 <details>
 <summary><b>Project layout</b></summary>
@@ -429,128 +287,56 @@ Waymark is plain JavaScript with no build step and no dependencies. The server u
 <br>
 
 ```
-server.js              entry point + startup checks
-server/index.js        HTTP server: API routes, uploads, published pages, static files
-server/db.js           SQLite schema (built-in node:sqlite)
-server/auth.js         password hashing, sessions, reset tokens, rate limiting
-server/mail.js         minimal SMTP client
-server/cli.js          admin commands
-server/brand.js        app name and tagline
-public/                the web app (plain ES modules, no build step)
-  js/render.js         story → page; all block renderers
-  js/effects.js        scroll-driven effects engine (one rAF loop, on-screen elements only)
-  js/fog.js            weather for the Fog look (fog layers, lantern, gusts, lightning, visibility readout)
-  js/ui.js             icons, logo, toasts, menus, dialogs
-  js/maps.js           MapLibre helpers: basemaps, views, data layers (incl. heatmap/clusters), legend, popups
-  js/analysis.js       geospatial tools and layer statistics (Turf.js, loaded only in the editor)
-  js/workbench.js      Add data, Analyze and Draw workspaces
-  js/mapeditor.js      the saved-map editor (map.html)
-  js/webmap.js         saved maps in stories: builds them into a story before it's shown or exported
-  js/table.js          hosted feature layers, editable attribute tables, schema studio and field calculator
-  js/share.js          share dialog, groups (the Team tab) and public-page settings
-  js/layer-tools.js    hosted layer history, sync with a URL, forms and big uploads
-  js/services.js       WMS, WMTS, WFS, tile addresses and PMTiles
-  js/shapefile.js      zipped shapefile reader
-  js/dashboard.js      dashboards (editor and public page)
-  js/scenario.js       scenarios: the play screen (units, turns, branches, injects, dice, present)
-  js/scenario-core.js  scenario rules with no page code: turns, moves, branches, comparison, the after-action story
-  js/scenario-rules.js terrain grid and routes, lines of communication, supply, command, combat, objectives, spotting, CSV import
-  js/scenario-terrain.js builds a scenario's terrain from elevation tiles and OpenStreetMap
-  js/scenario-tools.js the Combat, Lines, Terrain, Objectives and Draw panels
-  js/scenario-extras.js second screen, grid and measuring, schedule and timeline, weather, outcome tables, analysis, replay, files
-  js/scenario-report.js dice odds, outcome tables, matrix arguments, timeline, charts data, hotwash, templates and scenario files
-  js/mgrs.js           UTM and MGRS coordinates, bearings and grid lines
-  js/print.js          map export to PDF and PNG
-  js/mapview.js · form-page.js · profile.js   public map, form and profile pages
-  js/layer-form.js     layer settings, shared by the story editor and the map editor
-  js/catalog.js        public data catalog (government sources + ArcGIS Online search)
-  js/export-core.js    static-site / .war exporter (shared by the editor and `node server.js export`)
-  js/export.js         the export dialog
-  js/zip.js            minimal zip writer
-  js/builder.js        the story editor
-  js/wizard.js         the New story wizard; story-kit.js builds stories from its answers and holds the looks
-  js/tour.js           the tour builder for Stop by stop; exif.js reads where and when photos were taken
-  js/templates.js      finished examples
-  map.html             the saved-map editor page
-  welcome.html         landing page for signed-out visitors (itself a story)
-  stories/, data/      sample story and sample GeoJSON
-docs/SCHEMA.md         the story and saved-map file formats
-test/                  API tests plus unit tests for saved maps, hosted layers, the wizard, photo locations and story formats (node:test)
+server.js              entry point & startup checks
+server/                HTTP API, SQLite schema, scrypt auth, access/teams, GeoPackage, MVT tiles, SMTP, CLI
+public/                browser app (plain ES modules, no bundler)
+  builder.html         story editor (js/builder.js, js/wizard.js, js/tour.js, js/render.js, js/effects.js)
+  map.html             saved-map editor (js/mapeditor.js, js/maps.js, js/analysis.js, js/workbench.js, js/print.js)
+  dashboard.html       interactive dashboards (js/dashboard.js)
+  scenario.html        wargaming & scenarios (js/scenario*.js, js/mgrs.js)
+  form.html            public field data-collection forms (js/form-page.js)
+  help/                built-in 22-page Markdown user guide served at /help
+docs/SCHEMA.md         story & saved-map JSON schemas
+test/                  API & unit test suite (node:test)
 ```
 
 </details>
 
 <details>
-<summary><b>API</b></summary>
+<summary><b>HTTP API overview</b></summary>
 
 <br>
 
-Every request that changes data must send the header `X-Waymark: 1`. This guards against cross-site request forgery: another site can't add a custom header without a CORS preflight, and the server never allows one.
+All state-changing requests require `X-Waymark: 1` for CSRF protection.
 
-| | |
+| Area | Endpoints |
 |---|---|
-| `POST /api/auth/signup` `{email, password, name}` · `POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/me` | Accounts |
-| `POST /api/auth/forgot {email}` · `GET /api/auth/reset/:token` · `POST /api/auth/reset {token, password}` · `POST /api/auth/password {current, password}` | Password reset and change |
-| `GET /api/stories` · `POST /api/stories {story}` | List and create your stories |
-| `GET /api/stories/:id` · `PUT /api/stories/:id {story, version}` · `DELETE /api/stories/:id` | Read, save and delete a draft. A save with an outdated `version` returns `409` |
-| `POST /api/stories/:id/publish {slug?}` · `POST /api/stories/:id/unpublish` | Publish copies the draft to the public copy |
-| `GET /api/public/:slug` | A published story's JSON |
-| `GET /api/maps` · `POST /api/maps {map}` · `GET` `PUT {map, version}` `DELETE /api/maps/:id` · `GET /api/maps/:id/usage` · `GET /api/public/maps/:id` | Saved maps: list, create, read, save, delete, which stories use one, and the copy readers load once a published story uses it |
-| `GET /api/layers` · `POST /api/layers` · `GET` `PUT` `DELETE /api/layers/:id` · `GET /api/layers/:id/geojson` · `GET /api/layers/:id/usage` · `GET /api/public/layers/:id` | Hosted feature layers: list, create, edit schema/attributes/features, serve as GeoJSON, check story/map usage, and public GeoJSON service endpoint |
-| `POST /api/layers/import` (raw file) · `GET /api/layers/:id/tiles/:z/:x/:y.mvt` · `GET /api/layers/:id/sample` | Big uploads (GeoJSON, GeoPackage), vector tiles, and a sample of attributes for styling |
-| `GET /api/layers/:id/history` · `GET /api/layers/:id/history/:version` · `POST /api/layers/:id/restore/:version` · `POST /api/layers/:id/refresh` | Layer history, restore, and refresh from the layer's source URL |
-| `GET` `POST /api/layers/:id/forms` · `PUT` `DELETE /api/forms/:id` · `GET /api/public/forms/:id` · `POST /api/public/forms/:id/submit` · `POST /api/public/forms/:id/photo` | Forms that add points to a hosted layer |
-| `GET /api/dashboards` · `POST /api/dashboards {dashboard}` · `GET` `PUT {dashboard, version}` `DELETE /api/dashboards/:id` · `GET /api/public/dashboards/:id` | Dashboards |
-| `GET /api/scenarios` · `POST /api/scenarios {scenario}` · `GET` `PUT {scenario, version}` `DELETE /api/scenarios/:id` · `GET /api/public/scenarios/:id` | Scenarios |
-| `GET` `POST /api/groups` · `PUT` `DELETE /api/groups/:id` · `POST /api/groups/:id/members {email, role}` · `DELETE /api/groups/:id/members/:userId` | Groups |
-| `GET` `PUT /api/share/:type/:id {shares, link, listed}` (type: story, map, layer, dashboard, scenario) | Who an item is shared with, its public link, and whether it is on your public page |
-| `PUT /api/me {name, handle, bio}` · `GET /api/public/users/:handle` | Your public page |
-| `GET /api/config` · `GET /api/fetch?url=` | Settings the browser needs, and a guarded fetch of map service descriptions |
-| `POST /api/uploads` (raw image body) · `GET /api/uploads` · `DELETE /api/uploads/:id` | Images: JPEG, PNG, WebP or GIF, checked by their bytes. 12 MB limit |
+| **Auth & Profile** | `POST /api/auth/{signup,login,logout,forgot,reset,password}` · `GET/PUT /api/me` · `GET /api/public/users/:handle` |
+| **Stories** | `GET/POST /api/stories` · `GET/PUT/DELETE /api/stories/:id` · `POST /api/stories/:id/{publish,unpublish}` · `GET /api/public/:slug` |
+| **Saved Maps** | `GET/POST /api/maps` · `GET/PUT/DELETE /api/maps/:id` · `GET /api/maps/:id/usage` · `GET /api/public/maps/:id` |
+| **Hosted Layers** | `GET/POST /api/layers` · `POST /api/layers/import` · `GET/PUT/DELETE /api/layers/:id` · `GET /api/layers/:id/{geojson,sample,history,tiles/:z/:x/:y.mvt}` · `POST /api/layers/:id/{restore/:version,refresh}` |
+| **Forms** | `GET/POST /api/layers/:id/forms` · `PUT/DELETE /api/forms/:id` · `GET/POST /api/public/forms/:id{,/submit,/photo}` |
+| **Dashboards & Scenarios** | `GET/POST/PUT/DELETE /api/{dashboards,scenarios}/:id` · `GET /api/public/{dashboards,scenarios}/:id` |
+| **Teams, Sharing & Media** | `GET/POST/PUT/DELETE /api/groups` · `GET/PUT /api/share/:type/:id` · `GET/POST/DELETE /api/uploads` |
 
 </details>
 
 <details>
-<summary><b>Security</b></summary>
+<summary><b>Security highlights</b></summary>
 
 <br>
 
-- **Passwords and sessions:** passwords are hashed with scrypt. Sessions are random tokens stored hashed, in an `HttpOnly; SameSite=Lax` cookie. Sign-in, sign-up and reset requests are rate-limited.
-- **Password reset:** reset links are single-use and expire after an hour, and using one signs out every existing session. A reset request gets the same answer whether or not the email has an account. Links are always built from `APP_URL`, never from the request's Host header.
-- **Story content:** story text is cleaned against an allow-list of HTML tags. Every page sends a Content-Security-Policy that only runs scripts from this site and unpkg, with no inline scripts.
-- **Uploads:** uploaded files are checked by their contents, which rules out SVG, and served with `nosniff` and a `default-src 'none'` policy.
+- **Auth:** `scrypt` password hashing, hashed session tokens in `HttpOnly; SameSite=Lax` cookies, and rate-limited auth endpoints.
+- **Reset links:** single-use, 1-hour expiry, invalidate all active sessions on use, built strictly from `APP_URL`.
+- **Content & uploads:** strict HTML tag allow-list sanitization, Content-Security-Policy with no inline scripts, magic-byte upload validation (no SVG), and `nosniff` headers.
 
 </details>
 
-<details>
-<summary><b>Story file format</b></summary>
-
 <br>
 
-Stories are plain JSON. See [docs/SCHEMA.md](docs/SCHEMA.md).
+## 📖 User Guide, Contributing & License
 
-</details>
-
-
-<br>
-
-## 📖 User guide
-
-Waymark has a full user guide built in: open **Help** from the account menu, or go to `/help` on your Waymark server. It covers the story editor and every block, maps in stories, the map editor, every way to add data, layer styling, hosted layers, all 30 analysis tools, sharing and teams, dashboards, scenarios, forms, export and print, data formats and limits, keyboard shortcuts, troubleshooting, and an administrator's guide. The pages are Markdown in [`public/help/`](public/help/index.md), so you can also read them here on GitHub.
-
-## 🤝 Contributing
-
-Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately, as described in [SECURITY.md](SECURITY.md). Each release is listed in the [changelog](CHANGELOG.md).
-
-## Background
-
-This project started as a rebuild of the ArcGIS StoryMaps reading and authoring experience. It was written from scratch using only public behavior and open formats. Esri's open-source classic templates ([Map Journal](https://github.com/Esri/storymap-journal), [Map Series](https://github.com/Esri/storymap-series), Apache-2.0) and [mapbox/storytelling](https://github.com/mapbox/storytelling) (BSD-3) were studied for data models and UX patterns only. No code was copied, and the current closed-source ArcGIS StoryMaps product was not used.
-
-## License
-
-Waymark is released under the [MIT License](LICENSE).
-
-It loads these open-source libraries from a CDN (an exported story can bundle MapLibre, along with its license):
-[MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) and, in the editor only, [Turf.js](https://github.com/Turfjs/turf) (MIT).
-
-Map tiles and data come from their providers, which are credited on every map: OpenStreetMap contributors and OpenFreeMap (ODbL), Sentinel-2 cloudless by EOX (CC-BY 4.0), and USGS, NOAA, NASA, US Census Bureau, NPS, USDA Forest Service, EPA, NIFC and Natural Earth (public domain). If you host Waymark for others, keep those credits visible.
+- **User guide:** open **Help** in the app or browse [`public/help/`](public/help/index.md) (22 guides covering every feature, format, and admin task).
+- **Schema & changelog:** see [`docs/SCHEMA.md`](docs/SCHEMA.md) and [`CHANGELOG.md`](CHANGELOG.md).
+- **Contributing & security:** see [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md).
+- **License:** MIT ([`LICENSE`](LICENSE)). Built from scratch using open formats; credits OpenStreetMap/OpenFreeMap (ODbL), Sentinel-2 cloudless by EOX (CC-BY 4.0), and public-domain US government datasets (USGS, NOAA, NASA, Census, NPS, USFS, EPA, NIFC, Natural Earth).

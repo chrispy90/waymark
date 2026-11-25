@@ -16,6 +16,8 @@ import * as R from './scenario-rules.js';
 import { branchDiff, afterActionExtras } from './scenario-report.js';
 import { createTools } from './scenario-tools.js';
 import { createExtras } from './scenario-extras.js';
+import { createGamepad } from './scenario-gamepad.js';
+import { createGameFx } from './scenario-fx.js';
 
 const params = new URLSearchParams(location.search);
 const publicId = /^\/w\/([\w-]+)/.exec(location.pathname)?.[1];
@@ -246,9 +248,11 @@ function flagsEl(u) {
 
 function select(uidOf, { fly = false } = {}) {
   if (uidOf && tools.onUnitClick(unitById(uidOf))) return;
+  const changedSel = uidOf !== selected;
   selected = uidOf;
   if (uidOf && !['units', 'combat'].includes(tool) && !root.classList.contains('is-present')) tool = 'units';
   const u = uidOf && unitById(uidOf);
+  if (changedSel && u) fx.sfx.select();
   if (fly && u) map.easeTo({ center: u.lngLat, duration: 500 });
   render();
 }
@@ -391,10 +395,12 @@ function multiTurnIsochrones(u) {
 
 /** A unit dropped on the map: it moves along the quickest route over the terrain, or plans the move. */
 function dropUnit(id, marker) {
+  const p = marker.getLngLat();
+  moveUnitTo(id, [p.lng, p.lat]);
+}
+function moveUnitTo(id, to) {
   const u = unitById(id);
   if (!u || !live()) { render(); return; }
-  const p = marker.getLngLat();
-  const to = [p.lng, p.lat];
   const F = facts();
   let route = null;
   if (F.T) route = R.routeUnit(doc, turn(), turnIx, F.T, u, to, { costMult: F.rules.auto && F.supply.get(u.id)?.state === 'out' ? 2 : 1 });
@@ -412,6 +418,8 @@ function dropUnit(id, marker) {
     return;
   }
   const r = mutate(() => moveUnit(doc, turn(), id, to, usable));
+  fx.sfx.move();
+  fx.pingMap(to, sideOf(doc, u.side).color);
   const left = Math.round((u.supply ?? 100) - (Number(unitById(id)?.used) || 0));
   if (r?.overHours) toast(`${u.name} needs ${hoursLabel(r.hours)} to get there: ${hoursLabel(r.overHours)} more than a turn.${left < 0 ? ' It also doesn\'t have the supply for it.' : ''}`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
   else if (usable && left < 0) toast(`${u.name} doesn't have the supply for that move (it needs ${Math.round(usable.cost)}%).`, { duration: 7000, action: { label: 'Undo', onClick: undo } });
@@ -516,6 +524,7 @@ function showInject(x) {
       h('span', { class: 'spacer' }),
       h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { el.remove(); if (!screenMode) extras.sync({ banner: null }); } }, 'Continue')));
   $('.wg-stage').append(el);
+  fx.sfx.inject();
   if (screenMode) return;
   extras.sync({ banner: x });
   el.querySelector('.btn-primary').focus();
@@ -567,6 +576,8 @@ function advance() {
   turnIx = r.index;
   clearOverlay(false);
   render();
+  fx.sfx.turn();
+  fx.showTurnSplash(turnLabel(doc, turnIx), 'ORDERS PHASE');
   if (r.injects.length) showInject(r.injects[0]);
   r.injects.slice(1).forEach((x) => toast(`Inject: ${x.title}`, { duration: 8000 }));
 }
@@ -887,10 +898,56 @@ const ctx = {
   drawing: () => drawing,
   setTool: (k) => { tool = k; render(); },
   get scenarioId() { return meta.id || id; }, get selected() { return selected; }, get overlay() { return overlay; }, get template() { return template; },
+  get placing() { return placing; },
   setOverlay: (features) => setOverlay(features), clearOverlay: () => clearOverlay(), goTo: (b, n) => goTo(b, n), lastTurn: () => lastTurn(doc, branchId),
+  moveUnitTo,
+  placeUnitAt: (lngLat) => {
+    if (placing?.what !== 'unit' || !live()) return;
+    const u = mutate(() => addUnit(doc, turn(), { side: placing.side, kind: placing.kind, echelon: KINDS[placing.kind]?.fn ? placing.echelon : '', lngLat }));
+    toast(`${u.name} placed`, { duration: 1800 });
+  },
+  cancelPlacing: () => { placing = null; render(); },
+  undo,
+  advance,
+  present,
+  isPresent: () => root.classList.contains('is-present'),
+  cycleView: () => {
+    const opts = ['all', ...doc.sides.map((s) => s.id)];
+    viewAs = opts[(opts.indexOf(viewAs) + 1) % opts.length];
+    const selEl = $('.wg-viewas');
+    if (selEl) selEl.value = viewAs;
+    if (selected && !shown(unitById(selected) || {})) selected = null;
+    const name = viewAs === 'all' ? 'Show everything' : `${sideOf(doc, viewAs).name}'s view`;
+    toast(`View: ${name}`, { duration: 1800 });
+    render();
+  },
+  cycleTool: (dir) => {
+    const idx = TOOLBAR.findIndex(([k]) => k === tool);
+    tool = TOOLBAR[(idx + dir + TOOLBAR.length) % TOOLBAR.length][0];
+    render();
+  },
+  startPlacingUnit: () => {
+    if (!live()) { toast('Jump to the latest turn to place units'); return; }
+    placing = { what: 'unit', ...template };
+    toast('Aim reticle & press A to place unit (B to stop)', { duration: 2400 });
+    render();
+  },
+  toggleGrid: () => {
+    extras.setGrid(!extras.gridOn);
+    toast(extras.gridOn ? 'MGRS Grid ON' : 'MGRS Grid OFF', { duration: 1500 });
+  },
+  showReachIsochrones: () => {
+    const u = selected && unitById(selected);
+    if (!u) { toast('Select a unit first for terrain reach isochrones'); return; }
+    multiTurnIsochrones(u);
+  },
+  revealMoves,
+  hasPlannedMoves: () => turn().units.some((u) => u.plan),
 };
 const tools = createTools(ctx);
 const extras = createExtras(ctx);
+const gamepad = createGamepad(ctx);
+const fx = createGameFx(ctx);
 const TOOLBAR = [['units', 'Units', 'pin'], ['combat', 'Combat', 'swords'], ['lines', 'Lines', 'line'], ['terrain', 'Terrain', 'mountain'], ['objectives', 'Objectives', 'flag'], ['draw', 'Draw', 'pen'],
   ['injects', 'Injects', 'target'], ['log', 'Log', 'text'], ['dice', 'Dice', 'hex'], ['branches', 'Branches', 'copy'], ['setup', 'Setup', 'sliders']];
 const PANELS = { units: unitsPanel, injects: injectsPanel, log: logPanel, dice: dicePanel, branches: branchesPanel, setup: setupPanel, ...tools.panels };
@@ -955,6 +1012,8 @@ function render() {
   root.classList.toggle('is-placing', !!placing || !!drawing);
   drawBar();
   drawMap();
+  fx.renderUnitHud();
+  gamepad.onRender();
   if (!screenMode) extras.sync();
 }
 
@@ -1017,6 +1076,8 @@ if (!mode || !doc) {
       h('button', { type: 'button', class: 'icon-btn', title: 'Second screen, timeline, analysis, files', 'aria-label': 'More', onclick: (e) => extras.moreMenu(e.currentTarget) }, icon('more')),
       canEdit && meta.role === 'owner' ? h('button', { type: 'button', class: 'btn', onclick: () => openShare({ type: 'scenario', id: meta.id, title: doc.title }) }, icon('link', { size: 15 }), 'Share') : null,
       canEdit ? h('button', { type: 'button', class: 'btn', onclick: writeUp }, icon('scrollmap', { size: 15 }), 'Write it up') : null,
+      !screenMode ? h('button', { type: 'button', class: 'icon-btn wg-sfx-btn', id: 'wg-sfx-btn', title: 'Tactical Sound FX', 'aria-label': 'Tactical Sound FX', onclick: () => fx.setSfx(!fx.isSfxOn()) }, icon('volume')) : null,
+      !screenMode ? h('button', { type: 'button', class: 'icon-btn wg-gp-btn', id: 'wg-gp-btn', title: 'Xbox Controller Mode', 'aria-label': 'Xbox Controller Mode', onclick: () => gamepad.openControlsDialog() }, icon('gamepad')) : null,
       h('button', { type: 'button', class: 'btn btn-primary', title: 'Full screen, with the panels hidden', onclick: () => present(true) }, icon('monitor', { size: 15 }), 'Present')),
     h('nav', { class: 'me-tools wg-tools', id: 'wg-tools', 'aria-label': 'Scenario tools' }),
     h('aside', { class: 'me-panel wg-panel', id: 'wg-panel' }),
@@ -1031,8 +1092,10 @@ if (!mode || !doc) {
   const base = mapDoc?.view || {};
   map = createMap(mapEl, { ...base, ...doc.view, basemap: mapDoc ? base.basemap : doc.view.basemap, markers: [], layers: base.layers || [], legend: !!mapDoc && base.legend !== false }, { library: mapDoc?.layers || [] });
   if (!embed) map.scrollZoom.enable();
-  map.on('style.load', () => { markers.forEach((m) => m.marker.remove()); markers.clear(); drawMap(); extras.drawGrid(); });
+  map.on('style.load', () => { markers.forEach((m) => m.marker.remove()); markers.clear(); drawMap(); extras.drawGrid(); gamepad.onStyleLoad(); });
   if (!embed) extras.mapControls(map, $('.wg-stage'));
+  if (!embed) fx.mount($('.wg-stage'), $('#wg-sfx-btn'));
+  if (!embed && !screenMode) gamepad.mount($('.wg-stage'), $('#wg-gp-btn'));
   if (screenMode) { root.classList.add('is-present', 'is-screen'); setTitle(`${doc.title || 'Scenario'} · second screen`); extras.follow(applyRemote); } else extras.listen();
   map.on('click', (e) => {
     if (drawing) { addDrawPoint(drawing.snap ? snapPoint(e.lngLat) : [e.lngLat.lng, e.lngLat.lat]); return; }
