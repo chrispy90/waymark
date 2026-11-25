@@ -9,6 +9,7 @@ import { openShare, renderTeam, openProfile } from './share.js';
 import { openHistory, openSync, openForms, uploadLayerFiles } from './layer-tools.js';
 import { newScenario } from './scenario-core.js';
 import { fromTemplate, unpackScenario } from './scenario-report.js';
+import { battleOfTheBulgeDemo } from './scenario-demos.js';
 import { openExport } from './export.js';
 import { openNewHostedLayerDialog, openAttributeTableDialog } from './table.js';
 
@@ -401,7 +402,14 @@ async function loadScenarios() {
       h('button', { type: 'button', class: 'card card-new', style: `--i:${scenarios.length}`, onclick: create }, h('span', { class: 'plus' }, icon('plus')), 'New scenario'))
       : h('section', { class: 'empty' }, icon('pin', { size: 40 }), h('h2', {}, 'Run a tabletop exercise on a map'),
         h('p', {}, 'Place units for each side, then move them turn by turn while the room talks it through. Spring injects, roll dice, take notes, and branch to try a different choice. When you\'re done, one click writes it up as a story.'),
-        h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New scenario')));
+        h('div', { class: 'row', style: 'justify-content:center;gap:10px;flex-wrap:wrap' },
+          h('button', { type: 'button', class: 'btn btn-primary btn-lg', onclick: create }, icon('plus'), 'New scenario'),
+          h('button', { type: 'button', class: 'btn btn-lg', onclick: launchBulgeDemo }, icon('swords'), 'Play demo: Battle of the Bulge'))));
+}
+
+async function launchBulgeDemo() {
+  const r = await api('POST', '/api/scenarios', { scenario: battleOfTheBulgeDemo() });
+  location.href = `/scenario.html?id=${r.id}`;
 }
 
 // A scenario is played on one of your saved maps (for its layers and basemap), or on a plain basemap.
@@ -445,9 +453,11 @@ async function newScenarioDialog() {
   const pick = (iconName, title, sub, onClick) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: onClick },
     h('span', { class: 'pick-icon' }, icon(iconName, { size: 18 })), h('span', {}, h('strong', {}, title), h('span', {}, sub)));
   const dlg = dialog({ title: 'New scenario', body: h('div', { class: 'sub-list', style: 'max-height:440px;overflow:auto' },
-    templates.length ? [h('div', { class: 'rail-section-title', style: 'margin-top:0' }, 'From a template'),
-      templates.map((t) => pick('copy', t.title.replace(/ \(template\)$/, ''), `Template · ${t.units} ${t.units === 1 ? 'unit' : 'units'} ready to play`, () => { dlg.close(); fromTemplateScenario(t); })),
-      h('div', { class: 'rail-section-title' }, 'Or start fresh on')] : null,
+    h('div', { class: 'rail-section-title', style: 'margin-top:0' }, 'Playable demo'),
+    pick('swords', 'Battle of the Bulge — Ardennes 1944', '16 historical formations · Bastogne siege, Patton\'s relief, weather shift & what-if branch', () => { dlg.close(); launchBulgeDemo(); }),
+    templates.length ? [h('div', { class: 'rail-section-title' }, 'From a template'),
+      templates.map((t) => pick('copy', t.title.replace(/ \(template\)$/, ''), `Template · ${t.units} ${t.units === 1 ? 'unit' : 'units'} ready to play`, () => { dlg.close(); fromTemplateScenario(t); }))] : null,
+    h('div', { class: 'rail-section-title' }, 'Or start fresh on'),
     pick('globe', 'A plain map', 'Just a basemap. Pan to your area and start placing units.', () => { dlg.close(); createScenario(null); }),
     maps.map((m) => h('button', { type: 'button', class: 'pick', style: 'width:100%;text-align:left;margin-bottom:6px', onclick: () => { dlg.close(); createScenario(m); } },
       h('span', { class: 'pick-icon' }, icon('map', { size: 18 })), h('span', {}, h('strong', {}, m.title || 'Untitled map'), h('span', {}, `Your saved map · ${m.layers} ${m.layers === 1 ? 'layer' : 'layers'}`))))),
