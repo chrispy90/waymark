@@ -91,9 +91,9 @@ export function battleOfTheBulgeDemo() {
     title: 'Battle of the Bulge — Ardennes 1944',
     summary: 'December 1944: Can the 5th & 6th Panzer Armies seize Bastogne and reach the Meuse River before Allied airpower clears the fog and Patton\'s Third Army breaks the siege?',
     map: null,
-    view: { center: [5.72, 50.14], zoom: 8.8, bearing: 0, pitch: 28, basemap: 'dark' },
+    view: { center: [5.72, 50.14], zoom: 8.8, bearing: 0, pitch: 28, basemap: 'streets' },
     sides,
-    clock: { mode: 'time', stepMinutes: 1440, start: '1944-12-16T06:00' },
+    clock: { mode: 'time', stepMinutes: 1440, start: '1944-12-16T10:30' },
     rules: {
       planning: false,
       autoSpot: false,
