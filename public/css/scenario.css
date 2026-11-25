@@ -552,8 +552,9 @@ body.pv:has(.wg), .wg {
 .wg-corner.br { bottom: 10px; right: 10px; border-bottom-width: 2px; border-right-width: 2px; }
 
 /* Upgraded Map Units: Glowing Selection Ring & Dark Tactical Nameplates */
-.wg-unit { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .55)); transition: transform .14s ease; }
-.wg-unit:hover { transform: scale(1.07); }
+.wg-unit { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .55)); }
+.wg-unit .wg-sym { transition: transform .14s ease; }
+.wg-unit:hover .wg-sym { transform: scale(1.08); }
 .wg-name {
   background: rgba(7, 13, 24, .90);
   color: #f8fafc;

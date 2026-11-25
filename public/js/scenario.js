@@ -281,11 +281,10 @@ function ensureLayers() {
 }
 
 function drawMap() {
-  if (!map?.isStyleLoaded()) { map?.once('idle', drawMap); return; }
-  ensureLayers();
+  if (!map) return;
   const t = turn();
   const units = t.units.filter(shown);
-  // markers
+  // Unit markers are DOM overlays — render them immediately even while map tiles/styles are still loading.
   const keep = new Set(units.map((u) => u.id));
   for (const [uidOf, m] of markers) if (!keep.has(uidOf)) { m.marker.remove(); markers.delete(uidOf); }
   for (const u of units) {
@@ -300,6 +299,8 @@ function drawMap() {
       markers.set(u.id, m);
     } else m.marker.setLngLat(u.lngLat);
   }
+  if (!map.isStyleLoaded()) { map.once('idle', drawMap); return; }
+  ensureLayers();
   // this turn's moves
   const moves = [];
   for (const u of units) {
